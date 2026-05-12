@@ -10,14 +10,20 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   constructor(private config: ConfigService) {}
 
   onModuleInit() {
-    this.client = new Redis({
-      host: this.config.get('REDIS_HOST', 'localhost'),
-      port: this.config.get<number>('REDIS_PORT', 6379),
-      password: this.config.get('REDIS_PASSWORD') || undefined,
-      lazyConnect: true,
-    });
+    const redisUrl = this.config.get<string>('REDIS_URL');
+    if (redisUrl) {
+      // Upstash: single TLS URL format rediss://default:xxx@xxx.upstash.io:6379
+      this.client = new Redis(redisUrl);
+    } else {
+      this.client = new Redis({
+        host: this.config.get('REDIS_HOST', 'localhost'),
+        port: this.config.get<number>('REDIS_PORT', 6379),
+        password: this.config.get('REDIS_PASSWORD') || undefined,
+        tls: {},
+        lazyConnect: true,
+      });
+    }
     this.client.on('error', (err) => this.logger.error('Redis error', err));
-    this.client.connect().catch((err) => this.logger.error('Redis connect failed', err));
   }
 
   async onModuleDestroy() {
