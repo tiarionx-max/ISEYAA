@@ -139,13 +139,56 @@ These are explicitly deferred. Not in Sprint 2–7 scope.
 
 | REQ-ID | Phase | Status |
 |--------|-------|--------|
-| INFRA-01–10 | Phase 2 | Not started |
-| TRANSPORT-01–08 | Phase 3 | Not started |
-| DELIVERY-01–06 | Phase 4 | Not started |
-| AI-01–05 | Phase 5 | Not started |
-| KYC-01–04 | Phase 5 | Not started |
-| SEARCH-01–03 | Phase 2 | Not started |
-| QA-01–07 | Phase 6 | Not started |
-| LAUNCH-01–08 | Phase 7 | Not started |
+| INFRA-01 | Phase 2 | Not started |
+| INFRA-02 | Phase 2 | Not started |
+| INFRA-03 | Phase 2 | Not started |
+| INFRA-04 | Phase 2 | Not started |
+| INFRA-05 | Phase 2 | Not started |
+| INFRA-06 | Phase 2 | Not started |
+| INFRA-07 | Phase 2 | Not started |
+| INFRA-08 | Phase 2 | Not started |
+| INFRA-09 | Phase 2 | Not started |
+| INFRA-10 | Phase 2 | Not started |
+| SEARCH-01 | Phase 2 | Not started |
+| SEARCH-02 | Phase 2 | Not started |
+| SEARCH-03 | Phase 2 | Not started |
+| TRANSPORT-01 | Phase 3 | Not started |
+| TRANSPORT-02 | Phase 3 | Not started |
+| TRANSPORT-03 | Phase 3 | Not started |
+| TRANSPORT-04 | Phase 3 | Not started |
+| TRANSPORT-05 | Phase 3 | Not started |
+| TRANSPORT-06 | Phase 3 | Not started |
+| TRANSPORT-07 | Phase 3 | Not started |
+| TRANSPORT-08 | Phase 3 | Not started |
+| DELIVERY-01 | Phase 4 | Not started |
+| DELIVERY-02 | Phase 4 | Not started |
+| DELIVERY-03 | Phase 4 | Not started |
+| DELIVERY-04 | Phase 4 | Not started |
+| DELIVERY-05 | Phase 4 | Not started |
+| DELIVERY-06 | Phase 4 | Not started |
+| AI-01 | Phase 5 | Not started |
+| AI-02 | Phase 5 | Not started |
+| AI-03 | Phase 5 | Not started |
+| AI-04 | Phase 5 | Not started |
+| AI-05 | Phase 5 | Not started |
+| KYC-01 | Phase 5 | Not started |
+| KYC-02 | Phase 5 | Not started |
+| KYC-03 | Phase 5 | Not started |
+| KYC-04 | Phase 5 | Not started |
+| QA-01 | Phase 6 | Not started |
+| QA-02 | Phase 6 | Not started |
+| QA-03 | Phase 6 | Not started |
+| QA-04 | Phase 6 | Not started |
+| QA-05 | Phase 6 | Not started |
+| QA-06 | Phase 6 | Not started |
+| QA-07 | Phase 6 | Not started |
+| LAUNCH-01 | Phase 7 | Not started |
+| LAUNCH-02 | Phase 7 | Not started |
+| LAUNCH-03 | Phase 7 | Not started |
+| LAUNCH-04 | Phase 7 | Not started |
+| LAUNCH-05 | Phase 7 | Not started |
+| LAUNCH-06 | Phase 7 | Not started |
+| LAUNCH-07 | Phase 7 | Not started |
+| LAUNCH-08 | Phase 7 | Not started |
 
 *Traceability is updated by the roadmapper agent and after each phase transition.*
