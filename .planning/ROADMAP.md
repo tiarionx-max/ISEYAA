@@ -39,9 +39,31 @@ Sprint 1 is shipped. This roadmap covers the six remaining sprints: infrastructu
   1. `prisma migrate deploy` runs cleanly against Neon serverless PostgreSQL 16 in both dev and production branches with no data loss
   2. Every microservice (auth, wallet, transport, events, stays, marketplace, delivery, ai, admin) deploys as a separate Railway service and auto-deploys on push to main
   3. A unified search query returns attractions, events, properties, and products with typo tolerance and geo-ranking within 100ms against a 100,000-document Typesense index
-  4. Cross-service payment events (charge.success, escrow.released, order.delivered) flow through Upstash Kafka and are consumed correctly by subscribing services — no EventEmitter2 in production
+  4. Kafka consumers process charge.success, escrow.released, order.delivered events — EventEmitter2 @OnEvent handlers removed from all feature services (stays.service.ts, marketplace.service.ts, events.service.ts, webhooks.service.ts); EventEmitterModule registration kept as no-op until Phase 6 cleanup
   5. Grafana Cloud shows live traces, metrics, and logs from all services; zero secrets exist in any `.env` file committed to the repo
-**Plans**: TBD
+**Plans**: 13 plans
+Plans:
+**Wave 1**
+- [ ] 02-01-PLAN.md — Neon PostgreSQL baseline migration + Upstash Redis TLS config
+- [ ] 02-02-PLAN.md — Cloudflare R2 migration (S3Service constructor + .env.example update)
+- [ ] 02-03-PLAN.md — Typesense setup + SearchService + SearchIndexerService + GET /api/v1/search endpoint
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 02-04-PLAN.md — OpenTelemetry + Grafana Cloud + Sentry instrumentation + Swagger gate + GET /api/v1/health
+- [ ] 02-05-PLAN.md — Production Dockerfile + Railway deployment + Infisical secrets + CI .env gate
+- [ ] 02-06-PLAN.md — Human verification checkpoint: Railway deployment health check
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 02-07-PLAN.md — gRPC proto definitions (all 8 services) + ts-proto TypeScript generation
+- [ ] 02-08-PLAN.md — auth-service + wallet-service gRPC microservice extraction
+- [ ] 02-09-PLAN.md — events-service gRPC extraction
+- [ ] 02-09b-PLAN.md — stays-service + marketplace-service gRPC extraction
+- [ ] 02-10-PLAN.md — admin-service + ai-service gRPC extraction
+- [ ] 02-10b-PLAN.md — notifications-service gRPC extraction (completes INFRA-07 + INFRA-08)
+- [ ] 02-11-PLAN.md — Upstash Kafka event bus (dual-write + @OnEvent handler removal)
+
+**Cross-cutting constraints:**
+- All 153 existing tests still pass
 **UI hint**: no
 
 ### Phase 3: Transport Module
@@ -116,7 +138,7 @@ Sprint 1 is shipped. This roadmap covers the six remaining sprints: infrastructu
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Sprint 1 Foundation | - | Complete | 2026-05-11 |
-| 2. Infrastructure Migration | 0/TBD | Not started | - |
+| 2. Infrastructure Migration | 0/11 | Not started | - |
 | 3. Transport Module | 0/TBD | Not started | - |
 | 4. Delivery Module | 0/TBD | Not started | - |
 | 5. AI Concierge + KYC | 0/TBD | Not started | - |
