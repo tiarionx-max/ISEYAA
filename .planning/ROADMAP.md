@@ -44,23 +44,23 @@ Sprint 1 is shipped. This roadmap covers the six remaining sprints: infrastructu
 **Plans**: 13 plans
 Plans:
 **Wave 1**
-- [ ] 02-01-PLAN.md — Neon PostgreSQL baseline migration + Upstash Redis TLS config
-- [ ] 02-02-PLAN.md — Cloudflare R2 migration (S3Service constructor + .env.example update)
-- [ ] 02-03-PLAN.md — Typesense setup + SearchService + SearchIndexerService + GET /api/v1/search endpoint
+- [x] 02-01-PLAN.md — Neon PostgreSQL baseline migration + Upstash Redis TLS config
+- [x] 02-02-PLAN.md — Cloudflare R2 migration (S3Service constructor + .env.example update)
+- [x] 02-03-PLAN.md — Typesense setup + SearchService + SearchIndexerService + GET /api/v1/search endpoint
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 02-04-PLAN.md — OpenTelemetry + Grafana Cloud + Sentry instrumentation + Swagger gate + GET /api/v1/health
-- [ ] 02-05-PLAN.md — Production Dockerfile + Railway deployment + Infisical secrets + CI .env gate
-- [ ] 02-06-PLAN.md — Human verification checkpoint: Railway deployment health check
+- [x] 02-04-PLAN.md — OpenTelemetry + Grafana Cloud + Sentry instrumentation + Swagger gate + GET /api/v1/health
+- [x] 02-05-PLAN.md — Production Dockerfile + Railway deployment + Infisical secrets + CI .env gate
+- [ ] 02-06-PLAN.md — Human verification checkpoint: Railway deployment health check *(pending: commit + push + Railway verify)*
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 02-07-PLAN.md — gRPC proto definitions (all 8 services) + ts-proto TypeScript generation
-- [ ] 02-08-PLAN.md — auth-service + wallet-service gRPC microservice extraction
-- [ ] 02-09-PLAN.md — events-service gRPC extraction
-- [ ] 02-09b-PLAN.md — stays-service + marketplace-service gRPC extraction
-- [ ] 02-10-PLAN.md — admin-service + ai-service gRPC extraction
-- [ ] 02-10b-PLAN.md — notifications-service gRPC extraction (completes INFRA-07 + INFRA-08)
-- [ ] 02-11-PLAN.md — Upstash Kafka event bus (dual-write + @OnEvent handler removal)
+- [x] 02-07-PLAN.md — gRPC proto definitions (all 8 services) + ts-proto TypeScript generation
+- [x] 02-08-PLAN.md — auth-service + wallet-service gRPC microservice extraction
+- [x] 02-09-PLAN.md — events-service gRPC extraction
+- [x] 02-09b-PLAN.md — stays-service + marketplace-service gRPC extraction
+- [x] 02-10-PLAN.md — admin-service + ai-service gRPC extraction
+- [x] 02-10b-PLAN.md — notifications-service gRPC extraction (completes INFRA-07 + INFRA-08)
+- [x] 02-11-PLAN.md — Upstash Kafka event bus (dual-write + @OnEvent handler removal)
 
 **Cross-cutting constraints:**
 - All 153 existing tests still pass
@@ -76,7 +76,29 @@ Plans:
   3. Both rider and driver see each other's GPS position update live on the map every 2 seconds via WebSocket for the entire trip duration
   4. On trip completion, 85% of the fare is credited to the driver's wallet immediately and the platform retains 15%, with both amounts visible in the earnings dashboard
   5. The mobile app's Transport tab (ride request) and Driver tab (go online, accept/reject, navigate, earnings) are fully functional on both iOS and Android
-**Plans**: TBD
+**Plans**: 8 plans
+Plans:
+**Wave 1**
+- [ ] 03-01-PLAN.md — Backend deps + Prisma schema + Redis geo + Wallet gateway override + AuthModule export
+
+**Wave 2** *(blocked on Wave 1)*
+- [ ] 03-02-PLAN.md — [BLOCKING] Prisma db push + transport PlatformConfig seed
+
+**Wave 3** *(blocked on Wave 2)*
+- [ ] 03-03-PLAN.md — DTOs + RED test specs (TDD red step)
+
+**Wave 4** *(blocked on Wave 3)*
+- [ ] 03-04-PLAN.md — TransportService implementation (TDD green step)
+
+**Wave 5** *(blocked on Wave 4)*
+- [ ] 03-05-PLAN.md — TransportGateway + Controller + Module + AppModule registration
+
+**Wave 6** *(blocked on Wave 5)*
+- [ ] 03-06-PLAN.md — Mobile Transport tab (rider) + npm install + app.json Google Maps
+- [ ] 03-07-PLAN.md — Mobile Driver tab + tab layout
+
+**Wave 7** *(blocked on Wave 6)*
+- [ ] 03-08-PLAN.md — Human verification checkpoint (8-step end-to-end)
 **UI hint**: yes
 
 ### Phase 4: Delivery Module
@@ -138,7 +160,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Sprint 1 Foundation | - | Complete | 2026-05-11 |
-| 2. Infrastructure Migration | 0/11 | Not started | - |
+| 2. Infrastructure Migration | 12/13 | In progress (02-06 human checkpoint pending) | - |
 | 3. Transport Module | 0/TBD | Not started | - |
 | 4. Delivery Module | 0/TBD | Not started | - |
 | 5. AI Concierge + KYC | 0/TBD | Not started | - |
