@@ -1,0 +1,569 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  CITIZEN
+  TOURIST
+  VENDOR
+  ORGANISER
+  HOST
+  DRIVER
+  CREATIVE
+  LGA_ADMIN
+  STATE_ADMIN
+  SUPER_ADMIN
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum KYCStatus {
+  NONE
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum AttractionCategory {
+  NATURAL
+  CULTURAL
+  HISTORICAL
+  RECREATIONAL
+  RELIGIOUS
+}
+
+enum EventStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  PUBLISHED
+  CANCELLED
+  COMPLETED
+}
+
+enum TicketStatus {
+  PENDING
+  ISSUED
+  PAID
+  USED
+  CANCELLED
+  REFUNDED
+}
+
+enum PropertyType {
+  HOTEL
+  GUESTHOUSE
+  APARTMENT
+  VILLA
+  RESORT
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+  REFUNDED
+}
+
+enum VendorStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum StudioType {
+  RECORDING
+  PHOTOGRAPHY
+  VIDEO
+  PODCAST
+}
+
+enum StudioBookingStatus {
+  PENDING
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+  AUDIO
+  DOCUMENT
+}
+
+enum TransactionType {
+  CREDIT
+  DEBIT
+  REFUND
+  TRANSFER
+}
+
+enum TransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REVERSED
+}
+
+enum PaymentGateway {
+  PAYSTACK
+  FLUTTERWAVE
+  WALLET
+  INTERNAL
+}
+
+// ─── Models ───────────────────────────────────────────────────────────────────
+
+model User {
+  id           String     @id @default(uuid())
+  email        String?    @unique
+  phone        String?    @unique
+  passwordHash String?
+  firstName    String
+  lastName     String
+  role            UserRole   @default(CITIZEN)
+  registeredRoles UserRole[]
+  status          UserStatus @default(PENDING)
+  kycStatus    KYCStatus  @default(NONE)
+  lgaId        String?
+  lga          LGA?       @relation(fields: [lgaId], references: [id])
+  avatarUrl    String?
+  nin           String?    @unique
+  bvn           String?    @unique
+  ndpaConsent   Boolean    @default(false)
+  ndpaConsentAt DateTime?
+  metadata      Json?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  deletedAt    DateTime?
+
+  wallet         Wallet?
+  tickets        Ticket[]
+  bookings       Booking[]
+  orders         Order[]
+  studioBookings StudioBooking[]
+  mediaContents  MediaContent[]
+  auditLogs      AuditLog[]
+  attractionBookmarks AttractionBookmark[]
+
+  @@map("users")
+}
+
+model LGA {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  slug        String    @unique
+  stateCode   String    @default("OG")
+  description String?
+  imageUrl    String?
+  latitude    Decimal?
+  longitude   Decimal?
+  isActive    Boolean   @default(true)
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  users       User[]
+  attractions Attraction[]
+  events      Event[]
+  properties  Property[]
+  vendors     Vendor[]
+
+  @@map("lgas")
+}
+
+model Attraction {
+  id          String             @id @default(uuid())
+  lgaId       String
+  lga         LGA                @relation(fields: [lgaId], references: [id])
+  name        String
+  slug        String             @unique
+  description String?
+  category    AttractionCategory
+  imageUrls   String[]
+  latitude    Decimal?
+  longitude   Decimal?
+  address     String?
+  entryFee    Decimal?           @default(0)
+  isActive    Boolean            @default(true)
+  metadata    Json?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  deletedAt   DateTime?
+
+  bookmarks AttractionBookmark[]
+
+  @@map("attractions")
+}
+
+model Event {
+  id          String      @id @default(uuid())
+  lgaId       String
+  lga         LGA         @relation(fields: [lgaId], references: [id])
+  organizerId String
+  title       String
+  slug        String      @unique
+  description String?
+  imageUrls   String[]
+  venue       String
+  address     String?
+  latitude    Decimal?
+  longitude   Decimal?
+  startDate   DateTime
+  endDate     DateTime
+  status      EventStatus @default(DRAFT)
+  isFeatured  Boolean     @default(false)
+  metadata    Json?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  deletedAt   DateTime?
+
+  ticketTypes TicketType[]
+
+  @@map("events")
+}
+
+model TicketType {
+  id          String    @id @default(uuid())
+  eventId     String
+  event       Event     @relation(fields: [eventId], references: [id])
+  name        String
+  description String?
+  price       Decimal
+  quantity    Int
+  sold        Int       @default(0)
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  tickets Ticket[]
+
+  @@map("ticket_types")
+}
+
+model Ticket {
+  id           String       @id @default(uuid())
+  ticketTypeId String
+  ticketType   TicketType   @relation(fields: [ticketTypeId], references: [id])
+  userId       String
+  user         User         @relation(fields: [userId], references: [id])
+  qrCode       String       @unique
+  paystackRef  String?      @unique
+  qrImageUrl   String?
+  status       TicketStatus @default(PENDING)
+  usedAt       DateTime?
+  metadata     Json?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  deletedAt    DateTime?
+
+  @@map("tickets")
+}
+
+model Property {
+  id            String       @id @default(uuid())
+  lgaId         String
+  lga           LGA          @relation(fields: [lgaId], references: [id])
+  hostId        String?
+  vendorId      String?
+  vendor        Vendor?      @relation(fields: [vendorId], references: [id])
+  name          String
+  slug          String       @unique
+  description   String?
+  type          PropertyType
+  imageUrls     String[]
+  address       String
+  latitude      Decimal?
+  longitude     Decimal?
+  pricePerNight Decimal
+  maxGuests     Int
+  amenities     String[]
+  isActive      Boolean      @default(true)
+  metadata      Json?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  deletedAt     DateTime?
+
+  bookings Booking[]
+
+  @@map("properties")
+}
+
+model Booking {
+  id         String        @id @default(uuid())
+  propertyId String
+  property   Property      @relation(fields: [propertyId], references: [id])
+  userId     String
+  user       User          @relation(fields: [userId], references: [id])
+  checkIn    DateTime
+  checkOut   DateTime
+  guests     Int
+  totalPrice       Decimal
+  status           BookingStatus @default(PENDING)
+  paystackRef      String?       @unique
+  escrowReleasedAt DateTime?
+  reviewRating     Int?
+  reviewComment    String?
+  reviewedAt       DateTime?
+  metadata         Json?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  deletedAt        DateTime?
+
+  @@map("bookings")
+}
+
+model Vendor {
+  id             String       @id @default(uuid())
+  userId         String       @unique
+  lgaId          String
+  lga            LGA          @relation(fields: [lgaId], references: [id])
+  businessName   String
+  slug           String       @unique
+  description    String?
+  logoUrl        String?
+  status         VendorStatus @default(PENDING)
+  commissionRate Decimal      @default(10)
+  govtLevyPct    Decimal      @default(0)
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+
+  products   Product[]
+  properties Property[]
+
+  @@map("vendors")
+}
+
+model Product {
+  id          String    @id @default(uuid())
+  vendorId    String
+  vendor      Vendor    @relation(fields: [vendorId], references: [id])
+  name        String
+  slug        String    @unique
+  description String?
+  imageUrls   String[]
+  price       Decimal
+  stock       Int       @default(0)
+  isActive    Boolean   @default(true)
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  orderItems OrderItem[]
+
+  @@map("products")
+}
+
+model Order {
+  id            String      @id @default(uuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id])
+  vendorId      String?
+  totalAmount   Decimal
+  platformFee   Decimal?
+  govtLevy      Decimal?
+  vendorPayout  Decimal?
+  paystackRef   String?     @unique
+  status        OrderStatus @default(PENDING)
+  metadata      Json?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  deletedAt   DateTime?
+
+  orderItems OrderItem[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String   @id @default(uuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id])
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  quantity  Int
+  unitPrice Decimal
+  subtotal  Decimal
+  metadata  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  @@map("order_items")
+}
+
+model StudioSlot {
+  id           String     @id @default(uuid())
+  name         String
+  type         StudioType
+  description  String?
+  imageUrls    String[]
+  pricePerHour         Decimal
+  durationMinutes      Int        @default(60)
+  capacity             Int        @default(1)
+  isActive             Boolean    @default(true)
+  isGovernmentPriority Boolean    @default(false)
+  metadata             Json?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  deletedAt    DateTime?
+
+  bookings StudioBooking[]
+
+  @@map("studio_slots")
+}
+
+model StudioBooking {
+  id           String              @id @default(uuid())
+  studioSlotId String
+  studioSlot   StudioSlot          @relation(fields: [studioSlotId], references: [id])
+  userId       String
+  user         User                @relation(fields: [userId], references: [id])
+  startTime    DateTime
+  endTime      DateTime
+  totalPrice   Decimal
+  paystackRef  String?             @unique
+  status       StudioBookingStatus @default(PENDING)
+  metadata     Json?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  deletedAt    DateTime?
+
+  @@map("studio_bookings")
+}
+
+model MediaContent {
+  id           String    @id @default(uuid())
+  uploadedById String
+  uploadedBy   User      @relation(fields: [uploadedById], references: [id])
+  filename     String
+  originalName String
+  mimeType     String
+  size         Int
+  url          String
+  s3Key        String
+  type         MediaType
+  title        String?
+  description  String?
+  isPublished  Boolean   @default(false)
+  metadata     Json?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  @@map("media_contents")
+}
+
+model Wallet {
+  id        String    @id @default(uuid())
+  userId    String    @unique
+  user      User      @relation(fields: [userId], references: [id])
+  balance   Decimal   @default(0)
+  currency  String    @default("NGN")
+  isActive  Boolean   @default(true)
+  metadata  Json?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  transactions Transaction[]
+
+  @@map("wallets")
+}
+
+model Transaction {
+  id            String            @id @default(uuid())
+  walletId      String
+  wallet        Wallet            @relation(fields: [walletId], references: [id])
+  type          TransactionType
+  status        TransactionStatus @default(PENDING)
+  amount        Decimal
+  currency      String            @default("NGN")
+  reference     String            @unique
+  gateway       PaymentGateway
+  gatewayRef    String?
+  description   String?
+  balanceBefore Decimal
+  balanceAfter  Decimal
+  metadata      Json?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  deletedAt     DateTime?
+
+  @@map("transactions")
+}
+
+model PlatformConfig {
+  id        String    @id @default(uuid())
+  key       String    @unique
+  value     Json
+  isPublic  Boolean   @default(false)
+  metadata  Json?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@map("platform_configs")
+}
+
+model AuditLog {
+  id        String    @id @default(uuid())
+  userId    String?
+  user      User?     @relation(fields: [userId], references: [id])
+  action    String
+  entity    String
+  entityId  String?
+  oldValue  Json?
+  newValue  Json?
+  ipAddress String?
+  userAgent String?
+  metadata  Json?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@map("audit_logs")
+}
+
+model AttractionBookmark {
+  id           String     @id @default(uuid())
+  userId       String
+  user         User       @relation(fields: [userId], references: [id])
+  attractionId String
+  attraction   Attraction @relation(fields: [attractionId], references: [id])
+  createdAt    DateTime   @default(now())
+
+  @@unique([userId, attractionId])
+  @@map("attraction_bookmarks")
+}
