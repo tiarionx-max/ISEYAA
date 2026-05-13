@@ -82,7 +82,7 @@ Plans:
 - [x] 03-01-PLAN.md — Backend deps + Prisma schema + Redis geo + Wallet gateway override + AuthModule export
 
 **Wave 2** *(blocked on Wave 1)*
-- [ ] 03-02-PLAN.md — [BLOCKING] Prisma db push + transport PlatformConfig seed
+- [x] 03-02-PLAN.md — [BLOCKING] Prisma db push + transport PlatformConfig seed
 
 **Wave 3** *(blocked on Wave 2)*
 - [ ] 03-03-PLAN.md — DTOs + RED test specs (TDD red step)
@@ -168,7 +168,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Sprint 1 Foundation | - | Complete | 2026-05-11 |
 | 2. Infrastructure Migration | 12/13 | In progress (02-06 human checkpoint pending) | - |
-| 3. Transport Module | 1/8 | In Progress|  |
+| 3. Transport Module | 2/8 | In Progress|  |
 | 4. Delivery Module | 0/TBD | Not started | - |
 | 5. AI Concierge + KYC | 0/TBD | Not started | - |
 | 6. QA, Security & Performance | 0/TBD | Not started | - |
