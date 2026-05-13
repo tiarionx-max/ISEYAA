@@ -94,10 +94,10 @@ Plans:
 - [x] 03-05-PLAN.md — TransportGateway + Controller + Module + AppModule registration
 
 **Wave 6** *(blocked on Wave 5)*
-- [ ] 03-06-PLAN.md — Mobile Transport tab (rider) + npm install + app.json Google Maps
+- [x] 03-06-PLAN.md — Mobile Transport tab (rider) + npm install + app.json Google Maps
 
 **Wave 7** *(blocked on Wave 6)*
-- [ ] 03-07-PLAN.md — Mobile Driver tab + tab layout
+- [x] 03-07-PLAN.md — Mobile Driver tab + tab layout
 
 **Wave 8** *(blocked on Wave 7)*
 - [ ] 03-08-PLAN.md — Human verification checkpoint (8-step end-to-end)
@@ -168,7 +168,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Sprint 1 Foundation | - | Complete | 2026-05-11 |
 | 2. Infrastructure Migration | 12/13 | In progress (02-06 human checkpoint pending) | - |
-| 3. Transport Module | 5/8 | In Progress|  |
+| 3. Transport Module | 7/8 | In Progress (03-08 human checkpoint pending) |  |
 | 4. Delivery Module | 0/TBD | Not started | - |
 | 5. AI Concierge + KYC | 0/TBD | Not started | - |
 | 6. QA, Security & Performance | 0/TBD | Not started | - |
