@@ -38,7 +38,7 @@ Declared values (React Native — unitless numbers equal CSS px at 1× density):
 | Token | Value | Usage |
 |-------|-------|-------|
 | xs | 4 | Icon gaps, star-rating gaps, inline padding between icon and text |
-| sm | 8 | Compact internal card padding, badge padding |
+| sm | 8 | Compact internal card padding, badge padding, chip horizontal padding |
 | md | 16 | Default horizontal screen padding, card internal padding |
 | lg | 24 | Section separation, card margin-bottom on earnings list |
 | xl | 32 | Major block vertical gaps (e.g. between map and info card) |
@@ -52,7 +52,7 @@ Exceptions:
 - **Map height (full-screen screens):** `flex: 1` — takes all available space above the info card overlay.
 - **Matching countdown timer:** visible text minimum 48px font size so it reads instantly under stress.
 
-Source: Derived from existing tab screens (16px horizontal padding, 12–14px card internal padding). Touch targets follow Apple HIG 44pt minimum; go-online elevated to 72 for safety-critical one-handed use.
+Source: Derived from existing tab screens (16px horizontal padding, 12–16px card internal padding). Touch targets follow Apple HIG 44pt minimum; go-online elevated to 72 for safety-critical one-handed use.
 
 ---
 
@@ -63,12 +63,12 @@ All sizes reference React Native `fontSize` (unitless — maps to sp on Android,
 | Role | Size | Weight | Line Height | Usage |
 |------|------|--------|-------------|-------|
 | Body | 14 | 400 (normal) | 1.4 | Card meta text, secondary labels, fare breakdown line items |
-| Label | 13 | 600 (semibold) | 1.3 | Badge text, tab bar labels (11 — from existing `_layout.tsx`, not changed), button labels |
-| Heading | 24 | 700 (bold) | 1.2 | Screen headings ("Transport", "Driver", matching all existing tabs) |
-| Display | 48 | 700 (bold) | 1.0 | Matching countdown timer; earnings total on Driver Home |
+| Label | 13 | 700 (bold) | 1.3 | Badge text, tab bar labels (11 — from existing `_layout.tsx`, not changed), button labels |
+| Heading | 24 | 700 (bold) | 1.2 | Screen headings ("Transport", "Driver", matching all existing tabs), fare totals, earnings amounts |
+| Display | 48 | 700 (bold) | 1.0 | Matching countdown timer; earnings total on Driver Home; trip receipt total |
 
-Note: `fontWeight: 'bold'` = 700 in React Native. `fontWeight: '600'` = semibold. `fontWeight: 'normal'` = 400.
-Existing tabs use `fontSize: 24, fontWeight: 'bold'` for headings and `fontSize: 14, fontWeight: '600'` for card titles — this contract carries that forward.
+Note: `fontWeight: 'bold'` = 700 in React Native. `fontWeight: 'normal'` = 400. Two weights only — bold and normal.
+Existing tabs use `fontSize: 24, fontWeight: 'bold'` for headings — this contract carries that forward.
 
 Source: Directly extracted from `events.tsx` (`fontSize: 24` heading, `fontSize: 14` card title, `fontSize: 11` meta), `stays.tsx` (identical pattern).
 
@@ -120,11 +120,11 @@ Five sequential screens, rendered within the Transport tab route. Screen transit
 | Element | Spec |
 |---------|------|
 | Header | `fontSize: 24, fontWeight: 'bold', color: 'white'` — "Transport" — identical to all existing tab headers |
-| Vehicle type selector | Horizontal scroll row of 4 cards: Bike / Tricycle / Car / Minibus. Card size: 80 × 80. Selected card: `borderColor: GOLD, borderWidth: 2`. Unselected: `borderColor: rgba(255,255,255,0.08)`. Icon centered (lucide-react-native: Bike, Truck, Car, Bus — or emoji fallbacks). Vehicle label below icon, `fontSize: 12, color: 'white'`. |
-| Surge banner | Conditionally rendered. Full-width, `backgroundColor: GOLD`, `paddingVertical: 8, paddingHorizontal: 16`. Text: `fontSize: 13, fontWeight: '600', color: JUNGLE`. Copy: "Surge pricing active — {multiplier}× fare" — displayed immediately when multiplier > 1.0. |
-| Pickup input | `backgroundColor: rgba(255,255,255,0.07), borderRadius: 10, paddingHorizontal: 16, paddingVertical: 14`. Placeholder: "Enter pickup location". MapPin icon left, `size: 16, color: GOLD`. |
+| Vehicle type selector | Horizontal scroll row of 4 cards: Bike / Tricycle / Car / Minibus. Card size: 80 × 80. Selected card: `borderColor: GOLD, borderWidth: 2`. Unselected: `borderColor: rgba(255,255,255,0.08)`. Icon centered (lucide-react-native: Bike, Truck, Car, Bus — or emoji fallbacks). Vehicle label below icon, `fontSize: 13, color: 'white'`. |
+| Surge banner | Conditionally rendered. Full-width, `backgroundColor: GOLD`, `paddingVertical: 8, paddingHorizontal: 16`. Text: `fontSize: 13, fontWeight: 'bold', color: JUNGLE`. Copy: "Surge pricing active — {multiplier}× fare" — displayed immediately when multiplier > 1.0. |
+| Pickup input | `backgroundColor: rgba(255,255,255,0.07), borderRadius: 10, paddingHorizontal: 16, paddingVertical: 12`. Placeholder: "Enter pickup location". MapPin icon left, `size: 16, color: GOLD`. |
 | Dropoff input | Same style as pickup. Placeholder: "Enter destination". Navigation icon left, `size: 16, color: rgba(255,255,255,0.4)`. |
-| Primary CTA | "Get Fare Estimate" — full-width, `backgroundColor: GOLD, borderRadius: 12, paddingVertical: 16`. Text: `fontSize: 16, fontWeight: '700', color: JUNGLE`. Disabled when pickup or dropoff empty: `opacity: 0.4`. |
+| Primary CTA | "Get Fare Estimate" — full-width, `backgroundColor: GOLD, borderRadius: 12, paddingVertical: 16`. Text: `fontSize: 14, fontWeight: 'bold', color: JUNGLE`. Disabled when pickup or dropoff empty: `opacity: 0.4`. |
 
 #### Screen T-2: Fare Estimate
 **Purpose:** Route preview + fare breakdown before confirmation
@@ -135,9 +135,9 @@ Five sequential screens, rendered within the Transport tab route. Screen transit
 | Fare card overlay | Absolutely positioned bottom sheet. `backgroundColor: JUNGLE, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20`. Sits above map, min-height 220. |
 | Fare line items | Three rows: "Base fare", "Distance ({N} km)", "Surge (×{multiplier})". Each row: flex row, `justifyContent: 'space-between'`. Label: `fontSize: 14, color: rgba(255,255,255,0.6)`. Value: `fontSize: 14, color: 'white'`. Surge row hidden when multiplier === 1.0. |
 | Divider | `height: 1, backgroundColor: rgba(255,255,255,0.08), marginVertical: 12`. |
-| Total fare | Two-column flex row. "Total": `fontSize: 16, fontWeight: '600', color: 'white'`. Amount: `fontSize: 22, fontWeight: '700', color: GOLD`. |
-| Primary CTA | "Confirm Ride" — full-width, `backgroundColor: GOLD, borderRadius: 12, paddingVertical: 16`. Text: `fontSize: 16, fontWeight: '700', color: JUNGLE`. |
-| Back action | Chevron-left icon top-left in overlay header, `color: 'white', size: 22`. |
+| Total fare | Two-column flex row. "Total": `fontSize: 14, fontWeight: 'bold', color: 'white'`. Amount: `fontSize: 24, fontWeight: 'bold', color: GOLD`. |
+| Primary CTA | "Confirm Ride" — full-width, `backgroundColor: GOLD, borderRadius: 12, paddingVertical: 16`. Text: `fontSize: 14, fontWeight: 'bold', color: JUNGLE`. |
+| Back action | Chevron-left icon top-left in overlay header, `color: 'white', size: 22`. Accessible label: "Go back". |
 
 #### Screen T-3: Matching Screen
 **Purpose:** Animated wait state while driver is being located (max 60 seconds)
@@ -146,10 +146,10 @@ Five sequential screens, rendered within the Transport tab route. Screen transit
 |---------|------|
 | Container | Full-screen, `backgroundColor: JUNGLE, alignItems: 'center', justifyContent: 'center'`. |
 | Spinner | `ActivityIndicator size="large" color={GOLD}` — centered vertically. |
-| Heading | `fontSize: 20, fontWeight: '600', color: 'white'`. Copy: "Finding your driver..." |
-| Countdown | Countdown from 60 decrements every second. `fontSize: 48, fontWeight: '700', color: GOLD`. Suffix: `fontSize: 16, color: rgba(255,255,255,0.4)` — "seconds remaining". |
+| Heading | `fontSize: 24, fontWeight: 'bold', color: 'white'`. Copy: "Finding your driver..." |
+| Countdown | Countdown from 60 decrements every second. `fontSize: 48, fontWeight: 'bold', color: GOLD`. Suffix: `fontSize: 13, color: rgba(255,255,255,0.4)` — "seconds remaining". |
 | Subtext | `fontSize: 14, color: rgba(255,255,255,0.4)`. Copy: "Searching within 5 km of your location". |
-| Cancel button | Always visible below countdown — never obscured. `backgroundColor: rgba(220,38,38,0.15), borderRadius: 10, paddingVertical: 14, paddingHorizontal: 32`. Text: `fontSize: 15, fontWeight: '600', color: #DC2626`. Copy: "Cancel Request". |
+| Cancel button | Always visible below countdown — never obscured. `backgroundColor: rgba(220,38,38,0.15), borderRadius: 10, paddingVertical: 16, paddingHorizontal: 32`. Text: `fontSize: 14, fontWeight: 'bold', color: #DC2626`. Copy: "Cancel Request". |
 | Expiry state | When countdown hits 0 — spinner replaced by AlertCircle icon (`color: rgba(255,255,255,0.4), size: 48`). Heading changes to "No drivers nearby". Cancel button relabeled "Go Back". |
 
 #### Screen T-4: Active Trip
@@ -159,10 +159,10 @@ Five sequential screens, rendered within the Transport tab route. Screen transit
 |---------|------|
 | Map | `MapView flex: 1`. Two animated Markers: driver (car icon pin, FOREST background) and rider (person pin, GOLD background). Map region animates to fit both markers with padding 80. Markers update every 2 seconds from WebSocket event `driver:location`. |
 | Trip info card | Bottom sheet overlay, fixed height 200. `backgroundColor: JUNGLE, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16`. |
-| Driver avatar | Circle 48 × 48, `borderRadius: 24, backgroundColor: rgba(26,107,60,0.3)`. Initials text if no photo: `fontSize: 18, fontWeight: '700', color: GOLD`. |
-| Driver name | `fontSize: 16, fontWeight: '600', color: 'white'`. |
+| Driver avatar | Circle 48 × 48, `borderRadius: 24, backgroundColor: rgba(26,107,60,0.3)`. Initials text if no photo: `fontSize: 24, fontWeight: 'bold', color: GOLD`. |
+| Driver name | `fontSize: 14, fontWeight: 'bold', color: 'white'`. |
 | Driver rating | Star icon (filled `color: GOLD, size: 14`) + `fontSize: 13, color: rgba(255,255,255,0.6)`. |
-| ETA chip | `backgroundColor: rgba(200,150,42,0.15), borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4`. Text: `fontSize: 12, fontWeight: '600', color: GOLD`. Copy: "~{N} min away" → changes to "~{N} min to destination" once trip starts. |
+| ETA chip | `backgroundColor: rgba(200,150,42,0.15), borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4`. Text: `fontSize: 13, fontWeight: 'bold', color: GOLD`. Copy: "~{N} min away" → changes to "~{N} min to destination" once trip starts. |
 | Cancel option | Text button below driver info: `fontSize: 13, color: rgba(220,38,38,0.8)`. Copy: "Cancel trip". Tap triggers confirmation bottom sheet. |
 | Cancel confirmation | Bottom sheet modal (separate from trip card). Heading: "Cancel this ride?". Body: "You may be charged a cancellation fee if the driver has already arrived." Two buttons: "Keep Ride" (GOLD fill) and "Yes, Cancel" (destructive outline). |
 
@@ -175,7 +175,7 @@ Five sequential screens, rendered within the Transport tab route. Screen transit
 | Success icon | CheckCircle icon from lucide-react-native, `size: 64, color: #22C55E`. Centered, `marginBottom: 16`. |
 | Heading | `fontSize: 24, fontWeight: 'bold', color: 'white'`. Copy: "Trip Complete". |
 | Earnings credit confirmation | `fontSize: 14, color: rgba(255,255,255,0.6)`. Copy: "₦{driverEarnings} credited to your driver wallet." Only shown in driver-side receipt — not on rider receipt. |
-| Fare total | `fontSize: 32, fontWeight: '700', color: GOLD`. Displays total fare paid. |
+| Fare total | `fontSize: 48, fontWeight: 'bold', color: GOLD`. Displays total fare paid. |
 | Trip summary rows | Same line-item style as Fare Estimate. Pickup → Dropoff, distance, duration, fare breakdown. |
 | Rating prompt | Row of 5 Star icons. Unselected: `color: rgba(255,255,255,0.2), size: 32`. Selected: `color: GOLD, size: 32`. Tap sets integer rating 1–5. Label above: `fontSize: 14, color: rgba(255,255,255,0.6)`. Copy: "Rate your driver". |
 | Primary CTA | "Done" — full-width, `backgroundColor: GOLD, borderRadius: 12, paddingVertical: 16`. Enabled only after rating is selected (opacity 0.4 when no rating). Submits rating and navigates to Transport Home. |
@@ -192,11 +192,11 @@ Five screens in the Driver tab route.
 | Element | Spec |
 |---------|------|
 | Header | `fontSize: 24, fontWeight: 'bold', color: 'white'`. Copy: "Driver". |
-| Status indicator | Flex row, `alignItems: 'center', gap: 8`. Circle dot 10 × 10, `borderRadius: 5`. Online: `backgroundColor: #22C55E`. Offline: `backgroundColor: #6B7280`. Status label: `fontSize: 14, fontWeight: '600'` — "Online" (white) or "Offline" (`rgba(255,255,255,0.4)`). |
-| Go-online toggle | Centered large circle button. `width: 120, height: 120, borderRadius: 60`. Online state: `backgroundColor: FOREST (#1A6B3C), borderWidth: 3, borderColor: #22C55E`. Offline state: `backgroundColor: rgba(255,255,255,0.07), borderWidth: 3, borderColor: #6B7280`. Inner text: "GO\nONLINE" or "GO\nOFFLINE", `fontSize: 16, fontWeight: '700', color: 'white', textAlign: 'center'`. Tap triggers toggle. Minimum touch area: 120 × 120 (exceeds 72 minimum). |
+| Status indicator | Flex row, `alignItems: 'center', gap: 8`. Circle dot 10 × 10, `borderRadius: 5`. Online: `backgroundColor: #22C55E`. Offline: `backgroundColor: #6B7280`. Status label: `fontSize: 14, fontWeight: 'bold'` — "Online" (white) or "Offline" (`rgba(255,255,255,0.4)`). |
+| Go-online toggle | Centered large circle button. `width: 120, height: 120, borderRadius: 60`. Online state: `backgroundColor: FOREST (#1A6B3C), borderWidth: 3, borderColor: #22C55E`. Offline state: `backgroundColor: rgba(255,255,255,0.07), borderWidth: 3, borderColor: #6B7280`. Inner text: "GO\nONLINE" or "GO\nOFFLINE", `fontSize: 14, fontWeight: 'bold', color: 'white', textAlign: 'center'`. Tap triggers toggle. Minimum touch area: 120 × 120 (exceeds 72 minimum). |
 | Go-offline confirmation | When driver is online and taps to go offline — Bottom sheet modal. Heading: "Go offline?". Body: "You won't receive new ride requests." Buttons: "Stay Online" (GOLD fill) + "Go Offline" (outline). |
-| Earnings chip | `backgroundColor: rgba(26,107,60,0.2), borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10, marginTop: 24`. Two lines: "Today's earnings" `fontSize: 12, color: rgba(255,255,255,0.5)`. Amount: `fontSize: 22, fontWeight: '700', color: GOLD`. |
-| Driver status badge | Shown only when `driverStatus !== 'APPROVED'`. Full-width warning card: `backgroundColor: rgba(220,38,38,0.1), borderRadius: 12, padding: 14, borderWidth: 1, borderColor: rgba(220,38,38,0.3)`. Text: `fontSize: 13, color: #DC2626`. Copy for PENDING_REVIEW: "Your KYC is under review. You cannot go online until approved." |
+| Earnings chip | `backgroundColor: rgba(26,107,60,0.2), borderRadius: 10, paddingHorizontal: 16, paddingVertical: 8, marginTop: 24`. Two lines: "Today's earnings" `fontSize: 13, color: rgba(255,255,255,0.5)`. Amount: `fontSize: 24, fontWeight: 'bold', color: GOLD`. |
+| Driver status badge | Shown only when `driverStatus !== 'APPROVED'`. Full-width warning card: `backgroundColor: rgba(220,38,38,0.1), borderRadius: 12, padding: 12, borderWidth: 1, borderColor: rgba(220,38,38,0.3)`. Text: `fontSize: 13, color: #DC2626`. Copy for PENDING_REVIEW: "Your KYC is under review. You cannot go online until approved." |
 | Earnings link | Text button: "View Earnings Dashboard" — `fontSize: 14, color: GOLD`. Navigates to D-5. |
 
 #### Screen D-2: Incoming Ride Request
@@ -208,9 +208,9 @@ Five screens in the Driver tab route.
 | Timer bar | Full-width progress bar at top of card. Height 4. Track: `rgba(255,255,255,0.1)`. Fill: GOLD. Animates from 100% to 0% in 15 seconds using `Animated.timing`. When < 5 seconds remaining: fill color switches to `#DC2626`. |
 | Timer label | `fontSize: 13, color: rgba(255,255,255,0.5)`. Copy: "{N}s to respond" — decrements each second. |
 | Ride summary | Three info rows: Pickup address, Dropoff address, Estimated fare. Each row: MapPin / Navigation / DollarSign icon (`color: GOLD, size: 14`) + text `fontSize: 14, color: 'white'`. Distance: `fontSize: 13, color: rgba(255,255,255,0.5)` below addresses. |
-| Fare highlight | `fontSize: 24, fontWeight: '700', color: GOLD`. Displayed prominently above CTA buttons. |
-| Accept button | `flex: 1, backgroundColor: FOREST (#1A6B3C), borderRadius: 12, paddingVertical: 16`. Text: `fontSize: 16, fontWeight: '700', color: 'white'`. Copy: "Accept". |
-| Decline button | `flex: 1, backgroundColor: rgba(220,38,38,0.15), borderRadius: 12, paddingVertical: 16, borderWidth: 1, borderColor: rgba(220,38,38,0.3)`. Text: `fontSize: 16, fontWeight: '600', color: #DC2626`. Copy: "Decline". |
+| Fare highlight | `fontSize: 24, fontWeight: 'bold', color: GOLD`. Displayed prominently above CTA buttons. |
+| Accept button | `flex: 1, backgroundColor: FOREST (#1A6B3C), borderRadius: 12, paddingVertical: 16`. Text: `fontSize: 14, fontWeight: 'bold', color: 'white'`. Copy: "Accept". |
+| Decline button | `flex: 1, backgroundColor: rgba(220,38,38,0.15), borderRadius: 12, paddingVertical: 16, borderWidth: 1, borderColor: rgba(220,38,38,0.3)`. Text: `fontSize: 14, fontWeight: 'bold', color: #DC2626`. Copy: "Decline". |
 | Button row | `flexDirection: 'row', gap: 12` — Accept and Decline side by side, equal width. |
 | Auto-decline | When 15s expires with no action — card dismisses automatically, trip status → EXPIRED, driver acceptance rate is affected (displayed in D-5). |
 
@@ -221,10 +221,10 @@ Five screens in the Driver tab route.
 |---------|------|
 | Map | `MapView flex: 1`. Single Marker at rider location (`color: GOLD`). Map region: driver's current GPS position centered with zoom level to show pickup pin. |
 | Pickup card overlay | Bottom sheet, `backgroundColor: JUNGLE, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16`. Fixed height 180. |
-| Rider name | `fontSize: 16, fontWeight: '600', color: 'white'`. |
+| Rider name | `fontSize: 14, fontWeight: 'bold', color: 'white'`. |
 | Pickup address | `fontSize: 14, color: rgba(255,255,255,0.6)`. MapPin icon left, `size: 14, color: GOLD`. |
 | ETA | `fontSize: 13, color: rgba(255,255,255,0.5)`. Copy: "~{N} min to pickup". |
-| Arrived CTA | "I've Arrived" — full-width, `backgroundColor: GOLD, borderRadius: 12, paddingVertical: 16`. Text: `fontSize: 16, fontWeight: '700', color: JUNGLE`. Enabled only when driver GPS is within 200m of pickup. Disabled state: `opacity: 0.4`. |
+| Arrived CTA | "I've Arrived" — full-width, `backgroundColor: GOLD, borderRadius: 12, paddingVertical: 16`. Text: `fontSize: 14, fontWeight: 'bold', color: JUNGLE`. Enabled only when driver GPS is within 200m of pickup. Disabled state: `opacity: 0.4`. |
 | Disabled CTA copy | When distance > 200m: button text changes to "Approach pickup point" with `opacity: 0.4`. |
 
 #### Screen D-4: Active Trip
@@ -235,10 +235,10 @@ Five screens in the Driver tab route.
 | Map | `MapView flex: 1`. Single Marker at destination (`color: GOLD`). Driver position (current GPS) shown as heading arrow marker. |
 | Trip card overlay | Bottom sheet, `backgroundColor: JUNGLE, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16`. Fixed height 180. |
 | Destination address | `fontSize: 14, color: rgba(255,255,255,0.6)`. Navigation icon left. |
-| Fare reminder | `fontSize: 18, fontWeight: '700', color: GOLD`. Copy: "₦{fare} — your share: ₦{driverEarnings}". |
-| Complete Trip CTA | "Complete Trip" — full-width, `backgroundColor: FOREST (#1A6B3C), borderRadius: 12, paddingVertical: 16`. Text: `fontSize: 16, fontWeight: '700', color: 'white'`. Triggers confirmation. |
+| Fare reminder | `fontSize: 24, fontWeight: 'bold', color: GOLD`. Copy: "₦{fare} — your share: ₦{driverEarnings}". |
+| Complete Trip CTA | "Complete Trip" — full-width, `backgroundColor: FOREST (#1A6B3C), borderRadius: 12, paddingVertical: 16`. Text: `fontSize: 14, fontWeight: 'bold', color: 'white'`. Triggers confirmation. |
 | Complete confirmation | Bottom sheet. Heading: "Complete this trip?". Body: "₦{driverEarnings} will be credited to your wallet immediately." Two buttons: "Not Yet" (outline) + "Yes, Complete" (`backgroundColor: FOREST`). |
-| Earnings credit state | After successful completion — inline success banner within card: `backgroundColor: rgba(34,197,94,0.15), borderRadius: 8, padding: 10`. Text: `fontSize: 13, color: #22C55E`. Copy: "₦{driverEarnings} credited to your wallet." Auto-navigates to D-5 after 2 seconds. |
+| Earnings credit state | After successful completion — inline success banner within card: `backgroundColor: rgba(34,197,94,0.15), borderRadius: 8, padding: 8`. Text: `fontSize: 13, color: #22C55E`. Copy: "₦{driverEarnings} credited to your wallet." Auto-navigates to D-5 after 2 seconds. |
 
 #### Screen D-5: Earnings Dashboard
 **Purpose:** Driver's financial summary — daily/weekly earnings, trip history, acceptance rate, rating
@@ -246,10 +246,10 @@ Five screens in the Driver tab route.
 | Element | Spec |
 |---------|------|
 | Header | `fontSize: 24, fontWeight: 'bold', color: 'white'`. Copy: "Earnings". |
-| Period toggle | Segmented control: "Today" / "This Week". `backgroundColor: rgba(255,255,255,0.07), borderRadius: 8, padding: 4`. Active segment: `backgroundColor: FOREST, borderRadius: 6`. Text active: `color: 'white'`. Text inactive: `color: rgba(255,255,255,0.4)`. `fontSize: 13, fontWeight: '600'`. |
-| Earnings total | `fontSize: 40, fontWeight: '700', color: GOLD`. Centered. Updates on period toggle. |
-| Stats row | Three chips in a flex row: Trips count, Acceptance rate (%), Avg rating (★). Each chip: `backgroundColor: rgba(255,255,255,0.05), borderRadius: 10, padding: 12, flex: 1`. Value: `fontSize: 18, fontWeight: '700', color: 'white'`. Label: `fontSize: 11, color: rgba(255,255,255,0.4)`. |
-| Trip history list | `FlatList` of completed trips. Each row (card): `backgroundColor: rgba(255,255,255,0.05), borderRadius: 12, padding: 14, marginBottom: 8`. Trip date + short route summary left. Fare right: `fontSize: 14, fontWeight: '700', color: GOLD`. |
+| Period toggle | Segmented control: "Today" / "This Week". `backgroundColor: rgba(255,255,255,0.07), borderRadius: 8, padding: 4`. Active segment: `backgroundColor: FOREST, borderRadius: 6`. Text active: `color: 'white'`. Text inactive: `color: rgba(255,255,255,0.4)`. `fontSize: 13, fontWeight: 'bold'`. |
+| Earnings total | `fontSize: 48, fontWeight: 'bold', color: GOLD`. Centered. Updates on period toggle. |
+| Stats row | Three chips in a flex row: Trips count, Acceptance rate (%), Avg rating (★). Each chip: `backgroundColor: rgba(255,255,255,0.05), borderRadius: 10, padding: 12, flex: 1`. Value: `fontSize: 24, fontWeight: 'bold', color: 'white'`. Label: `fontSize: 13, color: rgba(255,255,255,0.4)`. |
+| Trip history list | `FlatList` of completed trips. Each row (card): `backgroundColor: rgba(255,255,255,0.05), borderRadius: 12, padding: 12, marginBottom: 8`. Trip date + short route summary left. Fare right: `fontSize: 14, fontWeight: 'bold', color: GOLD`. |
 | Empty state | No trips yet for the selected period. Centered: `fontSize: 14, color: rgba(255,255,255,0.3)`. Copy: "No trips completed {period}. Go online to start earning." |
 
 ---
@@ -378,11 +378,11 @@ No third-party shadcn registries are used in this phase. Registry vetting gate i
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS (non-blocking flag: "Accept"/"Decline"/"Done" single-word CTAs — acceptable in high-stress 15s driver context)
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** approved

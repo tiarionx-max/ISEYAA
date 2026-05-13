@@ -665,7 +665,7 @@ ISY-TRP-<12-char-uppercase>   ← trip payment reference (future Paystack use)
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **react-native-maps exact version for SDK 51**
    - What we know: Latest is 1.27.2; SDK 51 has a known Google Maps iOS issue; `npx expo install` resolves the compatible version automatically

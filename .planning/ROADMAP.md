@@ -95,10 +95,17 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5)*
 - [ ] 03-06-PLAN.md — Mobile Transport tab (rider) + npm install + app.json Google Maps
-- [ ] 03-07-PLAN.md — Mobile Driver tab + tab layout
 
 **Wave 7** *(blocked on Wave 6)*
+- [ ] 03-07-PLAN.md — Mobile Driver tab + tab layout
+
+**Wave 8** *(blocked on Wave 7)*
 - [ ] 03-08-PLAN.md — Human verification checkpoint (8-step end-to-end)
+
+**Cross-cutting constraints:**
+- All 179 existing tests still pass after schema changes
+- Platform fees always read from PlatformConfig table — never hardcoded
+- WebSocket gateway shares port 3001 (no port arg in @WebSocketGateway)
 **UI hint**: yes
 
 ### Phase 4: Delivery Module
