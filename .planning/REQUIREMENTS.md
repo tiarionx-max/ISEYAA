@@ -49,7 +49,7 @@ These requirements are locked. They shipped and are confirmed working.
 - [x] **TRANSPORT-04**: Driver and rider can see each other's live GPS position updated every 2 seconds via WebSocket for the duration of the trip
 - [x] **TRANSPORT-05**: Fare is calculated with surge pricing applied when demand > 1.5× supply in a given zone; surge multiplier is displayed before confirmation
 - [x] **TRANSPORT-06**: On trip completion, driver earnings (fare × 0.85) are credited to driver wallet immediately; platform fee (15%) is retained
-- [ ] **TRANSPORT-07**: Driver can see earnings dashboard showing daily/weekly earnings, trip history, acceptance rate, and average rating
+- [x] **TRANSPORT-07**: Driver can see earnings dashboard showing daily/weekly earnings, trip history, acceptance rate, and average rating
 - [ ] **TRANSPORT-08**: Mobile app displays a Transport tab (ride request flow) and a Driver tab (go online, accept/reject rides, navigate, earnings)
 
 ### Delivery Module (DELIVERY)
