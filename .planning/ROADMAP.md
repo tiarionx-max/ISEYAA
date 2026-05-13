@@ -91,7 +91,7 @@ Plans:
 - [x] 03-04-PLAN.md — TransportService implementation (TDD green step)
 
 **Wave 5** *(blocked on Wave 4)*
-- [ ] 03-05-PLAN.md — TransportGateway + Controller + Module + AppModule registration
+- [x] 03-05-PLAN.md — TransportGateway + Controller + Module + AppModule registration
 
 **Wave 6** *(blocked on Wave 5)*
 - [ ] 03-06-PLAN.md — Mobile Transport tab (rider) + npm install + app.json Google Maps
@@ -168,7 +168,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Sprint 1 Foundation | - | Complete | 2026-05-11 |
 | 2. Infrastructure Migration | 12/13 | In progress (02-06 human checkpoint pending) | - |
-| 3. Transport Module | 4/8 | In Progress|  |
+| 3. Transport Module | 5/8 | In Progress|  |
 | 4. Delivery Module | 0/TBD | Not started | - |
 | 5. AI Concierge + KYC | 0/TBD | Not started | - |
 | 6. QA, Security & Performance | 0/TBD | Not started | - |
