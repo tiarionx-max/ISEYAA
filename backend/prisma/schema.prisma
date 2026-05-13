@@ -138,39 +138,65 @@ enum PaymentGateway {
   INTERNAL
 }
 
+enum VehicleType {
+  BIKE
+  TRICYCLE
+  CAR
+  MINIBUS
+}
+
+enum DriverStatus {
+  PENDING_REVIEW
+  APPROVED
+  SUSPENDED
+  REJECTED
+}
+
+enum TripStatus {
+  SEARCHING
+  MATCHED
+  ARRIVED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  EXPIRED
+}
+
 // ─── Models ───────────────────────────────────────────────────────────────────
 
 model User {
-  id           String     @id @default(uuid())
-  email        String?    @unique
-  phone        String?    @unique
-  passwordHash String?
-  firstName    String
-  lastName     String
+  id              String     @id @default(uuid())
+  email           String?    @unique
+  phone           String?    @unique
+  passwordHash    String?
+  firstName       String
+  lastName        String
   role            UserRole   @default(CITIZEN)
   registeredRoles UserRole[]
   status          UserStatus @default(PENDING)
-  kycStatus    KYCStatus  @default(NONE)
-  lgaId        String?
-  lga          LGA?       @relation(fields: [lgaId], references: [id])
-  avatarUrl    String?
-  nin           String?    @unique
-  bvn           String?    @unique
-  ndpaConsent   Boolean    @default(false)
-  ndpaConsentAt DateTime?
-  metadata      Json?
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  deletedAt    DateTime?
+  kycStatus       KYCStatus  @default(NONE)
+  lgaId           String?
+  lga             LGA?       @relation(fields: [lgaId], references: [id])
+  avatarUrl       String?
+  nin             String?    @unique
+  bvn             String?    @unique
+  ndpaConsent     Boolean    @default(false)
+  ndpaConsentAt   DateTime?
+  metadata        Json?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  deletedAt       DateTime?
 
-  wallet         Wallet?
-  tickets        Ticket[]
-  bookings       Booking[]
-  orders         Order[]
-  studioBookings StudioBooking[]
-  mediaContents  MediaContent[]
-  auditLogs      AuditLog[]
+  wallet              Wallet?
+  tickets             Ticket[]
+  bookings            Booking[]
+  orders              Order[]
+  studioBookings      StudioBooking[]
+  mediaContents       MediaContent[]
+  auditLogs           AuditLog[]
   attractionBookmarks AttractionBookmark[]
+  driverProfile       Driver?
+  riderTrips          Trip[]               @relation("RiderTrips")
 
   @@map("users")
 }
@@ -318,14 +344,14 @@ model Property {
 }
 
 model Booking {
-  id         String        @id @default(uuid())
-  propertyId String
-  property   Property      @relation(fields: [propertyId], references: [id])
-  userId     String
-  user       User          @relation(fields: [userId], references: [id])
-  checkIn    DateTime
-  checkOut   DateTime
-  guests     Int
+  id               String        @id @default(uuid())
+  propertyId       String
+  property         Property      @relation(fields: [propertyId], references: [id])
+  userId           String
+  user             User          @relation(fields: [userId], references: [id])
+  checkIn          DateTime
+  checkOut         DateTime
+  guests           Int
   totalPrice       Decimal
   status           BookingStatus @default(PENDING)
   paystackRef      String?       @unique
@@ -386,20 +412,20 @@ model Product {
 }
 
 model Order {
-  id            String      @id @default(uuid())
-  userId        String
-  user          User        @relation(fields: [userId], references: [id])
-  vendorId      String?
-  totalAmount   Decimal
-  platformFee   Decimal?
-  govtLevy      Decimal?
-  vendorPayout  Decimal?
-  paystackRef   String?     @unique
-  status        OrderStatus @default(PENDING)
-  metadata      Json?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  deletedAt   DateTime?
+  id           String      @id @default(uuid())
+  userId       String
+  user         User        @relation(fields: [userId], references: [id])
+  vendorId     String?
+  totalAmount  Decimal
+  platformFee  Decimal?
+  govtLevy     Decimal?
+  vendorPayout Decimal?
+  paystackRef  String?     @unique
+  status       OrderStatus @default(PENDING)
+  metadata     Json?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  deletedAt    DateTime?
 
   orderItems OrderItem[]
 
@@ -407,37 +433,37 @@ model Order {
 }
 
 model OrderItem {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   orderId   String
-  order     Order    @relation(fields: [orderId], references: [id])
+  order     Order     @relation(fields: [orderId], references: [id])
   productId String
-  product   Product  @relation(fields: [productId], references: [id])
+  product   Product   @relation(fields: [productId], references: [id])
   quantity  Int
   unitPrice Decimal
   subtotal  Decimal
   metadata  Json?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
   @@map("order_items")
 }
 
 model StudioSlot {
-  id           String     @id @default(uuid())
-  name         String
-  type         StudioType
-  description  String?
-  imageUrls    String[]
+  id                   String     @id @default(uuid())
+  name                 String
+  type                 StudioType
+  description          String?
+  imageUrls            String[]
   pricePerHour         Decimal
   durationMinutes      Int        @default(60)
   capacity             Int        @default(1)
   isActive             Boolean    @default(true)
   isGovernmentPriority Boolean    @default(false)
   metadata             Json?
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  deletedAt    DateTime?
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+  deletedAt            DateTime?
 
   bookings StudioBooking[]
 
@@ -566,4 +592,101 @@ model AttractionBookmark {
 
   @@unique([userId, attractionId])
   @@map("attraction_bookmarks")
+}
+
+model Driver {
+  id             String       @id @default(uuid())
+  userId         String       @unique
+  user           User         @relation(fields: [userId], references: [id])
+  licenceNumber  String
+  licenceExpiry  DateTime
+  status         DriverStatus @default(PENDING_REVIEW)
+  approvedById   String?
+  approvedAt     DateTime?
+  isOnline       Boolean      @default(false)
+  lastSeenAt     DateTime?
+  avgRating      Decimal      @default(0)
+  totalTrips     Int          @default(0)
+  acceptanceRate Decimal      @default(0)
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+
+  vehicles      Vehicle[]
+  tripsAsDriver Trip[]    @relation("DriverTrips")
+
+  @@map("drivers")
+}
+
+model Vehicle {
+  id          String      @id @default(uuid())
+  driverId    String
+  driver      Driver      @relation(fields: [driverId], references: [id])
+  type        VehicleType
+  make        String
+  model       String
+  year        Int
+  plateNumber String      @unique
+  colour      String
+  imageUrl    String?
+  isActive    Boolean     @default(true)
+  metadata    Json?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  deletedAt   DateTime?
+
+  trips Trip[]
+
+  @@map("vehicles")
+}
+
+model Trip {
+  id              String      @id @default(uuid())
+  riderId         String
+  rider           User        @relation("RiderTrips", fields: [riderId], references: [id])
+  driverId        String?
+  driver          Driver?     @relation("DriverTrips", fields: [driverId], references: [id])
+  vehicleId       String?
+  vehicle         Vehicle?    @relation(fields: [vehicleId], references: [id])
+  vehicleType     VehicleType
+  pickupLat       Decimal
+  pickupLng       Decimal
+  pickupAddress   String?
+  dropoffLat      Decimal
+  dropoffLng      Decimal
+  dropoffAddress  String?
+  distanceKm      Decimal?
+  fare            Decimal?
+  surgeMultiplier Decimal     @default(1)
+  platformFee     Decimal?
+  driverEarnings  Decimal?
+  status          TripStatus  @default(SEARCHING)
+  requestedAt     DateTime    @default(now())
+  matchedAt       DateTime?
+  arrivedAt       DateTime?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  riderRating     Int?
+  driverRating    Int?
+  cancelReason    String?
+  metadata        Json?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  deletedAt       DateTime?
+
+  events TripEvent[]
+
+  @@map("trips")
+}
+
+model TripEvent {
+  id        String   @id @default(uuid())
+  tripId    String
+  trip      Trip     @relation(fields: [tripId], references: [id])
+  event     String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@map("trip_events")
 }
