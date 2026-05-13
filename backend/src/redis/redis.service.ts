@@ -62,4 +62,23 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   async expire(key: string, ttlSeconds: number): Promise<void> {
     await this.client.expire(key, ttlSeconds);
   }
+
+  async geoadd(key: string, lng: number, lat: number, member: string): Promise<void> {
+    await this.client.geoadd(key, lng, lat, member);
+  }
+
+  async geosearch(key: string, lng: number, lat: number, radiusKm: number): Promise<string[]> {
+    // Returns flat string[] (no WITHDIST) to avoid [string, string][] parsing per Pitfall 2
+    const results = await this.client.geosearch(
+      key,
+      'FROMLONLAT', lng, lat,
+      'BYRADIUS', radiusKm, 'km',
+      'ASC', 'COUNT', 999,
+    ) as string[];
+    return results;
+  }
+
+  async zrem(key: string, member: string): Promise<void> {
+    await this.client.zrem(key, member);
+  }
 }
