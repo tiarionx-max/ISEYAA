@@ -447,7 +447,7 @@ export default function HomePage() {
                 <span className="text-gradient-gold text-lg font-black">ISEYAA</span>
               </div>
               <p className="text-white/30 text-xs leading-relaxed max-w-[180px]">
-                Ogun State's unified digital super-platform. Operated by LJ Entertainment.
+                Ogun State&apos;s unified digital super-platform. Operated by LJ Entertainment.
               </p>
             </div>
             {[
