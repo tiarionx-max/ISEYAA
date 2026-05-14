@@ -1,0 +1,17 @@
+name: Security — No .env files in git
+on: [push, pull_request]
+
+jobs:
+  check-no-env:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify no .env files committed
+        run: |
+          FOUND=$(git ls-files | grep -E '\.env$|\.env\.' | grep -v '\.env\.example$' || true)
+          if [ -n "$FOUND" ]; then
+            echo "ERROR: Committed .env files found:"
+            echo "$FOUND"
+            exit 1
+          fi
+          echo "OK: No .env files committed"

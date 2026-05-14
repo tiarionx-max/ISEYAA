@@ -1,0 +1,8 @@
+[build]
+dockerfilePath = "backend/apps/ai-service/Dockerfile"
+buildContext = "."
+
+[deploy]
+watchPaths = ["backend/apps/ai-service/**", "backend/src/modules/ai/**", "packages/proto/**"]
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3

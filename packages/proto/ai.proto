@@ -1,0 +1,26 @@
+syntax = "proto3";
+package ai;
+
+service AiService {
+  rpc GetItinerary (ItineraryRequest) returns (ItineraryResponse);
+  rpc GetLgaIntelligence (LgaIntelligenceRequest) returns (LgaIntelligenceResponse);
+}
+
+message ItineraryRequest {
+  string lga_slug = 1;
+  int32 duration_days = 2;
+  string interests = 3;
+  double budget_ngn = 4;
+}
+
+message ItineraryResponse {
+  string content = 1;
+}
+
+message LgaIntelligenceRequest {
+  string lga_id = 1;
+}
+
+message LgaIntelligenceResponse {
+  string content = 1;
+}

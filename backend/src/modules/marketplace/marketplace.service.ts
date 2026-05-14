@@ -1,0 +1,316 @@
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+  ConflictException,
+  OnModuleInit,
+} from '@nestjs/common';
+import { KafkaService } from '../../kafka/kafka.service';
+import { v4 as uuidv4 } from 'uuid';
+import { PrismaService } from '../../prisma/prisma.service';
+import { PaystackService } from '../../common/services/paystack.service';
+import { SendgridService } from '../../common/services/sendgrid.service';
+import { CreateVendorDto } from './dto/create-vendor.dto';
+import { CreateProductDto } from './dto/create-product.dto';
+import { UpdateProductDto } from './dto/update-product.dto';
+import { CreateOrderDto } from './dto/create-order.dto';
+
+function slugify(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+@Injectable()
+export class MarketplaceService implements OnModuleInit {
+  private readonly logger = new Logger(MarketplaceService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private paystack: PaystackService,
+    private sendgrid: SendgridService,
+    private kafka: KafkaService,
+  ) {}
+
+  async onModuleInit() {
+    await this.kafka.consume(
+      'payment.order_payment',
+      'marketplace-service-prod',
+      (msg) => this.handleOrderPayment(msg as { reference: string }),
+    );
+  }
+
+  // ── Vendors ────────────────────────────────────────────────────────────────
+
+  async createVendor(userId: string, dto: CreateVendorDto) {
+    const existing = await this.prisma.vendor.findUnique({ where: { userId } });
+    if (existing) throw new ConflictException('Vendor profile already exists');
+
+    const slug = `${slugify(dto.businessName)}-${uuidv4().slice(0, 8)}`;
+    return this.prisma.vendor.create({
+      data: {
+        userId,
+        lgaId: dto.lgaId,
+        businessName: dto.businessName,
+        slug,
+        description: dto.description,
+        status: 'PENDING',
+      },
+    });
+  }
+
+  async approveVendor(id: string) {
+    const vendor = await this.prisma.vendor.findFirst({ where: { id, deletedAt: null } });
+    if (!vendor) throw new NotFoundException('Vendor not found');
+    if (vendor.status === 'ACTIVE') throw new ConflictException('Vendor already active');
+
+    return this.prisma.vendor.update({ where: { id }, data: { status: 'ACTIVE' } });
+  }
+
+  // ── Products ───────────────────────────────────────────────────────────────
+
+  async createProduct(userId: string, dto: CreateProductDto) {
+    const vendor = await this.prisma.vendor.findUnique({ where: { userId } });
+    if (!vendor) throw new NotFoundException('Vendor profile not found');
+    if (vendor.status !== 'ACTIVE') throw new ForbiddenException('Vendor account is not yet approved');
+
+    const slug = `${slugify(dto.name)}-${uuidv4().slice(0, 8)}`;
+    return this.prisma.product.create({
+      data: {
+        vendorId: vendor.id,
+        name: dto.name,
+        slug,
+        description: dto.description,
+        price: dto.price,
+        stock: dto.stock,
+      },
+    });
+  }
+
+  findProducts(filters: { vendorId?: string; q?: string; page?: number; limit?: number }) {
+    const { vendorId, q, page = 1, limit = 20 } = filters;
+    return this.prisma.product.findMany({
+      where: {
+        deletedAt: null,
+        isActive: true,
+        ...(vendorId && { vendorId }),
+        ...(q && { name: { contains: q, mode: 'insensitive' } }),
+      },
+      include: { vendor: { select: { businessName: true, slug: true } } },
+      orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+  }
+
+  async findProductById(id: string) {
+    const product = await this.prisma.product.findFirst({
+      where: { id, deletedAt: null },
+      include: { vendor: { select: { businessName: true, slug: true } } },
+    });
+    if (!product) throw new NotFoundException('Product not found');
+    return product;
+  }
+
+  async updateProduct(id: string, userId: string, dto: UpdateProductDto) {
+    const product = await this.prisma.product.findFirst({ where: { id, deletedAt: null } });
+    if (!product) throw new NotFoundException('Product not found');
+
+    const vendor = await this.prisma.vendor.findUnique({ where: { userId } });
+    if (!vendor || product.vendorId !== vendor.id) throw new ForbiddenException('Not your product');
+
+    return this.prisma.product.update({
+      where: { id },
+      data: {
+        ...(dto.name && { name: dto.name }),
+        ...(dto.description !== undefined && { description: dto.description }),
+        ...(dto.price !== undefined && { price: dto.price }),
+        ...(dto.stock !== undefined && { stock: dto.stock }),
+      },
+    });
+  }
+
+  async removeProduct(id: string, userId: string) {
+    const product = await this.prisma.product.findFirst({ where: { id, deletedAt: null } });
+    if (!product) throw new NotFoundException('Product not found');
+
+    const vendor = await this.prisma.vendor.findUnique({ where: { userId } });
+    if (!vendor || product.vendorId !== vendor.id) throw new ForbiddenException('Not your product');
+
+    await this.prisma.product.update({ where: { id }, data: { deletedAt: new Date() } });
+    return { deleted: true };
+  }
+
+  // ── Orders ─────────────────────────────────────────────────────────────────
+
+  async createOrder(userId: string, dto: CreateOrderDto) {
+    if (!dto.items?.length) throw new BadRequestException('Order must have at least one item');
+
+    // Validate and enrich items
+    const products = await Promise.all(
+      dto.items.map((i) =>
+        this.prisma.product.findFirst({
+          where: { id: i.productId, deletedAt: null, isActive: true },
+          include: { vendor: true },
+        }),
+      ),
+    );
+
+    for (let i = 0; i < products.length; i++) {
+      if (!products[i]) throw new NotFoundException(`Product ${dto.items[i].productId} not found`);
+      if (products[i].stock < dto.items[i].quantity) {
+        throw new BadRequestException(`Insufficient stock for product: ${products[i].name}`);
+      }
+    }
+
+    // All items must belong to same vendor
+    const vendorIds = [...new Set(products.map((p) => p.vendorId))];
+    if (vendorIds.length > 1) throw new BadRequestException('All products must be from the same vendor');
+
+    const vendor = products[0].vendor;
+    if (vendor.status !== 'ACTIVE') throw new BadRequestException('Vendor is not active');
+
+    // Fetch fee config from platform_config — NEVER hardcode
+    const feeConfig = await this.prisma.platformConfig.findUnique({ where: { key: 'PLATFORM_FEE_PCT' } });
+    const platformFeePct = feeConfig ? Number(feeConfig.value) : 0.10;
+    const govtLevyPct = Number(vendor.govtLevyPct);
+
+    const orderItems = dto.items.map((item, idx) => {
+      const unitPrice = Number(products[idx].price);
+      return {
+        productId: item.productId,
+        quantity: item.quantity,
+        unitPrice,
+        subtotal: unitPrice * item.quantity,
+      };
+    });
+
+    const total = orderItems.reduce((sum, i) => sum + i.subtotal, 0);
+    const platformFee = +(total * platformFeePct).toFixed(2);
+    const govtLevy = +(total * govtLevyPct).toFixed(2);
+    const vendorPayout = +(total - platformFee - govtLevy).toFixed(2);
+    const paystackRef = `ISY-ORD-${uuidv4().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
+
+    const order = await this.prisma.order.create({
+      data: {
+        userId,
+        vendorId: vendor.id,
+        totalAmount: total,
+        platformFee,
+        govtLevy,
+        vendorPayout,
+        paystackRef,
+        status: 'PENDING',
+        metadata: { vendorName: vendor.businessName },
+        orderItems: { create: orderItems },
+      },
+      include: { orderItems: { include: { product: { select: { name: true } } } } },
+    });
+
+    const payment = await this.paystack.initiatePayment({
+      email: dto.email,
+      amountKobo: total * 100,
+      reference: paystackRef,
+      metadata: {
+        type: 'order_payment',
+        orderId: order.id,
+        userId,
+        vendorId: vendor.id,
+      },
+    });
+
+    return { order, payment };
+  }
+
+  async handleOrderPayment(payload: { reference: string }) {
+    try {
+      const order = await this.prisma.order.findUnique({
+        where: { paystackRef: payload.reference },
+        include: {
+          user: { select: { email: true, firstName: true } },
+          orderItems: { include: { product: { select: { name: true } } } },
+        },
+      });
+
+      if (!order || order.status !== 'PENDING') return;
+
+      await this.prisma.order.update({
+        where: { id: order.id },
+        data: { status: 'PROCESSING' },
+      });
+
+      await this.notifyOrderUpdate(order.id, 'PROCESSING');
+    } catch (err) {
+      this.logger.error(`handleOrderPayment failed for ref ${payload.reference}`, err.message);
+    }
+  }
+
+  async updateOrderStatus(orderId: string, status: string, actorId: string) {
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, deletedAt: null },
+    });
+    if (!order) throw new NotFoundException('Order not found');
+
+    // Vendors can move: PROCESSING → SHIPPED; anyone authorized can move to DELIVERED
+    const vendor = await this.prisma.vendor.findUnique({ where: { userId: actorId } });
+    const isOrderVendor = vendor && order.vendorId === vendor.id;
+    const allowedTransitions: Record<string, string[]> = {
+      PROCESSING: ['SHIPPED'],
+      SHIPPED: ['DELIVERED'],
+    };
+
+    if (!isOrderVendor) throw new ForbiddenException('Not authorized to update this order');
+    if (!allowedTransitions[order.status]?.includes(status)) {
+      throw new BadRequestException(`Cannot transition order from ${order.status} to ${status}`);
+    }
+
+    await this.prisma.order.update({ where: { id: orderId }, data: { status: status as any } });
+    await this.notifyOrderUpdate(orderId, status);
+
+    return { orderId, status };
+  }
+
+  private async notifyOrderUpdate(orderId: string, status: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        user: { select: { email: true, firstName: true } },
+        orderItems: { include: { product: { select: { name: true } } } },
+      },
+    });
+    if (!order) return;
+
+    const itemSummary = order.orderItems.map((i) => `${i.product.name} × ${i.quantity}`).join(', ');
+    const html = `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px;">
+        <h2 style="color:#1a472a;">Order Update</h2>
+        <p>Hello ${order.user.firstName},</p>
+        <p>Your order status has changed to <strong>${status}</strong>.</p>
+        <p><strong>Items:</strong> ${itemSummary}</p>
+        <p><strong>Total:</strong> ₦${Number(order.totalAmount).toLocaleString()}</p>
+        <p style="color:#666;font-size:12px;margin-top:24px;">Powered by ISEYAA — Ogun State Digital Platform</p>
+      </div>
+    `;
+
+    if (order.user.email) {
+      await this.sendgrid.sendEmail(order.user.email, `Order ${status} — ISEYAA`, html);
+    }
+
+    if (order.vendorId) {
+      const vendorUser = await this.prisma.vendor.findUnique({
+        where: { id: order.vendorId },
+        include: { lga: false },
+      });
+      if (vendorUser) {
+        const vendorOwner = await this.prisma.user.findUnique({
+          where: { id: vendorUser.userId },
+          select: { email: true, firstName: true },
+        });
+        if (vendorOwner?.email) {
+          const vendorHtml = html.replace(`Hello ${order.user.firstName}`, `Hello ${vendorOwner.firstName}`);
+          await this.sendgrid.sendEmail(vendorOwner.email, `Order ${status} — ISEYAA`, vendorHtml);
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,20 @@
+export enum UserRole {
+  CITIZEN = 'CITIZEN',
+  TOURIST = 'TOURIST',
+  VENDOR = 'VENDOR',
+  ORGANISER = 'ORGANISER',
+  HOST = 'HOST',
+  DRIVER = 'DRIVER',
+  CREATIVE = 'CREATIVE',
+  LGA_ADMIN = 'LGA_ADMIN',
+  STATE_ADMIN = 'STATE_ADMIN',
+  SUPER_ADMIN = 'SUPER_ADMIN',
+}
+
+export const REGISTERABLE_ROLES: UserRole[] = [
+  UserRole.CITIZEN,
+  UserRole.TOURIST,
+  UserRole.VENDOR,
+  UserRole.ORGANISER,
+  UserRole.HOST,
+];

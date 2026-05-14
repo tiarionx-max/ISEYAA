@@ -1,0 +1,63 @@
+syntax = "proto3";
+package wallet;
+
+service WalletService {
+  rpc Credit (CreditRequest) returns (CreditResponse);
+  rpc Debit (DebitRequest) returns (DebitResponse);
+  rpc GetBalance (BalanceRequest) returns (BalanceResponse);
+  rpc GetTransactions (GetTransactionsRequest) returns (GetTransactionsResponse);
+}
+
+message CreditRequest {
+  string wallet_id = 1;
+  double amount = 2;
+  string reference = 3;
+  string description = 4;
+}
+
+message CreditResponse {
+  bool success = 1;
+  double new_balance = 2;
+}
+
+message DebitRequest {
+  string wallet_id = 1;
+  double amount = 2;
+  string reference = 3;
+  string description = 4;
+}
+
+message DebitResponse {
+  bool success = 1;
+  double new_balance = 2;
+}
+
+message BalanceRequest {
+  string wallet_id = 1;
+}
+
+message BalanceResponse {
+  double balance = 1;
+  double escrow_balance = 2;
+  string kyc_tier = 3;
+}
+
+message GetTransactionsRequest {
+  string wallet_id = 1;
+  string cursor = 2;
+  int32 limit = 3;
+}
+
+message Transaction {
+  string id = 1;
+  string type = 2;
+  double amount = 3;
+  string reference = 4;
+  string description = 5;
+  string created_at = 6;
+}
+
+message GetTransactionsResponse {
+  repeated Transaction transactions = 1;
+  string next_cursor = 2;
+}

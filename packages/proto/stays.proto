@@ -1,0 +1,42 @@
+syntax = "proto3";
+package stays;
+
+service StaysService {
+  rpc GetProperty (GetPropertyRequest) returns (GetPropertyResponse);
+  rpc CheckAvailability (AvailabilityRequest) returns (AvailabilityResponse);
+  rpc CreateBooking (CreateBookingRequest) returns (CreateBookingResponse);
+}
+
+message GetPropertyRequest {
+  string property_id = 1;
+}
+
+message GetPropertyResponse {
+  string id = 1;
+  string name = 2;
+  double price_per_night = 3;
+  string lga_id = 4;
+}
+
+message AvailabilityRequest {
+  string property_id = 1;
+  string check_in = 2;
+  string check_out = 3;
+}
+
+message AvailabilityResponse {
+  bool available = 1;
+}
+
+message CreateBookingRequest {
+  string property_id = 1;
+  string user_id = 2;
+  string check_in = 3;
+  string check_out = 4;
+  string reference = 5;
+}
+
+message CreateBookingResponse {
+  bool success = 1;
+  string booking_id = 2;
+}

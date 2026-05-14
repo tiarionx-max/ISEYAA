@@ -1,0 +1,8 @@
+[build]
+dockerfilePath = "backend/apps/notifications-service/Dockerfile"
+buildContext = "."
+
+[deploy]
+watchPaths = ["backend/apps/notifications-service/**", "backend/src/modules/notifications/**", "packages/proto/**"]
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3

@@ -1,0 +1,43 @@
+syntax = "proto3";
+package events;
+
+service EventsService {
+  rpc GetEvent (GetEventRequest) returns (GetEventResponse);
+  rpc CheckTicketAvailability (TicketAvailabilityRequest) returns (TicketAvailabilityResponse);
+  rpc ReserveTicket (ReserveTicketRequest) returns (ReserveTicketResponse);
+}
+
+message GetEventRequest {
+  string event_id = 1;
+}
+
+message GetEventResponse {
+  string id = 1;
+  string title = 2;
+  string status = 3;
+  int32 available_capacity = 4;
+}
+
+message TicketAvailabilityRequest {
+  string event_id = 1;
+  string ticket_type_id = 2;
+  int32 quantity = 3;
+}
+
+message TicketAvailabilityResponse {
+  bool available = 1;
+  int32 remaining = 2;
+}
+
+message ReserveTicketRequest {
+  string event_id = 1;
+  string ticket_type_id = 2;
+  string user_id = 3;
+  int32 quantity = 4;
+  string reference = 5;
+}
+
+message ReserveTicketResponse {
+  bool success = 1;
+  string ticket_id = 2;
+}

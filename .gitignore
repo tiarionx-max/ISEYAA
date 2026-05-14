@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+dist/
+build/
+.next/
+out/
+backend/dist/
+
+# Environment files — secrets must go in Infisical, never committed
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Testing
+coverage/
+
+# Prisma
+backend/prisma/*.db
+
+# Expo
+mobile/.expo/
+mobile/
+# Turbo
+.turbo/

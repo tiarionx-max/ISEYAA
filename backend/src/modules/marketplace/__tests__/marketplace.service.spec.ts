@@ -1,0 +1,307 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import {
+  NotFoundException, ForbiddenException, BadRequestException, ConflictException,
+} from '@nestjs/common';
+import { MarketplaceService } from '../marketplace.service';
+import { PrismaService } from '../../../prisma/prisma.service';
+import { PaystackService } from '../../../common/services/paystack.service';
+import { SendgridService } from '../../../common/services/sendgrid.service';
+import { KafkaService } from '../../../kafka/kafka.service';
+
+const mockKafka = { emit: jest.fn().mockResolvedValue(undefined), consume: jest.fn().mockResolvedValue(undefined) };
+
+const USER_ID = 'user-uuid-001';
+const VENDOR_ID = 'vendor-uuid-001';
+const PRODUCT_ID = 'product-uuid-001';
+const ORDER_ID = 'order-uuid-001';
+const PAYSTACK_REF = 'ISY-ORD-ABCDEF123456';
+
+const mockVendor = {
+  id: VENDOR_ID,
+  userId: USER_ID,
+  lgaId: 'lga-001',
+  businessName: 'Abeokuta Crafts',
+  slug: 'abeokuta-crafts-abc',
+  status: 'ACTIVE',
+  govtLevyPct: 0.02,
+  deletedAt: null,
+};
+
+const mockProduct = {
+  id: PRODUCT_ID,
+  vendorId: VENDOR_ID,
+  name: 'Ankara Basket',
+  slug: 'ankara-basket-abc',
+  price: 3500,
+  stock: 20,
+  isActive: true,
+  deletedAt: null,
+  vendor: mockVendor,
+};
+
+const mockOrder = {
+  id: ORDER_ID,
+  userId: USER_ID,
+  vendorId: VENDOR_ID,
+  totalAmount: 7000,
+  platformFee: 700,
+  govtLevy: 140,
+  vendorPayout: 6160,
+  paystackRef: PAYSTACK_REF,
+  status: 'PENDING',
+  deletedAt: null,
+  user: { email: 'buyer@example.com', firstName: 'Ade' },
+  orderItems: [{ product: { name: 'Ankara Basket' }, quantity: 2 }],
+};
+
+const mockPlatformConfig = { key: 'PLATFORM_FEE_PCT', value: 0.10 };
+
+const mockPrisma = {
+  vendor: { findUnique: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
+  product: {
+    findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn(),
+    update: jest.fn(),
+  },
+  order: { findFirst: jest.fn(), findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
+  platformConfig: { findUnique: jest.fn() },
+  user: { findUnique: jest.fn() },
+  $transaction: jest.fn(),
+};
+
+const mockPaystack = { initiatePayment: jest.fn() };
+const mockSendgrid = { sendEmail: jest.fn() };
+
+describe('MarketplaceService', () => {
+  let service: MarketplaceService;
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        MarketplaceService,
+        { provide: PrismaService, useValue: mockPrisma },
+        { provide: PaystackService, useValue: mockPaystack },
+        { provide: SendgridService, useValue: mockSendgrid },
+        { provide: KafkaService, useValue: mockKafka },
+      ],
+    }).compile();
+
+    service = module.get<MarketplaceService>(MarketplaceService);
+  });
+
+  // ── createVendor ─────────────────────────────────────────────────────────
+
+  describe('createVendor', () => {
+    it('throws ConflictException when vendor already exists', async () => {
+      mockPrisma.vendor.findUnique.mockResolvedValue(mockVendor);
+      await expect(service.createVendor(USER_ID, { lgaId: 'lga-001', businessName: 'Test' })).rejects.toThrow(ConflictException);
+    });
+
+    it('creates vendor with PENDING status', async () => {
+      mockPrisma.vendor.findUnique.mockResolvedValue(null);
+      mockPrisma.vendor.create.mockResolvedValue({ ...mockVendor, status: 'PENDING' });
+
+      const result = await service.createVendor(USER_ID, { lgaId: 'lga-001', businessName: 'Abeokuta Crafts' });
+
+      expect(mockPrisma.vendor.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: 'PENDING', userId: USER_ID }),
+        }),
+      );
+      expect(result.status).toBe('PENDING');
+    });
+  });
+
+  // ── approveVendor ─────────────────────────────────────────────────────────
+
+  describe('approveVendor', () => {
+    it('throws NotFoundException when vendor not found', async () => {
+      mockPrisma.vendor.findFirst.mockResolvedValue(null);
+      await expect(service.approveVendor('bad-id')).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws ConflictException when already active', async () => {
+      mockPrisma.vendor.findFirst.mockResolvedValue(mockVendor);
+      await expect(service.approveVendor(VENDOR_ID)).rejects.toThrow(ConflictException);
+    });
+
+    it('sets vendor status to ACTIVE', async () => {
+      mockPrisma.vendor.findFirst.mockResolvedValue({ ...mockVendor, status: 'PENDING' });
+      mockPrisma.vendor.update.mockResolvedValue({ ...mockVendor, status: 'ACTIVE' });
+
+      const result = await service.approveVendor(VENDOR_ID);
+      expect(result.status).toBe('ACTIVE');
+    });
+  });
+
+  // ── createProduct ──────────────────────────────────────────────────────────
+
+  describe('createProduct', () => {
+    it('throws NotFoundException when vendor profile not found', async () => {
+      mockPrisma.vendor.findUnique.mockResolvedValue(null);
+      await expect(service.createProduct(USER_ID, { name: 'X', price: 100, stock: 5 } as any)).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws ForbiddenException when vendor is PENDING', async () => {
+      mockPrisma.vendor.findUnique.mockResolvedValue({ ...mockVendor, status: 'PENDING' });
+      await expect(service.createProduct(USER_ID, { name: 'X', price: 100, stock: 5 } as any)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('creates product when vendor is ACTIVE', async () => {
+      mockPrisma.vendor.findUnique.mockResolvedValue(mockVendor);
+      mockPrisma.product.create.mockResolvedValue(mockProduct);
+
+      const result = await service.createProduct(USER_ID, { name: 'Ankara Basket', price: 3500, stock: 20 } as any);
+      expect(result.id).toBe(PRODUCT_ID);
+    });
+  });
+
+  // ── removeProduct ──────────────────────────────────────────────────────────
+
+  describe('removeProduct', () => {
+    it('throws ForbiddenException when product belongs to different vendor', async () => {
+      mockPrisma.product.findFirst.mockResolvedValue({ ...mockProduct, vendorId: 'other-vendor' });
+      mockPrisma.vendor.findUnique.mockResolvedValue(mockVendor);
+      await expect(service.removeProduct(PRODUCT_ID, USER_ID)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('soft deletes product', async () => {
+      mockPrisma.product.findFirst.mockResolvedValue(mockProduct);
+      mockPrisma.vendor.findUnique.mockResolvedValue(mockVendor);
+      mockPrisma.product.update.mockResolvedValue({});
+
+      const result = await service.removeProduct(PRODUCT_ID, USER_ID);
+      expect(result).toEqual({ deleted: true });
+    });
+  });
+
+  // ── createOrder ────────────────────────────────────────────────────────────
+
+  describe('createOrder', () => {
+    const dto = {
+      items: [{ productId: PRODUCT_ID, quantity: 2 }],
+      email: 'buyer@example.com',
+    };
+
+    it('throws BadRequestException when items array is empty', async () => {
+      await expect(service.createOrder(USER_ID, { items: [], email: 'x@y.com' })).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws NotFoundException when product not found', async () => {
+      mockPrisma.product.findFirst.mockResolvedValue(null);
+      await expect(service.createOrder(USER_ID, dto as any)).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws BadRequestException when insufficient stock', async () => {
+      mockPrisma.product.findFirst.mockResolvedValue({ ...mockProduct, stock: 1 });
+      await expect(service.createOrder(USER_ID, { items: [{ productId: PRODUCT_ID, quantity: 5 }], email: 'x@y.com' })).rejects.toThrow(BadRequestException);
+    });
+
+    it('calculates fee split from platform_config and creates order', async () => {
+      mockPrisma.product.findFirst.mockResolvedValue(mockProduct);
+      mockPrisma.platformConfig.findUnique.mockResolvedValue(mockPlatformConfig);
+      mockPrisma.order.create.mockResolvedValue(mockOrder);
+      mockPaystack.initiatePayment.mockResolvedValue({
+        authorizationUrl: 'https://paystack.com/pay/abc',
+        accessCode: 'abc',
+        reference: PAYSTACK_REF,
+      });
+
+      const result = await service.createOrder(USER_ID, dto as any);
+
+      expect(mockPrisma.order.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            totalAmount: 7000,      // 3500 × 2
+            platformFee: 700,       // 7000 × 0.10
+            govtLevy: 140,          // 7000 × 0.02
+            vendorPayout: 6160,     // 7000 - 700 - 140
+            paystackRef: expect.stringMatching(/^ISY-ORD-/),
+          }),
+        }),
+      );
+      expect(mockPaystack.initiatePayment).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: 'buyer@example.com',
+          amountKobo: 700000,
+          metadata: expect.objectContaining({ type: 'order_payment' }),
+        }),
+      );
+      expect(result.payment.authorizationUrl).toBe('https://paystack.com/pay/abc');
+    });
+
+    it('defaults platform fee to 10% when config not found', async () => {
+      mockPrisma.product.findFirst.mockResolvedValue({ ...mockProduct, stock: 10 });
+      mockPrisma.platformConfig.findUnique.mockResolvedValue(null);
+      mockPrisma.order.create.mockResolvedValue(mockOrder);
+      mockPaystack.initiatePayment.mockResolvedValue({ authorizationUrl: 'https://x', accessCode: 'a', reference: 'r' });
+
+      await service.createOrder(USER_ID, dto as any);
+
+      expect(mockPrisma.order.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ platformFee: 700 }),
+        }),
+      );
+    });
+  });
+
+  // ── handleOrderPayment ────────────────────────────────────────────────────
+
+  describe('handleOrderPayment', () => {
+    it('returns early when order not found', async () => {
+      mockPrisma.order.findUnique.mockResolvedValue(null);
+      await service.handleOrderPayment({ reference: 'UNKNOWN' });
+      expect(mockPrisma.order.update).not.toHaveBeenCalled();
+    });
+
+    it('marks order PROCESSING on payment success', async () => {
+      mockPrisma.order.findUnique
+        .mockResolvedValueOnce({ ...mockOrder, status: 'PENDING' }) // handleOrderPayment query
+        .mockResolvedValueOnce({ ...mockOrder, status: 'PROCESSING' }); // notifyOrderUpdate query
+      mockPrisma.order.update.mockResolvedValue({});
+      mockPrisma.vendor.findUnique.mockResolvedValue(mockVendor);
+      mockPrisma.user.findUnique.mockResolvedValue({ email: 'vendor@example.com', firstName: 'Vendor' });
+      mockSendgrid.sendEmail.mockResolvedValue(undefined);
+
+      await service.handleOrderPayment({ reference: PAYSTACK_REF });
+
+      expect(mockPrisma.order.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { status: 'PROCESSING' } }),
+      );
+    });
+  });
+
+  // ── updateOrderStatus ──────────────────────────────────────────────────────
+
+  describe('updateOrderStatus', () => {
+    it('throws NotFoundException when order not found', async () => {
+      mockPrisma.order.findFirst.mockResolvedValue(null);
+      await expect(service.updateOrderStatus(ORDER_ID, 'SHIPPED', USER_ID)).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws ForbiddenException when actor is not the order vendor', async () => {
+      mockPrisma.order.findFirst.mockResolvedValue({ ...mockOrder, status: 'PROCESSING' });
+      mockPrisma.vendor.findUnique.mockResolvedValue({ ...mockVendor, id: 'other-vendor' });
+      await expect(service.updateOrderStatus(ORDER_ID, 'SHIPPED', USER_ID)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('throws BadRequestException for invalid status transition', async () => {
+      mockPrisma.order.findFirst.mockResolvedValue({ ...mockOrder, status: 'PENDING' });
+      mockPrisma.vendor.findUnique.mockResolvedValue(mockVendor);
+      await expect(service.updateOrderStatus(ORDER_ID, 'SHIPPED', USER_ID)).rejects.toThrow(BadRequestException);
+    });
+
+    it('updates order status and sends notifications', async () => {
+      mockPrisma.order.findFirst.mockResolvedValue({ ...mockOrder, status: 'PROCESSING' });
+      mockPrisma.vendor.findUnique.mockResolvedValue(mockVendor);
+      mockPrisma.order.update.mockResolvedValue({});
+      mockPrisma.order.findUnique.mockResolvedValue({ ...mockOrder, status: 'SHIPPED' });
+      mockPrisma.user.findUnique.mockResolvedValue({ email: 'v@example.com', firstName: 'V' });
+      mockSendgrid.sendEmail.mockResolvedValue(undefined);
+
+      const result = await service.updateOrderStatus(ORDER_ID, 'SHIPPED', USER_ID);
+      expect(result.status).toBe('SHIPPED');
+    });
+  });
+});

@@ -1,0 +1,8 @@
+[build]
+dockerfilePath = "backend/apps/marketplace-service/Dockerfile"
+buildContext = "."
+
+[deploy]
+watchPaths = ["backend/apps/marketplace-service/**", "backend/src/modules/marketplace/**", "packages/proto/**"]
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3

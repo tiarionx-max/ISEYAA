@@ -1,0 +1,26 @@
+syntax = "proto3";
+package notifications;
+
+service NotificationsService {
+  rpc SendPush (SendPushRequest) returns (SendPushResponse);
+  rpc RegisterToken (RegisterTokenRequest) returns (RegisterTokenResponse);
+}
+
+message SendPushRequest {
+  string user_id = 1;
+  string title = 2;
+  string body = 3;
+}
+
+message SendPushResponse {
+  bool success = 1;
+}
+
+message RegisterTokenRequest {
+  string user_id = 1;
+  string fcm_token = 2;
+}
+
+message RegisterTokenResponse {
+  bool success = 1;
+}

@@ -1,0 +1,8 @@
+[build]
+dockerfilePath = "backend/apps/admin-service/Dockerfile"
+buildContext = "."
+
+[deploy]
+watchPaths = ["backend/apps/admin-service/**", "backend/src/modules/admin/**", "packages/proto/**"]
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3

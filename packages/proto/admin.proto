@@ -1,0 +1,26 @@
+syntax = "proto3";
+package admin;
+
+service AdminService {
+  rpc GetDashboard (GetDashboardRequest) returns (GetDashboardResponse);
+  rpc ApproveItem (ApproveItemRequest) returns (ApproveItemResponse);
+}
+
+message GetDashboardRequest {}
+
+message GetDashboardResponse {
+  int32 total_users = 1;
+  double total_revenue = 2;
+  int32 active_events = 3;
+  int32 pending_approvals = 4;
+}
+
+message ApproveItemRequest {
+  string item_type = 1;
+  string item_id = 2;
+  string admin_id = 3;
+}
+
+message ApproveItemResponse {
+  bool success = 1;
+}

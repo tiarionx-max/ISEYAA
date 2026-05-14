@@ -1,0 +1,10 @@
+{
+  "name": "@iseyaa/proto",
+  "version": "0.1.0",
+  "description": "gRPC proto types for ISEYAA microservices",
+  "main": "generated/index.js",
+  "types": "generated/index.d.ts",
+  "scripts": {
+    "generate": "bash generate.sh"
+  }
+}

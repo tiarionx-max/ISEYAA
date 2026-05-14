@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Find \"c:\\\\Projects\\\\ISEYAA\" -type f -name \"TODO*\" -o -name \"FIXME*\" -o -name \"XXX*\" -o -name \"PLACEHOLDER*\")",
+      "Bash(rm -f \"c:/Projects/ISEYAA/.DS_Store\")",
+      "Bash(rm -rf \"c:/Projects/ISEYAA/services/notifications-service\")",
+      "Bash(rm -rf \"c:/Projects/ISEYAA/services/accommodations-service\")",
+      "Bash(rm -rf \"c:/Projects/ISEYAA/services/marketplace-service\")",
+      "Bash(rm -rf \"c:/Projects/ISEYAA/services/tourism-service\")",
+      "Bash(rm -rf \"c:/Projects/ISEYAA/frontend/web/node_modules\" && echo \"node_modules removed\" && ls \"c:/Projects/ISEYAA/frontend/web/\")",
+      "Bash(ls c:/Users/Admin/.claude/projects/c--Projects-ISEYAA/memory/ 2>/dev/null || echo \"empty\")",
+      "Read(//c/Users/Admin/.claude/projects/c--Projects-ISEYAA/memory/**)"
+    ],
+    "additionalDirectories": [
+      "c:\\Projects\\ISEYAA\\frontend\\web\\node_modules"
+    ]
+  }
+}
