@@ -1,0 +1,14 @@
+# railway.toml — monolith deployment config (Wave 1-2)
+# Wave 3: per-microservice toml files live at backend/apps/<service>/railway.toml
+# healthcheckPath requires GET /api/v1/health endpoint (created in Plan 02-04)
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "backend/Dockerfile"
+buildContext = "."
+
+[deploy]
+healthcheckPath = "/api/v1/health"
+healthcheckTimeout = 60
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
