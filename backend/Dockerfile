@@ -30,5 +30,5 @@ RUN chmod +x ./backend/start.sh
 
 EXPOSE 3001
 
-# Infisical injects all secrets; start.sh runs prisma migrate deploy then boots the app
-CMD ["sh", "-c", "infisical run --projectId $INFISICAL_PROJECT_ID --env ${APP_ENV:-production} -- /app/backend/start.sh"]
+# Use Infisical if token is present, otherwise start directly with Railway env vars
+CMD ["sh", "-c", "if [ -n \"$INFISICAL_TOKEN\" ] && [ -n \"$INFISICAL_PROJECT_ID\" ]; then infisical run --projectId $INFISICAL_PROJECT_ID --env ${APP_ENV:-production} -- /app/backend/start.sh; else /app/backend/start.sh; fi"]
