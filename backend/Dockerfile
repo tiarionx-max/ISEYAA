@@ -14,6 +14,7 @@ RUN curl -1sLf 'https://dl.cloudsmith.io/public/infisical/infisical-cli/setup.al
 COPY package*.json ./
 COPY backend/package*.json ./backend/
 COPY shared/ ./shared/
+COPY packages/ ./packages/
 
 # Install production deps for backend workspace
 RUN npm ci --workspace=backend --include=workspace=shared
