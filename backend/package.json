@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "ISEYAA NestJS Backend",
   "scripts": {
-    "build": "nest build",
+    "build": "prisma generate && nest build",
     "start": "node dist/src/main",
     "start:prod": "node --require ./dist/src/instrumentation.js dist/src/main.js",
     "start:dev": "nest start --watch",
