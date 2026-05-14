@@ -17,6 +17,8 @@ COPY shared/ ./shared/
 
 # Install production deps for backend workspace
 RUN npm ci --workspace=backend --include=workspace=shared
+# Rebuild sharp to ensure the correct platform-specific native binary (linuxmusl-x64) is installed
+RUN cd backend && npm rebuild sharp
 
 # Copy source
 COPY backend/ ./backend/
