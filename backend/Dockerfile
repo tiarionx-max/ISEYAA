@@ -25,8 +25,10 @@ COPY backend/ ./backend/
 RUN cd backend && npx prisma generate
 RUN cd backend && npm run build
 
+# Startup script: runs migrate deploy then starts the app
+RUN chmod +x ./backend/start.sh
+
 EXPOSE 3001
 
-# Infisical injects all secrets before Node starts
-# Only INFISICAL_TOKEN and INFISICAL_PROJECT_ID need to be set in Railway
-CMD ["sh", "-c", "infisical run --projectId $INFISICAL_PROJECT_ID --env ${APP_ENV:-production} -- node --require ./backend/dist/instrumentation.js ./backend/dist/main.js"]
+# Infisical injects all secrets; start.sh runs prisma migrate deploy then boots the app
+CMD ["sh", "-c", "infisical run --projectId $INFISICAL_PROJECT_ID --env ${APP_ENV:-production} -- /app/backend/start.sh"]
