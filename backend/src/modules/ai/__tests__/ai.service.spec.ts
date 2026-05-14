@@ -14,6 +14,7 @@ const mockStream = {
 
 jest.mock('@anthropic-ai/sdk', () => {
   return {
+    __esModule: true,
     default: jest.fn().mockImplementation(() => ({
       messages: {
         stream: jest.fn().mockReturnValue(mockStream),

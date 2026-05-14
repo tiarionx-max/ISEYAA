@@ -42,24 +42,25 @@ describe('RedisService', () => {
     Object.values(mockHelper.__mock).forEach((fn) => fn.mockReset());
   });
 
-  // Test 1: When REDIS_URL is set, calls new Redis(redisUrl) — URL string form
-  it('calls new Redis(url) with the TLS URL string when REDIS_URL is provided', async () => {
+  // Test 1: When REDIS_URL is set, calls new Redis(url, options)
+  it('calls new Redis(url, options) with the URL string when REDIS_URL is provided', async () => {
     const service = new RedisService(
       makeConfigService({ REDIS_URL: 'rediss://default:password@my-redis.upstash.io:6379' }),
     );
     service.onModuleInit();
-    expect(RedisMock).toHaveBeenCalledWith('rediss://default:password@my-redis.upstash.io:6379');
+    expect(RedisMock).toHaveBeenCalledWith(
+      'rediss://default:password@my-redis.upstash.io:6379',
+      expect.objectContaining({ maxRetriesPerRequest: 0, enableOfflineQueue: false }),
+    );
   });
 
-  // Test 2: When REDIS_URL is absent, falls back to host/port with tls: {}
-  it('calls new Redis({ host, port, tls: {} }) when REDIS_URL is absent', async () => {
+  // Test 2: When REDIS_URL is absent, Redis is disabled — client never created
+  it('does not create Redis client when REDIS_URL is absent', async () => {
     const service = new RedisService(
-      makeConfigService({ REDIS_URL: undefined, REDIS_HOST: 'redis.example.com', REDIS_PORT: 6379 }),
+      makeConfigService({ REDIS_URL: undefined }),
     );
     service.onModuleInit();
-    expect(RedisMock).toHaveBeenCalledWith(
-      expect.objectContaining({ host: 'redis.example.com', tls: {}, lazyConnect: true }),
-    );
+    expect(RedisMock).not.toHaveBeenCalled();
   });
 
   // Test 3: get(key) calls client.get(key) and returns the string value

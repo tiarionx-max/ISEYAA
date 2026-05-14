@@ -111,11 +111,12 @@ describe('SearchService', () => {
   describe('initCollections()', () => {
     it('Test 4: calls collections().create() for all 4 collections (attractions, events, properties, products)', async () => {
       await service.initCollections();
-      const collectionNames = mockCollectionFn.mock.calls.map(([name]: [string]) => name);
-      expect(collectionNames).toContain('attractions');
-      expect(collectionNames).toContain('events');
-      expect(collectionNames).toContain('properties');
-      expect(collectionNames).toContain('products');
+      // Service calls collections() (no arg) then .create(schema) — check the schema names passed to create()
+      const schemaNames = mockCollectionCreateFn.mock.calls.map(([schema]: [any]) => schema?.name);
+      expect(schemaNames).toContain('attractions');
+      expect(schemaNames).toContain('events');
+      expect(schemaNames).toContain('properties');
+      expect(schemaNames).toContain('products');
     });
   });
 
