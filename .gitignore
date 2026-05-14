@@ -37,6 +37,5 @@ backend/prisma/*.db
 
 # Expo
 mobile/.expo/
-mobile/
 # Turbo
 .turbo/

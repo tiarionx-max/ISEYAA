@@ -1,11 +1,13 @@
 {
   "compilerOptions": {
     "module": "commonjs",
+    "moduleResolution": "node",
     "declaration": true,
     "removeComments": true,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
     "target": "ES2021",
     "sourceMap": true,
     "outDir": "./dist",
@@ -17,11 +19,12 @@
     "strictBindCallApply": false,
     "forceConsistentCasingInFileNames": false,
     "noFallthroughCasesInSwitch": false,
+    "resolveJsonModule": true,
     "paths": {
       "@iseyaa/shared": [
         "../shared/src/index.ts"
       ]
     }
   },
-  "extends": "expo/tsconfig.base"
+  "exclude": ["node_modules", "dist", "test", "**/*spec.ts"]
 }

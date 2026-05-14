@@ -136,4 +136,4 @@ jobs:
 
       - name: Type-check
         working-directory: mobile
-        run: npx tsc --noEmit
+        run: npm run typecheck
