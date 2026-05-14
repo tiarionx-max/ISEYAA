@@ -6,4 +6,7 @@ module.exports = {
   collectCoverageFrom: ['**/*.(t|j)s'],
   coverageDirectory: '../coverage',
   testEnvironment: 'node',
+  moduleNameMapper: {
+    '^sharp$': '<rootDir>/__mocks__/sharp.js',
+  },
 };
