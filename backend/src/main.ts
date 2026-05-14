@@ -4,8 +4,6 @@ import { ExpressAdapter, NestExpressApplication } from '@nestjs/platform-express
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
-import { MicroserviceOptions, Transport } from '@nestjs/microservices';
-import { join } from 'path';
 import helmet from 'helmet';
 import compression from 'compression';
 import { AppModule } from './app.module';
@@ -17,6 +15,12 @@ Sentry.init({
 });
 
 async function bootstrap() {
+  const missing = ['DATABASE_URL', 'JWT_SECRET', 'JWT_REFRESH_SECRET'].filter(k => !process.env[k]);
+  if (missing.length) {
+    console.error(`FATAL: missing required environment variables: ${missing.join(', ')}`);
+    process.exit(1);
+  }
+
   const app = await NestFactory.create<NestExpressApplication>(AppModule, new ExpressAdapter(), { rawBody: true });
   const config = app.get(ConfigService);
 
