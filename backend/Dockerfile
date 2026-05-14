@@ -18,6 +18,9 @@ COPY shared/ ./shared/
 # Install production deps for backend workspace
 RUN npm ci --workspace=backend --include=workspace=shared
 
+# Rebuild sharp for Alpine/musl (lock file was generated on non-musl host)
+RUN npm rebuild sharp
+
 # Copy source
 COPY backend/ ./backend/
 
