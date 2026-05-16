@@ -12,11 +12,44 @@ const mockUserTier2 = { phone: '+2348012345678', nin: '12345678901', bvn: null }
 const mockUserTier1 = { phone: '+2348012345678', nin: null, bvn: null };
 const mockUserTier0 = { phone: null, nin: null, bvn: null };
 
+const PLATFORM_CONFIG_TIERS = [
+  { key: 'kyc_bvn_daily_limit', value: 200000 },
+  { key: 'kyc_nin_daily_limit', value: 1000000 },
+  { key: 'kyc_smile_daily_limit', value: 5000000 },
+];
+
+// Extended user mocks with new KYC timestamp columns
+const mockUserBvnVerified = {
+  phone: '+2348012345678',
+  nin: null,
+  bvn: 'encrypted_bvn',
+  kycBvnVerifiedAt: new Date(),
+  kycNinVerifiedAt: null,
+  kycLivenessVerifiedAt: null,
+};
+const mockUserNinVerified = {
+  phone: '+2348012345678',
+  nin: 'encrypted_nin',
+  bvn: 'encrypted_bvn',
+  kycBvnVerifiedAt: new Date(),
+  kycNinVerifiedAt: new Date(),
+  kycLivenessVerifiedAt: null,
+};
+const mockUserSmileVerified = {
+  phone: '+2348012345678',
+  nin: 'encrypted_nin',
+  bvn: 'encrypted_bvn',
+  kycBvnVerifiedAt: new Date(),
+  kycNinVerifiedAt: new Date(),
+  kycLivenessVerifiedAt: new Date(),
+};
+
 const mockPrisma = {
   wallet: { findUnique: jest.fn(), update: jest.fn() },
   user: { findUnique: jest.fn() },
   booking: { aggregate: jest.fn() },
   transaction: { findMany: jest.fn(), aggregate: jest.fn(), create: jest.fn(), update: jest.fn() },
+  platformConfig: { findMany: jest.fn() },
   $transaction: jest.fn(),
 };
 
@@ -27,6 +60,8 @@ describe('WalletService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    // Default: PlatformConfig returns seeded KYC tier limits
+    mockPrisma.platformConfig.findMany.mockResolvedValue(PLATFORM_CONFIG_TIERS);
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         WalletService,
@@ -226,6 +261,50 @@ describe('WalletService', () => {
           data: expect.objectContaining({ gateway: 'INTERNAL' }),
         }),
       );
+    });
+  });
+
+  // ── getBalance with PlatformConfig tiers ───────────────────────────────────
+
+  describe('getBalance with PlatformConfig tiers', () => {
+    it('returns daily_limit_ngn = 200000 (kyc_bvn_daily_limit) when kycBvnVerifiedAt is set', async () => {
+      mockPrisma.wallet.findUnique.mockResolvedValue(mockWallet);
+      mockPrisma.user.findUnique.mockResolvedValue(mockUserBvnVerified);
+      mockPrisma.booking.aggregate.mockResolvedValue({ _sum: { totalPrice: null } });
+
+      const result = await service.getBalance(USER_ID);
+      expect(result.daily_limit_ngn).toBe(200000);
+      expect(result.kyc_tier).toBe(1);
+    });
+
+    it('returns daily_limit_ngn = 1000000 (kyc_nin_daily_limit) when kycNinVerifiedAt is set', async () => {
+      mockPrisma.wallet.findUnique.mockResolvedValue(mockWallet);
+      mockPrisma.user.findUnique.mockResolvedValue(mockUserNinVerified);
+      mockPrisma.booking.aggregate.mockResolvedValue({ _sum: { totalPrice: null } });
+
+      const result = await service.getBalance(USER_ID);
+      expect(result.daily_limit_ngn).toBe(1000000);
+      expect(result.kyc_tier).toBe(2);
+    });
+
+    it('returns daily_limit_ngn = 5000000 (kyc_smile_daily_limit) when kycLivenessVerifiedAt is set', async () => {
+      mockPrisma.wallet.findUnique.mockResolvedValue(mockWallet);
+      mockPrisma.user.findUnique.mockResolvedValue(mockUserSmileVerified);
+      mockPrisma.booking.aggregate.mockResolvedValue({ _sum: { totalPrice: null } });
+
+      const result = await service.getBalance(USER_ID);
+      expect(result.daily_limit_ngn).toBe(5000000);
+      expect(result.kyc_tier).toBe(3);
+    });
+
+    it('returns daily_limit_ngn = 50000 for phone-only user (legacy fallback — until Phase 6)', async () => {
+      mockPrisma.wallet.findUnique.mockResolvedValue(mockWallet);
+      mockPrisma.user.findUnique.mockResolvedValue(mockUserTier1);
+      mockPrisma.booking.aggregate.mockResolvedValue({ _sum: { totalPrice: null } });
+
+      const result = await service.getBalance(USER_ID);
+      expect(result.daily_limit_ngn).toBe(50000);
+      expect(result.kyc_tier).toBe(1);
     });
   });
 });
