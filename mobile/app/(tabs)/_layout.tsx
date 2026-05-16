@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router';
 import { View, StyleSheet, Platform } from 'react-native';
-import { Map, Calendar, Home, Music, User, Car, Truck } from 'lucide-react-native';
+import { Map, Calendar, Home, Music, User, Car, Truck, Package, Bike } from 'lucide-react-native';
 
 const MIDNIGHT = '#0A1515';
 const GOLD = '#C8962A';
@@ -83,6 +83,20 @@ export default function TabsLayout() {
         options={{
           title: 'Driver',
           tabBarIcon: ({ focused }) => <TabIcon icon={Truck} focused={focused} label="Driver" />,
+        }}
+      />
+      <Tabs.Screen
+        name="delivery"
+        options={{
+          title: 'Delivery',
+          tabBarIcon: ({ focused }) => <TabIcon icon={Package} focused={focused} label="Delivery" />,
+        }}
+      />
+      <Tabs.Screen
+        name="rider"
+        options={{
+          title: 'Rider',
+          tabBarIcon: ({ focused }) => <TabIcon icon={Bike} focused={focused} label="Rider" />,
         }}
       />
       <Tabs.Screen
