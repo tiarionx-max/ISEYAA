@@ -139,7 +139,7 @@ Plans:
 - [x] 04-06-PLAN.md — Mobile Delivery tab (sender flow, D-1 through D-5) + _layout.tsx + app.json iOS permissions
 
 **Wave 7** *(blocked on Wave 6)*
-- [ ] 04-07-PLAN.md — Mobile Rider tab (rider flow, R-1 through R-5) + OTP entry + photo proof
+- [x] 04-07-PLAN.md — Mobile Rider tab (rider flow, R-1 through R-5) + OTP entry + photo proof
 
 **Wave 8** *(blocked on Wave 7)*
 - [ ] 04-08-PLAN.md — Human verification checkpoint (12-step end-to-end)
@@ -200,7 +200,7 @@ Plans:
 | 1. Sprint 1 Foundation | - | Complete | 2026-05-11 |
 | 2. Infrastructure Migration | 12/13 | In progress (02-06 human checkpoint pending) | - |
 | 3. Transport Module | 7/8 | In Progress (03-08 human checkpoint pending) |  |
-| 4. Delivery Module | 6/8 | In Progress|  |
+| 4. Delivery Module | 7/8 | In Progress|  |
 | 5. AI Concierge + KYC | 0/TBD | Not started | - |
 | 6. QA, Security & Performance | 0/TBD | Not started | - |
 | 7. Deployment & Launch | 0/TBD | Not started | - |
