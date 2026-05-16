@@ -118,7 +118,38 @@ Plans:
   3. Delivery is only marked complete when the recipient enters the OTP sent at dispatch AND the rider uploads a proof-of-delivery photo — no other path closes the order
   4. On successful delivery, 80% of the delivery fee is credited to the rider's wallet and 20% is retained by the platform, confirmed in the wallet ledger
   5. The mobile Delivery tab (parcel request + tracking) and Rider tab (delivery assignments) are accessible and functional
-**Plans**: TBD
+**Plans**: 8 plans
+Plans:
+**Wave 1**
+- [ ] 04-01-PLAN.md — Prisma schema (DeliveryRider + DeliveryOrder + DeliveryEvent + DeliveryOrderStatus enum) + expo-image-picker mobile dep
+
+**Wave 2** *(blocked on Wave 1)*
+- [ ] 04-02-PLAN.md — [BLOCKING] Prisma db push + delivery PlatformConfig seed (5 keys)
+
+**Wave 3** *(blocked on Wave 2)*
+- [ ] 04-03-PLAN.md — DTOs (6 files) + RED test specs (TDD red step)
+
+**Wave 4** *(blocked on Wave 3)*
+- [ ] 04-04-PLAN.md — DeliveryService implementation (TDD green step)
+
+**Wave 5** *(blocked on Wave 4)*
+- [ ] 04-05-PLAN.md — DeliveryGateway + Controller + Module + AppModule registration
+
+**Wave 6** *(blocked on Wave 5)*
+- [ ] 04-06-PLAN.md — Mobile Delivery tab (sender flow, D-1 through D-5) + _layout.tsx + app.json iOS permissions
+
+**Wave 7** *(blocked on Wave 6)*
+- [ ] 04-07-PLAN.md — Mobile Rider tab (rider flow, R-1 through R-5) + OTP entry + photo proof
+
+**Wave 8** *(blocked on Wave 7)*
+- [ ] 04-08-PLAN.md — Human verification checkpoint (12-step end-to-end)
+
+**Cross-cutting constraints:**
+- All existing tests still pass after schema changes
+- Platform fees always read from PlatformConfig table — never hardcoded
+- WebSocket gateway shares port 3001 (no port arg in @WebSocketGateway)
+- OTP sent to recipient's phone (not sender's) — recipientPhone field in DTO
+- S3Service.upload(key, buffer, contentType) signature — not uploadBuffer
 **UI hint**: yes
 
 ### Phase 5: AI Concierge + KYC
@@ -169,7 +200,7 @@ Plans:
 | 1. Sprint 1 Foundation | - | Complete | 2026-05-11 |
 | 2. Infrastructure Migration | 12/13 | In progress (02-06 human checkpoint pending) | - |
 | 3. Transport Module | 7/8 | In Progress (03-08 human checkpoint pending) |  |
-| 4. Delivery Module | 0/TBD | Not started | - |
+| 4. Delivery Module | 0/8 | Not started | - |
 | 5. AI Concierge + KYC | 0/TBD | Not started | - |
 | 6. QA, Security & Performance | 0/TBD | Not started | - |
 | 7. Deployment & Launch | 0/TBD | Not started | - |
