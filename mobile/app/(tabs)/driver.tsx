@@ -132,10 +132,16 @@ export default function DriverScreen() {
     };
   }, []);
 
-  // ── Driver profile load ──────────────────────────────────────────────────────
+  // ── Driver profile load (polls every 5s until APPROVED) ─────────────────────
+  const { data: driverProfile } = useQuery({
+    queryKey: ['driver-profile'],
+    queryFn: () => api.get('/transport/drivers/me').then((r) => r.data),
+    refetchInterval: (data: any) => data?.status === 'APPROVED' ? false : 5000,
+  });
+
   useEffect(() => {
-    api.get('/transport/drivers/me').then((r) => setDriverStatus(r.data?.status ?? null)).catch(() => {});
-  }, []);
+    setDriverStatus(driverProfile?.status ?? null);
+  }, [driverProfile]);
 
   // ── Respond countdown ────────────────────────────────────────────────────────
   const startRespondCountdown = useCallback(() => {
