@@ -133,7 +133,7 @@ Plans:
 - [x] 04-04-PLAN.md — DeliveryService implementation (TDD green step)
 
 **Wave 5** *(blocked on Wave 4)*
-- [ ] 04-05-PLAN.md — DeliveryGateway + Controller + Module + AppModule registration
+- [x] 04-05-PLAN.md — DeliveryGateway + Controller + Module + AppModule registration
 
 **Wave 6** *(blocked on Wave 5)*
 - [ ] 04-06-PLAN.md — Mobile Delivery tab (sender flow, D-1 through D-5) + _layout.tsx + app.json iOS permissions
