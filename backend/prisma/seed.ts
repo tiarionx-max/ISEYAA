@@ -1315,7 +1315,29 @@ async function main() {
     }
   }
 
-  // ─── 5. Summary ────────────────────────────────────────────────────────
+  // ─── 5. Seed Phase 5 KYC + AI PlatformConfig ───────────────────────────────────────────
+  console.log('\n🔐 Seeding KYC PlatformConfig rows...');
+
+  const kycConfigs: Array<{ key: string; value: number }> = [
+    { key: 'kyc_bvn_daily_limit',   value: 200000 },
+    { key: 'kyc_nin_daily_limit',   value: 1000000 },
+    { key: 'kyc_smile_daily_limit', value: 5000000 },
+  ];
+
+  for (const config of kycConfigs) {
+    try {
+      await prisma.platformConfig.upsert({
+        where:  { key: config.key },
+        update: { value: config.value },
+        create: { key: config.key, value: config.value, isPublic: false },
+      });
+      process.stdout.write(`  ✓ ${config.key} = ${config.value}\n`);
+    } catch (err) {
+      console.error(`  ✗ Failed to upsert ${config.key}:`, (err as Error).message);
+    }
+  }
+
+  // ─── 6. Summary ────────────────────────────────────────────────────────
   const lgaCount = await prisma.lGA.count();
   const attractionCount = await prisma.attraction.count();
   const platformConfigCount = await prisma.platformConfig.count();

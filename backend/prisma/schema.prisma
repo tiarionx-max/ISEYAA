@@ -190,6 +190,11 @@ model User {
   avatarUrl       String?
   nin             String?    @unique
   bvn             String?    @unique
+  bvnHash               String?    // bcrypt hash of BVN for duplicate lookup
+  ninHash               String?    // bcrypt hash of NIN for duplicate lookup
+  kycBvnVerifiedAt      DateTime?
+  kycNinVerifiedAt      DateTime?
+  kycLivenessVerifiedAt DateTime?
   ndpaConsent     Boolean    @default(false)
   ndpaConsentAt   DateTime?
   metadata        Json?
