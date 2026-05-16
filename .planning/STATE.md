@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-stopped_at: Roadmap initialised; ready to plan Phase 2
-last_updated: "2026-05-16T14:54:09.314Z"
+status: in_progress
+stopped_at: Phase 5 Wave 6 complete; 05-07 human checkpoint deferred
+last_updated: "2026-05-16T20:00:00.000Z"
 last_activity: 2026-05-16
 progress:
   total_phases: 7
   completed_phases: 2
-  total_plans: 29
-  completed_plans: 28
-  percent: 97
+  total_plans: 36
+  completed_plans: 34
+  percent: 94
 ---
 
 # Project State
@@ -21,24 +21,24 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-12)
 
 **Core value:** A tourist in Abeokuta can discover an attraction, book a guesthouse, buy an event ticket, and request a ride — all paid through one wallet — and the government analyst sees the revenue in real time.
-**Current focus:** Phase 3 — Transport Module
+**Current focus:** Phase 5 — AI Concierge + KYC
 
 ## Current Position
 
-Phase: 3 of 7 (Transport Module)
-Plan: 8 of 8 complete
-Status: Phase complete — ready for verification
+Phase: 5 of 7 (AI Concierge + KYC)
+Plan: 6 of 7 complete (05-07 human checkpoint deferred)
+Status: Wave 6 complete — human checkpoint pending
 Last activity: 2026-05-16
 
-Progress: [██████████] 97%
+Progress: [█████████░] 94%
 
 ## Current Status
 
 - Phase 1: COMPLETE (153 tests passing, all Sprint 1 modules shipped 2026-05-11)
-- Phase 2: IN PROGRESS — 12/13 plans done (02-06 Railway verification checkpoint pending)
-- Phase 3: PLANNED — 8/8 plans ready to execute
-- Phase 4: NOT STARTED
-- Phase 5: NOT STARTED
+- Phase 2: IN PROGRESS — 12/13 plans done (02-06 Railway verification checkpoint deferred)
+- Phase 3: IN PROGRESS — 7/8 plans done (03-08 human checkpoint deferred)
+- Phase 4: IN PROGRESS — 8/8 plans done (04-08 human checkpoint deferred)
+- Phase 5: IN PROGRESS — 6/7 plans done (05-07 human checkpoint deferred, 270 tests passing)
 - Phase 6: NOT STARTED
 - Phase 7: NOT STARTED
 

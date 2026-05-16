@@ -153,16 +153,42 @@ Plans:
 **UI hint**: yes
 
 ### Phase 5: AI Concierge + KYC
-**Goal**: The AI concierge streams GPT-4o responses with live Ogun State tool calls and vector-powered recommendations; users can unlock real wallet tiers via NIBSS BVN, NIMC NIN, and Smile Identity liveness checks
+**Goal**: The AI concierge streams Claude responses with live Ogun State tool calls and vector-powered recommendations; users can unlock real wallet tiers via NIBSS BVN, NIMC NIN, and Smile Identity liveness checks
 **Depends on**: Phase 2
 **Requirements**: AI-01, AI-02, AI-03, AI-04, AI-05, KYC-01, KYC-02, KYC-03, KYC-04
 **Success Criteria** (what must be TRUE):
-  1. A user query to the AI concierge returns a streaming SSE response (first token within 2 seconds) powered by GPT-4o with the Ogun State system prompt and access to tool calls for attractions, events, stays, ride estimates, and weather
+  1. A user query to the AI concierge returns a streaming SSE response (first token within 2 seconds) powered by Claude with the Ogun State system prompt and access to tool calls for attractions, events, stays, ride estimates, and weather
   2. The recommendation engine surfaces personalised suggestions based on Upstash Vector embeddings of the user's interaction history
   3. A user who completes NIBSS BVN verification sees their wallet daily limit raised to ₦200K; NIN verification raises it to ₦1M; Smile Identity liveness raises it to ₦5M — each stored AES-256-GCM encrypted at rest
   4. A driver whose LGA_ADMIN approves their KYC is immediately able to go online (APPROVED status reflected in real time)
   5. The mobile AI Chat screen at `/ai-chat` renders a full-screen conversation with message history that persists across sessions
-**Plans**: TBD
+**Plans**: 7 plans
+Plans:
+**Wave 1**
+- [x] 05-01-PLAN.md — Prisma schema (5 KYC fields) + PlatformConfig seed + @upstash/vector + react-native-sse + .env.example
+
+**Wave 2** *(blocked on Wave 1)*
+- [x] 05-02-PLAN.md — EncryptionService (AES-256-GCM) + VectorService (Upstash) + DojahService (NIN) + PaystackService.resolveBvn + KycService skeleton
+
+**Wave 3** *(blocked on Wave 2)*
+- [x] 05-03-PLAN.md — KycService full impl (BVN/NIN/Smile) + WalletService PlatformConfig tier limits (TDD)
+
+**Wave 4** *(blocked on Wave 2)*
+- [x] 05-04-PLAN.md — AI streamChatWithTools (3-turn agentic loop, 5 tools) + /ai/recommend + ChatDto (TDD)
+
+**Wave 5** *(blocked on Wave 4)*
+- [x] 05-05-PLAN.md — Mobile ai-chat.tsx (SSE streaming, tool cards, AsyncStorage) + driver.tsx APPROVED polling
+
+**Wave 6** *(blocked on Wave 3 + Wave 5)*
+- [x] 05-06-PLAN.md — Mobile kyc.tsx (3-tier BVN/NIN/Smile, locked→verified, driver banner, polling)
+
+**Wave 7** *(blocked on Wave 6)*
+- [ ] 05-07-PLAN.md — Human verification checkpoint (7-step end-to-end)
+
+**Cross-cutting constraints:**
+- BVN/NIN stored AES-256-GCM encrypted — plaintext never persisted or logged
+- Wallet tier limits always read from PlatformConfig — never hardcoded
+- react-native-sse for mobile SSE (React Native has no native EventSource)
 **UI hint**: yes
 
 ### Phase 6: QA, Security & Performance
@@ -200,7 +226,7 @@ Plans:
 | 1. Sprint 1 Foundation | - | Complete | 2026-05-11 |
 | 2. Infrastructure Migration | 12/13 | In progress (02-06 human checkpoint pending) | - |
 | 3. Transport Module | 7/8 | In Progress (03-08 human checkpoint pending) |  |
-| 4. Delivery Module | 7/8 | In Progress|  |
-| 5. AI Concierge + KYC | 0/TBD | Not started | - |
+| 4. Delivery Module | 8/8 | In progress (04-08 human checkpoint deferred) | - |
+| 5. AI Concierge + KYC | 6/7 | In progress (05-07 human checkpoint deferred) | - |
 | 6. QA, Security & Performance | 0/TBD | Not started | - |
 | 7. Deployment & Launch | 0/TBD | Not started | - |
