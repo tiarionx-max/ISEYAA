@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
@@ -8,31 +9,103 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PaystackService } from '../../common/services/paystack.service';
 
-const KYC_TIER_1_LIMIT = 50_000;   // phone verified
-const KYC_TIER_2_LIMIT = 500_000;  // NIN / BVN verified
+// Defensive fallback for phone-only tier — used only when PlatformConfig rows are absent.
+// Will be replaced by a seeded PlatformConfig row in Phase 6 per RESEARCH Open Question.
+// NEVER hardcode business limits; this constant is a last-resort guard.
+const KYC_TIER_PHONE_LIMIT_FALLBACK = 50_000;
 
-function getKycTier(user: { phone?: string | null; nin?: string | null; bvn?: string | null }) {
-  if (user.nin || user.bvn) return { tier: 2, dailyLimit: KYC_TIER_2_LIMIT };
-  if (user.phone) return { tier: 1, dailyLimit: KYC_TIER_1_LIMIT };
-  return { tier: 0, dailyLimit: 0 };
-}
+// Legacy tier 2 limit for users with nin/bvn ciphertext set but no new KYC timestamps.
+// Maintained for Sprint 1 data backward-compatibility until full migration in Phase 6.
+const KYC_TIER_LEGACY_NIN_BVN_LIMIT = 500_000;
 
 @Injectable()
 export class WalletService {
+  private readonly logger = new Logger(WalletService.name);
+
   constructor(
     private prisma: PrismaService,
     private paystack: PaystackService,
   ) {}
 
+  // ── Private: async KYC tier resolution from PlatformConfig ────────────────
+
+  /**
+   * Resolves KYC tier and daily limit by reading user KYC timestamps and
+   * fetching limits from PlatformConfig (never hardcoded).
+   *
+   * Priority (highest tier wins):
+   *   3 — kycLivenessVerifiedAt set → kyc_smile_daily_limit from DB
+   *   2 — kycNinVerifiedAt set      → kyc_nin_daily_limit from DB
+   *   1 — kycBvnVerifiedAt set      → kyc_bvn_daily_limit from DB
+   *   1 — nin || bvn set (legacy)   → KYC_TIER_LEGACY_NIN_BVN_LIMIT (Sprint 1 compat)
+   *   1 — phone set                 → KYC_TIER_PHONE_LIMIT_FALLBACK
+   *   0 — none of the above         → 0
+   */
+  private async getKycTierFromConfig(user: {
+    phone?: string | null;
+    nin?: string | null;
+    bvn?: string | null;
+    kycBvnVerifiedAt?: Date | null;
+    kycNinVerifiedAt?: Date | null;
+    kycLivenessVerifiedAt?: Date | null;
+  }): Promise<{ tier: number; dailyLimit: number }> {
+    // Fetch PlatformConfig limits only if a new-style KYC timestamp is present
+    if (user.kycLivenessVerifiedAt || user.kycNinVerifiedAt || user.kycBvnVerifiedAt) {
+      const rows = await this.prisma.platformConfig.findMany({
+        where: {
+          key: { in: ['kyc_bvn_daily_limit', 'kyc_nin_daily_limit', 'kyc_smile_daily_limit'] },
+        },
+      });
+
+      if (rows.length === 0) {
+        this.logger.warn('PlatformConfig KYC limits missing — using legacy fallback values');
+      }
+
+      const limit = (k: string): number =>
+        Number((rows.find((r) => r.key === k)?.value as any) ?? 0);
+
+      if (user.kycLivenessVerifiedAt) {
+        return { tier: 3, dailyLimit: limit('kyc_smile_daily_limit') };
+      }
+      if (user.kycNinVerifiedAt) {
+        return { tier: 2, dailyLimit: limit('kyc_nin_daily_limit') };
+      }
+      if (user.kycBvnVerifiedAt) {
+        return { tier: 1, dailyLimit: limit('kyc_bvn_daily_limit') };
+      }
+    }
+
+    // Legacy path: Sprint 1 users with nin/bvn ciphertext but no new timestamps
+    if (user.nin || user.bvn) {
+      return { tier: 2, dailyLimit: KYC_TIER_LEGACY_NIN_BVN_LIMIT };
+    }
+    if (user.phone) {
+      return { tier: 1, dailyLimit: KYC_TIER_PHONE_LIMIT_FALLBACK };
+    }
+    return { tier: 0, dailyLimit: 0 };
+  }
+
+  // ── getBalance ─────────────────────────────────────────────────────────────
+
   async getBalance(userId: string) {
     const [wallet, user] = await Promise.all([
       this.prisma.wallet.findUnique({ where: { userId } }),
-      this.prisma.user.findUnique({ where: { id: userId }, select: { phone: true, nin: true, bvn: true } }),
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          phone: true,
+          nin: true,
+          bvn: true,
+          kycBvnVerifiedAt: true,
+          kycNinVerifiedAt: true,
+          kycLivenessVerifiedAt: true,
+        },
+      }),
     ]);
     if (!wallet) throw new NotFoundException('Wallet not found');
     if (!user) throw new NotFoundException('User not found');
 
-    const { tier, dailyLimit } = getKycTier(user);
+    const { tier, dailyLimit } = await this.getKycTierFromConfig(user);
 
     // Escrow: sum of confirmed stays bookings not yet released (host view)
     const escrowResult = await this.prisma.booking.aggregate({
@@ -52,6 +125,8 @@ export class WalletService {
       daily_limit_ngn: dailyLimit,
     };
   }
+
+  // ── getTransactions ────────────────────────────────────────────────────────
 
   async getTransactions(
     userId: string,
@@ -96,15 +171,27 @@ export class WalletService {
     return { data, meta: { cursor: nextCursor, hasNext, limit } };
   }
 
+  // ── initiateTopup ──────────────────────────────────────────────────────────
+
   async initiateTopup(userId: string, dto: { amount: number; email: string }) {
     const [wallet, user] = await Promise.all([
       this.prisma.wallet.findUnique({ where: { userId } }),
-      this.prisma.user.findUnique({ where: { id: userId }, select: { phone: true, nin: true, bvn: true } }),
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          phone: true,
+          nin: true,
+          bvn: true,
+          kycBvnVerifiedAt: true,
+          kycNinVerifiedAt: true,
+          kycLivenessVerifiedAt: true,
+        },
+      }),
     ]);
     if (!wallet) throw new NotFoundException('Wallet not found');
     if (!user) throw new NotFoundException('User not found');
 
-    const { tier, dailyLimit } = getKycTier(user);
+    const { tier, dailyLimit } = await this.getKycTierFromConfig(user);
     if (tier === 0) {
       throw new BadRequestException('KYC required: verify your phone number to enable wallet funding');
     }
@@ -143,7 +230,16 @@ export class WalletService {
     return { reference, authorizationUrl: payment.authorizationUrl };
   }
 
-  async creditWallet(walletId: string, amount: number, reference: string, description: string, module = 'wallet', gateway: 'PAYSTACK' | 'FLUTTERWAVE' | 'INTERNAL' = 'PAYSTACK') {
+  // ── creditWallet ───────────────────────────────────────────────────────────
+
+  async creditWallet(
+    walletId: string,
+    amount: number,
+    reference: string,
+    description: string,
+    module = 'wallet',
+    gateway: 'PAYSTACK' | 'FLUTTERWAVE' | 'INTERNAL' = 'PAYSTACK',
+  ) {
     const wallet = await this.prisma.wallet.findUnique({ where: { id: walletId } });
     if (!wallet) throw new NotFoundException('Wallet not found');
 

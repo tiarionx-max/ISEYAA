@@ -77,6 +77,12 @@ export class UsersService {
         avatarUrl: null,
         nin: null,
         bvn: null,
+        // NDPA right-to-erasure: clear all KYC hashes and timestamps (CLAUDE.md compliance)
+        bvnHash: null,
+        ninHash: null,
+        kycBvnVerifiedAt: null,
+        kycNinVerifiedAt: null,
+        kycLivenessVerifiedAt: null,
         metadata: null,
         status: 'DELETED',
         deletedAt: new Date(),

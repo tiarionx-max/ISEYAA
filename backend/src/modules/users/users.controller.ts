@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Post,
   Patch,
   Delete,
   Body,
@@ -11,6 +12,9 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { UsersService } from './users.service';
+import { KycService } from './kyc.service';
+import { VerifyBvnDto } from './dto/verify-bvn.dto';
+import { VerifyNinDto } from './dto/verify-nin.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserRole } from '../../common/enums/user-role.enum';
@@ -26,7 +30,10 @@ class SwitchRoleDto {
 @UseGuards(JwtAuthGuard)
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly kycService: KycService,
+  ) {}
 
   @Get('me')
   @ApiOperation({ summary: 'Get current user profile' })
@@ -61,6 +68,26 @@ export class UsersController {
     @Body() body: { firstName?: string; lastName?: string; avatarUrl?: string; lgaId?: string },
   ) {
     return this.usersService.update(user.userId, body);
+  }
+
+  // ── KYC endpoints (must appear before /:id to avoid capture) ──────────────
+
+  @Post('kyc/bvn')
+  @ApiOperation({ summary: 'Verify BVN (tier 1) — raises wallet daily limit to ₦200,000' })
+  verifyBvn(@CurrentUser() user: { userId: string }, @Body() dto: VerifyBvnDto) {
+    return this.kycService.verifyBvn(user.userId, dto.bvn);
+  }
+
+  @Post('kyc/nin')
+  @ApiOperation({ summary: 'Verify NIN (tier 2) — raises wallet daily limit to ₦1,000,000' })
+  verifyNin(@CurrentUser() user: { userId: string }, @Body() dto: VerifyNinDto) {
+    return this.kycService.verifyNin(user.userId, dto.nin);
+  }
+
+  @Post('kyc/smile/complete')
+  @ApiOperation({ summary: 'Mark Smile Identity liveness complete (tier 3) — raises limit to ₦5,000,000' })
+  completeLiveness(@CurrentUser() user: { userId: string }) {
+    return this.kycService.completeLiveness(user.userId);
   }
 
   @Get(':id')
