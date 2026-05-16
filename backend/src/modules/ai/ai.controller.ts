@@ -4,6 +4,7 @@ import { Response } from 'express';
 import { AiService } from './ai.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ItineraryDto } from './dto/itinerary.dto';
+import { ChatDto } from './dto/chat.dto';
 
 @ApiTags('ai')
 @Controller('ai')
@@ -13,10 +14,10 @@ export class AiController {
   @Post('chat')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Chat with ISEYAA AI assistant (streaming SSE)' })
+  @ApiOperation({ summary: 'Chat with ISEYAA AI concierge (multi-turn, streaming SSE, tool use)' })
   async chat(
     @Req() req: any,
-    @Body() body: { message: string; conversationId?: string },
+    @Body() dto: ChatDto,
     @Res() res: Response,
   ) {
     res.setHeader('Content-Type', 'text/event-stream');
@@ -24,7 +25,15 @@ export class AiController {
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders();
-    await this.aiService.streamChat(req.user.userId, body.message, res);
+    await this.aiService.streamChatWithTools(req.user.userId, dto, res);
+  }
+
+  @Post('recommend')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Personalised recommendations powered by Upstash Vector' })
+  recommend(@Req() req: any, @Body() body: { query: string }) {
+    return this.aiService.getRecommendations(req.user.userId, body.query ?? '');
   }
 
   @Post('itinerary')
