@@ -162,6 +162,16 @@ enum TripStatus {
   EXPIRED
 }
 
+enum DeliveryOrderStatus {
+  SEARCHING
+  MATCHED
+  COLLECTING
+  IN_TRANSIT
+  DELIVERED
+  CANCELLED
+  EXPIRED
+}
+
 // ─── Models ───────────────────────────────────────────────────────────────────
 
 model User {
@@ -187,16 +197,18 @@ model User {
   updatedAt       DateTime   @updatedAt
   deletedAt       DateTime?
 
-  wallet              Wallet?
-  tickets             Ticket[]
-  bookings            Booking[]
-  orders              Order[]
-  studioBookings      StudioBooking[]
-  mediaContents       MediaContent[]
-  auditLogs           AuditLog[]
-  attractionBookmarks AttractionBookmark[]
-  driverProfile       Driver?
-  riderTrips          Trip[]               @relation("RiderTrips")
+  wallet               Wallet?
+  tickets              Ticket[]
+  bookings             Booking[]
+  orders               Order[]
+  studioBookings       StudioBooking[]
+  mediaContents        MediaContent[]
+  auditLogs            AuditLog[]
+  attractionBookmarks  AttractionBookmark[]
+  driverProfile        Driver?
+  riderTrips           Trip[]               @relation("RiderTrips")
+  deliveryRiderProfile DeliveryRider?
+  senderOrders         DeliveryOrder[]      @relation("SenderOrders")
 
   @@map("users")
 }
@@ -689,4 +701,74 @@ model TripEvent {
   createdAt DateTime @default(now())
 
   @@map("trip_events")
+}
+
+model DeliveryRider {
+  id              String       @id @default(uuid())
+  userId          String       @unique
+  user            User         @relation(fields: [userId], references: [id])
+  status          DriverStatus @default(PENDING_REVIEW)
+  approvedById    String?
+  approvedAt      DateTime?
+  isOnline        Boolean      @default(false)
+  lastSeenAt      DateTime?
+  avgRating       Decimal      @default(0)
+  totalDeliveries Int          @default(0)
+  acceptanceRate  Decimal      @default(0)
+  metadata        Json?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  deletedAt       DateTime?
+
+  orders DeliveryOrder[] @relation("RiderOrders")
+
+  @@map("delivery_riders")
+}
+
+model DeliveryOrder {
+  id              String              @id @default(uuid())
+  senderId        String
+  sender          User                @relation("SenderOrders", fields: [senderId], references: [id])
+  riderId         String?
+  rider           DeliveryRider?      @relation("RiderOrders", fields: [riderId], references: [id])
+  pickupAddress   String
+  pickupLat       Decimal
+  pickupLng       Decimal
+  dropoffAddress  String
+  dropoffLat      Decimal
+  dropoffLng      Decimal
+  itemDescription String
+  weightKg        Decimal
+  recipientPhone  String
+  fee             Decimal?
+  platformFee     Decimal?
+  riderEarnings   Decimal?
+  status          DeliveryOrderStatus @default(SEARCHING)
+  proofPhotoUrl   String?
+  otpVerifiedAt   DateTime?
+  requestedAt     DateTime            @default(now())
+  matchedAt       DateTime?
+  collectedAt     DateTime?
+  completedAt     DateTime?
+  cancelReason    String?
+  senderRating    Int?
+  metadata        Json?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  deletedAt       DateTime?
+
+  events DeliveryEvent[]
+
+  @@map("delivery_orders")
+}
+
+model DeliveryEvent {
+  id        String        @id @default(uuid())
+  orderId   String
+  order     DeliveryOrder @relation(fields: [orderId], references: [id])
+  event     String
+  metadata  Json?
+  createdAt DateTime      @default(now())
+
+  @@map("delivery_events")
 }
