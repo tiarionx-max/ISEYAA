@@ -130,7 +130,7 @@ Plans:
 - [x] 04-03-PLAN.md — DTOs (6 files) + RED test specs (TDD red step)
 
 **Wave 4** *(blocked on Wave 3)*
-- [ ] 04-04-PLAN.md — DeliveryService implementation (TDD green step)
+- [x] 04-04-PLAN.md — DeliveryService implementation (TDD green step)
 
 **Wave 5** *(blocked on Wave 4)*
 - [ ] 04-05-PLAN.md — DeliveryGateway + Controller + Module + AppModule registration
@@ -200,7 +200,7 @@ Plans:
 | 1. Sprint 1 Foundation | - | Complete | 2026-05-11 |
 | 2. Infrastructure Migration | 12/13 | In progress (02-06 human checkpoint pending) | - |
 | 3. Transport Module | 7/8 | In Progress (03-08 human checkpoint pending) |  |
-| 4. Delivery Module | 3/8 | In Progress|  |
+| 4. Delivery Module | 4/8 | In Progress|  |
 | 5. AI Concierge + KYC | 0/TBD | Not started | - |
 | 6. QA, Security & Performance | 0/TBD | Not started | - |
 | 7. Deployment & Launch | 0/TBD | Not started | - |
