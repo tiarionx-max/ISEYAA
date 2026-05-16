@@ -24,6 +24,7 @@ export default function RootLayout() {
         >
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="qr-checkin" options={{ title: 'QR Check-in', presentation: 'modal' }} />
+          <Stack.Screen name="ai-chat" options={{ title: 'AI Concierge', presentation: 'card' }} />
           <Stack.Screen name="events/[id]" options={{ title: 'Event' }} />
           <Stack.Screen name="stays/[id]" options={{ title: 'Property' }} />
         </Stack>

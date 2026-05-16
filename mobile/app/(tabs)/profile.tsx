@@ -7,7 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { fetcher } from '../../lib/api';
 import * as SecureStore from 'expo-secure-store';
 import { router } from 'expo-router';
-import { Wallet, Ticket, Home, Package, LogOut, ChevronRight, Settings, Shield } from 'lucide-react-native';
+import { Wallet, Ticket, Home, Package, LogOut, ChevronRight, Settings, Shield, MessageSquare } from 'lucide-react-native';
 
 const MIDNIGHT = '#0D1B1B';
 const SURFACE = '#162525';
@@ -55,6 +55,7 @@ export default function ProfileScreen() {
     {
       title: 'Account',
       items: [
+        { label: 'AI Concierge', icon: MessageSquare, onPress: () => router.push('/ai-chat' as any) },
         { label: 'Security', icon: Shield, onPress: () => {} },
         { label: 'Settings', icon: Settings, onPress: () => {} },
       ],
