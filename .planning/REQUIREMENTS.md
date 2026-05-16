@@ -59,7 +59,7 @@ These requirements are locked. They shipped and are confirmed working.
 - [x] **DELIVERY-03**: Sender can track rider's live GPS position via WebSocket from pickup through delivery
 - [x] **DELIVERY-04**: Delivery is confirmed only when recipient provides OTP (sent via SMS at dispatch) and rider uploads proof-of-delivery photo
 - [x] **DELIVERY-05**: Rider earnings (delivery fee × 0.80) are credited on delivery confirmation; platform fee (20%) is retained
-- [ ] **DELIVERY-06**: Mobile app displays a Delivery tab for parcel request and a Rider tab for delivery assignments
+- [x] **DELIVERY-06**: Mobile app displays a Delivery tab for parcel request and a Rider tab for delivery assignments
 
 ### AI Concierge Upgrade (AI)
 
