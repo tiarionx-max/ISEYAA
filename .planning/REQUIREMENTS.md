@@ -54,11 +54,11 @@ These requirements are locked. They shipped and are confirmed working.
 
 ### Delivery Module (DELIVERY)
 
-- [ ] **DELIVERY-01**: User can request a parcel delivery by providing pickup address, dropoff address, item description, and estimated weight
+- [x] **DELIVERY-01**: User can request a parcel delivery by providing pickup address, dropoff address, item description, and estimated weight
 - [ ] **DELIVERY-02**: System assigns the nearest available delivery rider within 60 seconds; sender sees rider name, photo, and ETA
 - [ ] **DELIVERY-03**: Sender can track rider's live GPS position via WebSocket from pickup through delivery
 - [ ] **DELIVERY-04**: Delivery is confirmed only when recipient provides OTP (sent via SMS at dispatch) and rider uploads proof-of-delivery photo
-- [ ] **DELIVERY-05**: Rider earnings (delivery fee × 0.80) are credited on delivery confirmation; platform fee (20%) is retained
+- [x] **DELIVERY-05**: Rider earnings (delivery fee × 0.80) are credited on delivery confirmation; platform fee (20%) is retained
 - [ ] **DELIVERY-06**: Mobile app displays a Delivery tab for parcel request and a Rider tab for delivery assignments
 
 ### AI Concierge Upgrade (AI)

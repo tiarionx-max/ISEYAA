@@ -121,10 +121,10 @@ Plans:
 **Plans**: 8 plans
 Plans:
 **Wave 1**
-- [ ] 04-01-PLAN.md — Prisma schema (DeliveryRider + DeliveryOrder + DeliveryEvent + DeliveryOrderStatus enum) + expo-image-picker mobile dep
+- [x] 04-01-PLAN.md — Prisma schema (DeliveryRider + DeliveryOrder + DeliveryEvent + DeliveryOrderStatus enum) + expo-image-picker mobile dep
 
 **Wave 2** *(blocked on Wave 1)*
-- [ ] 04-02-PLAN.md — [BLOCKING] Prisma db push + delivery PlatformConfig seed (5 keys)
+- [x] 04-02-PLAN.md — [BLOCKING] Prisma db push + delivery PlatformConfig seed (5 keys)
 
 **Wave 3** *(blocked on Wave 2)*
 - [ ] 04-03-PLAN.md — DTOs (6 files) + RED test specs (TDD red step)
@@ -200,7 +200,7 @@ Plans:
 | 1. Sprint 1 Foundation | - | Complete | 2026-05-11 |
 | 2. Infrastructure Migration | 12/13 | In progress (02-06 human checkpoint pending) | - |
 | 3. Transport Module | 7/8 | In Progress (03-08 human checkpoint pending) |  |
-| 4. Delivery Module | 0/8 | Not started | - |
+| 4. Delivery Module | 2/8 | In Progress|  |
 | 5. AI Concierge + KYC | 0/TBD | Not started | - |
 | 6. QA, Security & Performance | 0/TBD | Not started | - |
 | 7. Deployment & Launch | 0/TBD | Not started | - |
