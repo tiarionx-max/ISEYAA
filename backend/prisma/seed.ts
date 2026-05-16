@@ -1291,7 +1291,31 @@ async function main() {
     }
   }
 
-  // ─── 4. Summary ────────────────────────────────────────────────────────
+  // ─── 4. Seed Delivery PlatformConfig ──────────────────────────────────────
+  console.log('\n📦 Seeding delivery PlatformConfig rows...');
+
+  const deliveryConfigs: Array<{ key: string; value: number }> = [
+    { key: 'delivery_platform_fee_pct', value: 20 },
+    { key: 'delivery_base_fee',         value: 300 },
+    { key: 'delivery_per_kg_rate',      value: 50 },
+    { key: 'delivery_match_radius_km',  value: 5 },
+    { key: 'delivery_otp_ttl_seconds',  value: 300 },
+  ];
+
+  for (const config of deliveryConfigs) {
+    try {
+      await prisma.platformConfig.upsert({
+        where:  { key: config.key },
+        update: { value: config.value },
+        create: { key: config.key, value: config.value, isPublic: false },
+      });
+      process.stdout.write(`  ✓ ${config.key} = ${config.value}\n`);
+    } catch (err) {
+      console.error(`  ✗ Failed to upsert ${config.key}:`, (err as Error).message);
+    }
+  }
+
+  // ─── 5. Summary ────────────────────────────────────────────────────────
   const lgaCount = await prisma.lGA.count();
   const attractionCount = await prisma.attraction.count();
   const platformConfigCount = await prisma.platformConfig.count();
