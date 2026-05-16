@@ -2,22 +2,44 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AiService } from '../ai.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
+import { VectorService } from '../../../common/services/vector.service';
 
-// Mock the Anthropic SDK entirely
-const mockStream = {
+// ── Mock helpers ──────────────────────────────────────────────────────────────
+
+function makeStream(stopReason: string, textChunks: string[] = [], toolUses: any[] = []) {
+  return {
+    [Symbol.asyncIterator]: async function* () {
+      for (const text of textChunks) {
+        yield { type: 'content_block_delta', delta: { type: 'text_delta', text } };
+      }
+    },
+    finalMessage: jest.fn().mockResolvedValue({
+      stop_reason: stopReason,
+      content: stopReason === 'tool_use'
+        ? toolUses
+        : [{ type: 'text', text: textChunks.join('') }],
+    }),
+  };
+}
+
+// Default stream for existing tests (itinerary)
+const mockItineraryStream = {
   [Symbol.asyncIterator]: async function* () {
     yield { type: 'content_block_delta', delta: { type: 'text_delta', text: '{"title":"Test Itinerary",' } };
     yield { type: 'content_block_delta', delta: { type: 'text_delta', text: '"overview":"Great trip","days":[],' } };
     yield { type: 'content_block_delta', delta: { type: 'text_delta', text: '"total_budget_estimate_ngn":50000,"tips":["Enjoy!"]}' } };
   },
+  finalMessage: jest.fn().mockResolvedValue({ stop_reason: 'end_turn', content: [] }),
 };
+
+let mockStreamFactory: () => any = () => mockItineraryStream;
 
 jest.mock('@anthropic-ai/sdk', () => {
   return {
     __esModule: true,
     default: jest.fn().mockImplementation(() => ({
       messages: {
-        stream: jest.fn().mockReturnValue(mockStream),
+        stream: jest.fn().mockImplementation(() => mockStreamFactory()),
         create: jest.fn().mockResolvedValue({
           content: [{ text: 'LGA intelligence answer.' }],
         }),
@@ -29,6 +51,9 @@ jest.mock('@anthropic-ai/sdk', () => {
 const mockPrisma = {
   lGA: {
     findFirst: jest.fn(),
+    findUnique: jest.fn(),
+  },
+  user: {
     findUnique: jest.fn(),
   },
   attraction: { findMany: jest.fn() },
@@ -43,6 +68,11 @@ const mockConfig = {
   }),
 };
 
+const mockVector = {
+  upsertInteraction: jest.fn().mockResolvedValue(undefined),
+  getPersonalisedContext: jest.fn().mockResolvedValue(''),
+};
+
 const LGA_STUB = {
   id: 'lga-1',
   name: 'Abeokuta South',
@@ -50,20 +80,28 @@ const LGA_STUB = {
   metadata: { history: 'Ancient Egba settlement.' },
 };
 
+const USER_STUB = { id: 'user-1', lgaId: 'lga-1' };
+
+// ── Test suite ────────────────────────────────────────────────────────────────
+
 describe('AiService', () => {
   let service: AiService;
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockStreamFactory = () => mockItineraryStream;
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AiService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: ConfigService, useValue: mockConfig },
+        { provide: VectorService, useValue: mockVector },
       ],
     }).compile();
     service = module.get<AiService>(AiService);
   });
+
+  // ── Existing tests (must stay passing) ──────────────────────────────────────
 
   describe('streamItinerary', () => {
     const dto = {
@@ -154,17 +192,122 @@ describe('AiService', () => {
     });
   });
 
-  describe('streamChat', () => {
-    it('writes SSE data and ends response', async () => {
+  // ── Legacy streamChat test (kept for regression) ──────────────────────────
+  // NOTE: streamChat is replaced by streamChatWithTools in this plan.
+  // This describe block tests streamChatWithTools using the same "write + end" shape.
+
+  describe('streamChatWithTools — basic SSE output', () => {
+    const makeSimpleRes = () => {
       const chunks: string[] = [];
-      const res = {
+      return {
         write: jest.fn((chunk: string) => chunks.push(chunk)),
         end: jest.fn(),
+        chunks,
+      };
+    };
+
+    it('writes [DONE] to res and calls res.end() on end_turn', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(USER_STUB);
+      mockStreamFactory = () =>
+        makeStream('end_turn', ['Hello from Ogun State!']);
+
+      const res = makeSimpleRes();
+      await service.streamChatWithTools('user-1', { messages: [{ role: 'user', content: 'Hi' }] } as any, res as any);
+
+      expect(res.end).toHaveBeenCalled();
+      expect(res.chunks.some((c: string) => c.includes('[DONE]'))).toBe(true);
+    });
+
+    it('calls vector.upsertInteraction exactly once after stream ends', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(USER_STUB);
+      mockStreamFactory = () => makeStream('end_turn', ['some response text']);
+
+      const res = makeSimpleRes();
+      await service.streamChatWithTools('user-1', { messages: [{ role: 'user', content: 'Hello?' }] } as any, res as any);
+
+      expect(mockVector.upsertInteraction).toHaveBeenCalledTimes(1);
+      expect(mockVector.upsertInteraction).toHaveBeenCalledWith('user-1', 'Hello?', expect.any(String));
+    });
+
+    it('calls vector.getPersonalisedContext with userId and last user message', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(USER_STUB);
+      mockStreamFactory = () => makeStream('end_turn', []);
+
+      const res = makeSimpleRes();
+      await service.streamChatWithTools(
+        'user-1',
+        { messages: [{ role: 'user', content: 'What is there to see?' }] } as any,
+        res as any,
+      );
+
+      expect(mockVector.getPersonalisedContext).toHaveBeenCalledWith('user-1', 'What is there to see?');
+    });
+  });
+
+  describe('streamChatWithTools — tool_use dispatch', () => {
+    const makeSimpleRes = () => {
+      const chunks: string[] = [];
+      return {
+        write: jest.fn((chunk: string) => chunks.push(chunk)),
+        end: jest.fn(),
+        chunks,
+      };
+    };
+
+    it('emits data:{tool:"get_attractions"} event and calls prisma.attraction.findMany on tool_use', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(USER_STUB);
+      mockPrisma.lGA.findFirst.mockResolvedValue(LGA_STUB);
+      mockPrisma.attraction.findMany.mockResolvedValue([
+        { id: 'a1', name: 'Olumo Rock', slug: 'olumo-rock', category: 'HISTORICAL', entryFee: 500, address: 'Abeokuta' },
+      ]);
+
+      // First call: tool_use, second call: end_turn
+      let callCount = 0;
+      mockStreamFactory = () => {
+        if (callCount === 0) {
+          callCount++;
+          return makeStream('tool_use', [], [
+            { type: 'tool_use', id: 'tu-1', name: 'get_attractions', input: { lgaSlug: 'abeokuta-south' } },
+          ]);
+        }
+        return makeStream('end_turn', ['Here are the attractions.']);
       };
 
-      await service.streamChat('user-1', 'Tell me about Olumo Rock', res as any);
+      const res = makeSimpleRes();
+      await service.streamChatWithTools(
+        'user-1',
+        { messages: [{ role: 'user', content: 'Show me attractions in Abeokuta' }] } as any,
+        res as any,
+      );
+
+      expect(mockPrisma.attraction.findMany).toHaveBeenCalled();
+      const toolEvent = res.chunks.find((c: string) => c.includes('"tool":"get_attractions"'));
+      expect(toolEvent).toBeDefined();
       expect(res.end).toHaveBeenCalled();
-      expect(chunks.some((c) => c.includes('"text"'))).toBe(true);
+    });
+  });
+
+  describe('getRecommendations', () => {
+    it('returns { context, suggestions: [] } and calls vector.getPersonalisedContext', async () => {
+      mockVector.getPersonalisedContext.mockResolvedValue('User likes historical sites');
+
+      const result = await service.getRecommendations('user-1', 'things to do in Abeokuta');
+
+      expect(result).toEqual({ context: 'User likes historical sites', suggestions: [] });
+      expect(mockVector.getPersonalisedContext).toHaveBeenCalledWith('user-1', 'things to do in Abeokuta');
+    });
+  });
+
+  describe('executeTool stubs', () => {
+    it('get_weather returns stub object with correct location', async () => {
+      // Access private method via type cast
+      const result = await (service as any).executeTool('get_weather', { location: 'Abeokuta' });
+      expect(result).toMatchObject({ temperatureC: 29, condition: 'partly cloudy', location: 'Abeokuta', stub: true });
+    });
+
+    it('get_ride_estimate returns stub object', async () => {
+      const result = await (service as any).executeTool('get_ride_estimate', { pickup: 'A', dropoff: 'B' });
+      expect(result).toMatchObject({ estimateNgn: 1500, stub: true });
     });
   });
 });
