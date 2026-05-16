@@ -398,6 +398,36 @@ export class DeliveryService {
     return { declined: true };
   }
 
+  // ── cancelOrder ───────────────────────────────────────────────────────────
+
+  async cancelOrder(orderId: string, userId: string): Promise<{ cancelled: true }> {
+    const order = await this.prisma.deliveryOrder.findUnique({ where: { id: orderId } });
+    if (!order) throw new NotFoundException('Delivery order not found');
+
+    const terminalStatuses = ['DELIVERED', 'CANCELLED'];
+    if (terminalStatuses.includes(order.status as string)) {
+      throw new BadRequestException(`Cannot cancel an order in status: ${order.status}`);
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.deliveryOrder.update({
+        where: { id: orderId },
+        data: { status: 'CANCELLED' as any, cancelReason: `Cancelled by user ${userId}` },
+      }),
+      this.prisma.deliveryEvent.create({
+        data: { orderId, event: 'ORDER_CANCELLED' },
+      }),
+    ]);
+
+    this.cancelMatchTimeout(orderId);
+
+    this.logger.log(`Order ${orderId} cancelled by userId=${userId}`);
+
+    this.gateway.server.to(`delivery:${orderId}`).emit('delivery:cancelled', { orderId });
+
+    return { cancelled: true };
+  }
+
   // ── collectParcel ─────────────────────────────────────────────────────────
 
   async collectParcel(orderId: string, riderUserId: string) {

@@ -93,7 +93,7 @@ export class DeliveryGateway implements OnGatewayConnection, OnGatewayDisconnect
   handleJoinRider(
     @ConnectedSocket() client: Socket,
   ): { joined: string } | { error: string } {
-    if (client.data.role !== 'DELIVERY_RIDER') {
+    if (client.data.role !== 'DRIVER') {
       return { error: 'forbidden' };
     }
     client.join(`rider:${client.data.userId}`);
