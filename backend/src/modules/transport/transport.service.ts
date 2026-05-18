@@ -236,14 +236,15 @@ export class TransportService {
       ) * 100,
     ) / 100;
 
-    const surgeMultiplier = await this.getSurgeMultiplier(query.pickupLat, query.pickupLng);
+    // H-12: pass vehicleType so surge demand is filtered per vehicle class
+    const surgeMultiplier = await this.getSurgeMultiplier(query.pickupLat, query.pickupLng, query.vehicleType);
 
     const totalFare = Math.round((baseFare + distanceKm * perKmFare) * surgeMultiplier * 100) / 100;
 
     return { baseFare, distanceKm, perKmFare, surgeMultiplier, totalFare };
   }
 
-  async getSurgeMultiplier(lat: number, lng: number): Promise<number> {
+  async getSurgeMultiplier(lat: number, lng: number, vehicleType?: string): Promise<number> {
     const [thresholdCfg, radiusCfg] = await Promise.all([
       this.prisma.platformConfig.findUnique({ where: { key: 'transport_surge_threshold' } }),
       this.prisma.platformConfig.findUnique({ where: { key: 'transport_match_radius_km' } }),
@@ -256,10 +257,12 @@ export class TransportService {
 
     const [nearbyDrivers, demand] = await Promise.all([
       this.redis.geosearch('drivers:online', lng, lat, radiusKm),
+      // H-12: filter demand by vehicleType so MINIBUS demand doesn't inflate BIKE fares
       this.prisma.trip.count({
         where: {
           status: { in: ['SEARCHING', 'MATCHED'] as any },
           requestedAt: { gte: fiveMinAgo },
+          ...(vehicleType && { vehicleType: vehicleType as any }),
         },
       }),
     ]);
@@ -341,27 +344,24 @@ export class TransportService {
       throw new ForbiddenException('Driver must be approved to accept trips');
     }
 
-    const trip = await this.prisma.trip.findFirst({ where: { id: tripId } });
-    if (!trip) throw new NotFoundException('Trip not found');
+    // Verify the trip exists before attempting atomic update
+    const tripExists = await this.prisma.trip.findFirst({ where: { id: tripId } });
+    if (!tripExists) throw new NotFoundException('Trip not found');
 
+    // H-02: atomic updateMany with WHERE status='SEARCHING' eliminates TOCTOU race
+    // where two drivers both pass the status check and both write their driverId.
     const now = new Date();
+    const updated = await this.prisma.trip.updateMany({
+      where: { id: tripId, status: 'SEARCHING' as any },
+      data: { driverId: driver.id, status: 'MATCHED' as any, matchedAt: now },
+    });
+    if (updated.count === 0) {
+      throw new BadRequestException('Trip already matched or expired');
+    }
 
-    await this.prisma.$transaction([
-      this.prisma.trip.update({
-        where: { id: tripId },
-        data: {
-          driverId: driver.id,
-          status: 'MATCHED' as any,
-          matchedAt: now,
-        },
-      }),
-      this.prisma.tripEvent.create({
-        data: {
-          tripId,
-          event: 'DRIVER_MATCHED',
-        },
-      }),
-    ]);
+    await this.prisma.tripEvent.create({
+      data: { tripId, event: 'DRIVER_MATCHED' },
+    });
 
     // Cancel match timeout
     this.cancelMatchTimeout(tripId);
@@ -482,10 +482,6 @@ export class TransportService {
     });
     if (!driver) throw new NotFoundException('Driver profile not found');
 
-    if (trip.status !== 'IN_PROGRESS') {
-      throw new BadRequestException(`Trip must be IN_PROGRESS to complete; current: ${trip.status}`);
-    }
-
     if (trip.driverId !== driver.id) {
       throw new ForbiddenException('You are not the assigned driver for this trip');
     }
@@ -503,9 +499,16 @@ export class TransportService {
     const ref = `ISY-DRV-${uuidv4().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
     const now = new Date();
 
-    await this.prisma.$transaction([
-      this.prisma.trip.update({
-        where: { id: tripId },
+    // H-10: use updateMany with WHERE status='IN_PROGRESS' and check count to prevent
+    // double-earnings if completeTrip is called twice (e.g. retry after partial failure).
+    // C-09: driver wallet credit runs inside the same interactive transaction so a crash
+    // between the trip update and the credit cannot leave the driver unpaid.
+    const driverWallet = await this.prisma.wallet.findFirst({ where: { userId: driverUserId } });
+
+    await this.prisma.$transaction(async (tx) => {
+      // H-10: atomic update — only succeeds if trip is still IN_PROGRESS
+      const result = await tx.trip.updateMany({
+        where: { id: tripId, status: 'IN_PROGRESS' as any },
         data: {
           status: 'COMPLETED' as any,
           completedAt: now,
@@ -513,24 +516,39 @@ export class TransportService {
           driverEarnings,
           ...(dto?.driverRating && { driverRating: dto.driverRating }),
         },
-      }),
-      this.prisma.tripEvent.create({
-        data: { tripId, event: 'TRIP_COMPLETED' },
-      }),
-    ]);
+      });
+      if (result.count === 0) {
+        throw new BadRequestException('Trip already completed or not in progress');
+      }
 
-    // Credit driver wallet — gateway='INTERNAL' for internal transfers
-    const driverWallet = await this.prisma.wallet.findFirst({ where: { userId: driverUserId } });
-    if (driverWallet) {
-      await this.walletService.creditWallet(
-        driverWallet.id,
-        driverEarnings,
-        ref,
-        `Trip earnings — ${tripId}`,
-        'transport',
-        'INTERNAL',
-      );
-    }
+      await tx.tripEvent.create({ data: { tripId, event: 'TRIP_COMPLETED' } });
+
+      // C-09: credit driver wallet within the same transaction with row-lock
+      if (driverWallet) {
+        await tx.$executeRaw`SELECT id FROM wallets WHERE id = ${driverWallet.id} FOR UPDATE`;
+        const lockedWallet = await tx.wallet.findUnique({ where: { id: driverWallet.id } });
+        if (lockedWallet) {
+          const balanceBefore = Number(lockedWallet.balance);
+          const balanceAfter = balanceBefore + driverEarnings;
+          await tx.wallet.update({ where: { id: driverWallet.id }, data: { balance: balanceAfter } });
+          await tx.transaction.create({
+            data: {
+              walletId: driverWallet.id,
+              type: 'CREDIT',
+              status: 'SUCCESS',
+              amount: driverEarnings,
+              currency: 'NGN',
+              reference: ref,
+              gateway: 'INTERNAL',
+              description: `Trip earnings — ${tripId}`,
+              balanceBefore,
+              balanceAfter,
+              metadata: { module: 'transport' },
+            },
+          });
+        }
+      }
+    });
 
     this.logger.log(`Trip ${tripId} completed — ₦${driverEarnings} credited to driver ${driverUserId}`);
 
