@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
+import { v4 as uuidv4 } from 'uuid';
 import EventSource from 'react-native-sse';
 import { Send, Bot, MapPin, Calendar, Home, Car, Cloud } from 'lucide-react-native';
 
@@ -42,10 +43,6 @@ type Message = {
   isError?: boolean;
 };
 
-// ── uuid helper ────────────────────────────────────────────────────────────────
-function uuid(): string {
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
-}
 
 function formatTime(ts: number): string {
   const d = new Date(ts);
@@ -275,7 +272,7 @@ export default function AiChatScreen() {
       }
       return [
         ...prev,
-        { id: uuid(), role: 'assistant', content: text, streaming: true, timestamp: Date.now() },
+        { id: uuidv4(), role: 'assistant', content: text, streaming: true, timestamp: Date.now() },
       ];
     });
   }, []);
@@ -295,7 +292,7 @@ export default function AiChatScreen() {
       return [
         ...prev,
         {
-          id: uuid(),
+          id: uuidv4(),
           role: 'assistant',
           content: '',
           streaming: true,
@@ -325,7 +322,7 @@ export default function AiChatScreen() {
     setMessages((prev) => [
       ...prev,
       {
-        id: uuid(),
+        id: uuidv4(),
         role: 'assistant',
         content: 'Something went wrong. Check your connection and try again.',
         timestamp: Date.now(),
@@ -342,25 +339,23 @@ export default function AiChatScreen() {
     if (!inputText.trim() || isStreaming) return;
 
     const userMessage: Message = {
-      id: uuid(),
+      id: uuidv4(),
       role: 'user',
       content: inputText.trim(),
       timestamp: Date.now(),
     };
+
+    // C-08: capture history BEFORE setMessages so payload uses the correct snapshot,
+    // not a stale closure value that may not yet include prior state updates.
+    const currentHistory = [...messages];
 
     setMessages((prev) => [...prev, userMessage]);
     setInputText('');
 
     const token = await SecureStore.getItemAsync('access_token');
 
-    setMessages((prev) => {
-      const history = [...prev];
-      // Append placeholder so onChunk can find an existing streaming bubble
-      return history;
-    });
-
     const payload = {
-      messages: [...messages, userMessage].map((m) => ({ role: m.role, content: m.content })),
+      messages: [...currentHistory, userMessage].map((m) => ({ role: m.role, content: m.content })),
     };
 
     setIsStreaming(true);
