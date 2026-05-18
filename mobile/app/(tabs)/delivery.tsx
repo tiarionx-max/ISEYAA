@@ -411,6 +411,13 @@ export default function DeliveryScreen() {
             <Text style={[styles.fareLabel, { marginLeft: 6 }]}>{itemDescription}</Text>
           </View>
 
+          {/* H-07: warn that map dropoff pin is approximate (geocoding not yet integrated) */}
+          <View style={styles.approxWarning}>
+            <Text style={styles.approxWarningText}>
+              Map shows approximate dropoff location. Rider will navigate to the address you entered.
+            </Text>
+          </View>
+
           <TouchableOpacity style={styles.ctaButton} onPress={handleConfirmDelivery} disabled={loading}>
             {loading ? <ActivityIndicator color={JUNGLE} /> : <Text style={styles.ctaText}>Confirm Delivery</Text>}
           </TouchableOpacity>
@@ -518,10 +525,10 @@ export default function DeliveryScreen() {
             ))}
           </View>
 
-          {/* OTP display box — sender shares this code with recipient */}
+          {/* M-07: OTP is sent directly to recipient's phone via SMS — do not display on sender's screen */}
           <View style={styles.otpBox}>
-            <Text style={styles.otpLabel}>Share this code with recipient</Text>
-            <Text style={styles.otpValue}>{order?.recipientOtp ?? '------'}</Text>
+            <Text style={styles.otpLabel}>Delivery OTP</Text>
+            <Text style={styles.otpSentText}>OTP sent to recipient's phone</Text>
           </View>
 
           {/* Cancel text button */}
@@ -738,6 +745,16 @@ const styles = StyleSheet.create({
   },
   otpLabel: { fontSize: 13, color: 'rgba(255,255,255,0.5)', marginBottom: 6 },
   otpValue: { fontSize: 24, fontWeight: 'bold', color: GOLD, letterSpacing: 8 },
+  otpSentText: { fontSize: 14, color: 'rgba(255,255,255,0.6)', fontStyle: 'italic' },
+  approxWarning: {
+    backgroundColor: 'rgba(200,150,42,0.1)',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(200,150,42,0.25)',
+  },
+  approxWarningText: { fontSize: 12, color: 'rgba(255,255,255,0.5)', textAlign: 'center' },
   cancelTextButton: { alignItems: 'center', marginTop: 8 },
   cancelTextButtonLabel: { fontSize: 13, color: 'rgba(220,38,38,0.8)' },
   completeContent: { padding: 20, alignItems: 'center', paddingBottom: 40 },
