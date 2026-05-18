@@ -17,6 +17,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import MapView, { Marker } from 'react-native-maps';
 import * as SecureStore from 'expo-secure-store';
+import * as FileSystem from 'expo-file-system';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import { io, Socket } from 'socket.io-client';
@@ -86,6 +87,8 @@ export default function RiderScreen() {
   const [isOnline, setIsOnline] = useState(false);
   const [riderStatus, setRiderStatus] = useState<RiderStatusType>(null);
   const [currentOrder, setCurrentOrder] = useState<DeliveryRequest | null>(null);
+  // H-08: useRef mirror so GPS watcher callback always reads latest order without stale closure
+  const currentOrderRef = useRef<DeliveryRequest | null>(null);
   const [collected, setCollected] = useState(false);
   const [myLat, setMyLat] = useState<number | null>(null);
   const [myLng, setMyLng] = useState<number | null>(null);
@@ -139,6 +142,7 @@ export default function RiderScreen() {
       });
 
       socket.on('delivery:request', (req: DeliveryRequest) => {
+        currentOrderRef.current = req;
         setCurrentOrder(req);
         startRespondCountdown();
         setScreen('incoming');
@@ -167,6 +171,7 @@ export default function RiderScreen() {
           clearInterval(respondTimerRef.current!);
           respondTimerRef.current = null;
           setScreen('home');
+          currentOrderRef.current = null;
           setCurrentOrder(null);
           return 0;
         }
@@ -198,15 +203,15 @@ export default function RiderScreen() {
         const { latitude, longitude } = loc.coords;
         setMyLat(latitude);
         setMyLng(longitude);
-        // Emit rider location to WebSocket (during active delivery)
-        if (socketRef.current && currentOrder) {
-          socketRef.current.emit('rider:location', { deliveryId: currentOrder.id, lat: latitude, lng: longitude });
+        // H-08: use currentOrderRef (not state) to avoid stale closure in long-running watcher
+        if (socketRef.current && currentOrderRef.current) {
+          socketRef.current.emit('rider:location', { deliveryId: currentOrderRef.current.id, lat: latitude, lng: longitude });
         }
       }
     );
     locationWatchRef.current = sub;
     return true;
-  }, [currentOrder]);
+  }, []);
 
   const stopLocationWatch = useCallback(() => {
     locationWatchRef.current?.remove();
@@ -273,6 +278,7 @@ export default function RiderScreen() {
     } finally {
       setLoading(false);
       stopRespondCountdown();
+      currentOrderRef.current = null;
       setCurrentOrder(null);
       setScreen('home');
     }
@@ -391,10 +397,10 @@ export default function RiderScreen() {
           onPress: async () => {
             setLoading(true);
             try {
-              // Convert photo URI to base64
-              const r = await fetch(photoUri);
-              const ab = await r.arrayBuffer();
-              const b64 = Buffer.from(ab).toString('base64');
+              // L-07: use expo-file-system (avoids fetch+Buffer which can crash on large files in RN)
+              const b64 = await FileSystem.readAsStringAsync(photoUri, {
+                encoding: FileSystem.EncodingType.Base64,
+              });
 
               const { data } = await api.patch(`/delivery/orders/${currentOrder.id}/complete`, {
                 proofPhotoBase64: b64,
@@ -405,6 +411,7 @@ export default function RiderScreen() {
               queryClient.invalidateQueries({ queryKey: ['rider-earnings'] });
               setTimeout(() => {
                 setCreditBanner('');
+                currentOrderRef.current = null;
                 setCurrentOrder(null);
                 setCollected(false);
                 setOtpCells(['', '', '', '', '', '']);
