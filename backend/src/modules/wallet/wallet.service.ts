@@ -7,6 +7,7 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { RedisService } from '../../redis/redis.service';
 import { PaystackService } from '../../common/services/paystack.service';
 
 // Defensive fallback for phone-only tier — used only when PlatformConfig rows are absent.
@@ -25,6 +26,7 @@ export class WalletService {
   constructor(
     private prisma: PrismaService,
     private paystack: PaystackService,
+    private redis: RedisService,
   ) {}
 
   // ── Private: async KYC tier resolution from PlatformConfig ────────────────
@@ -218,16 +220,29 @@ export class WalletService {
       );
     }
 
+    // C-02: idempotency lock — prevents two concurrent topup requests from both passing
+    // the daily-limit check at the same millisecond (TOCTOU race).
+    const idempKey = `topup:lock:${userId}`;
+    const acquired = await this.redis.setNx(idempKey, '1', 30); // 30s lock
+    if (!acquired) {
+      throw new BadRequestException('A top-up is already in progress — please wait');
+    }
+
     const reference = `ISY-FUND-${uuidv4().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
 
-    const payment = await this.paystack.initiatePayment({
-      email: dto.email,
-      amountKobo: dto.amount * 100,
-      reference,
-      metadata: { type: 'wallet_topup', walletId: wallet.id, userId, module: 'wallet' },
-    });
+    try {
+      const payment = await this.paystack.initiatePayment({
+        email: dto.email,
+        amountKobo: dto.amount * 100,
+        reference,
+        metadata: { type: 'wallet_topup', walletId: wallet.id, userId, module: 'wallet' },
+      });
 
-    return { reference, authorizationUrl: payment.authorizationUrl };
+      return { reference, authorizationUrl: payment.authorizationUrl };
+    } finally {
+      // Release the lock regardless of success or failure
+      await this.redis.del(idempKey);
+    }
   }
 
   // ── creditWallet ───────────────────────────────────────────────────────────
@@ -240,15 +255,21 @@ export class WalletService {
     module = 'wallet',
     gateway: 'PAYSTACK' | 'FLUTTERWAVE' | 'INTERNAL' = 'PAYSTACK',
   ) {
-    const wallet = await this.prisma.wallet.findUnique({ where: { id: walletId } });
-    if (!wallet) throw new NotFoundException('Wallet not found');
+    // C-01: use interactive transaction with SELECT FOR UPDATE row-lock to prevent
+    // concurrent race condition where two requests read the same balance and both write
+    // an inflated value (double-credit). CLAUDE.md requires SELECT FOR UPDATE on all
+    // wallet mutations.
+    await this.prisma.$transaction(async (tx) => {
+      // Lock the wallet row to prevent concurrent updates
+      await tx.$executeRaw`SELECT id FROM wallets WHERE id = ${walletId} FOR UPDATE`;
+      const locked = await tx.wallet.findUnique({ where: { id: walletId } });
+      if (!locked) throw new NotFoundException('Wallet not found');
 
-    const balanceBefore = Number(wallet.balance);
-    const balanceAfter = balanceBefore + amount;
+      const balanceBefore = Number(locked.balance);
+      const balanceAfter = balanceBefore + amount;
 
-    await this.prisma.$transaction([
-      this.prisma.wallet.update({ where: { id: walletId }, data: { balance: balanceAfter } }),
-      this.prisma.transaction.create({
+      await tx.wallet.update({ where: { id: walletId }, data: { balance: balanceAfter } });
+      await tx.transaction.create({
         data: {
           walletId,
           type: 'CREDIT',
@@ -262,7 +283,7 @@ export class WalletService {
           balanceAfter,
           metadata: { module },
         },
-      }),
-    ]);
+      });
+    });
   }
 }

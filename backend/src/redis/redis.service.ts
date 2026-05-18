@@ -122,4 +122,17 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     if (!this.client || !this.enabled) return;
     try { await this.client.zrem(key, member); } catch { /* silent */ }
   }
+
+  /**
+   * Atomic SET NX EX — sets the key only if it does not exist, with a TTL.
+   * Returns true if the lock was acquired, false if it already existed.
+   * If Redis is unavailable, returns true (optimistic — allow the operation).
+   */
+  async setNx(key: string, value: string, ttlSeconds: number): Promise<boolean> {
+    if (!this.client || !this.enabled) return true; // optimistic fallback
+    try {
+      const result = await this.client.set(key, value, 'EX', ttlSeconds, 'NX');
+      return result === 'OK';
+    } catch { return true; } // optimistic fallback on error
+  }
 }
