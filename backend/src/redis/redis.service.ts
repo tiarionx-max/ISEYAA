@@ -22,11 +22,12 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       maxRetriesPerRequest: 0,
       enableOfflineQueue: false,
       retryStrategy: (times) => {
+        // H-03: do NOT set enabled=false here — retryStrategy returning null causes ioredis
+        // to stop reconnecting entirely, so the 'connect' event never fires and enabled would
+        // never be re-set to true. Instead, disable on 'error' and re-enable on 'connect'.
         if (times >= 3) {
-          if (!this.enabled) return null; // already disabled
-          this.enabled = false;
-          this.logger.warn('Redis unreachable after 3 attempts — disabling Redis (local dev mode)');
-          return null;
+          this.logger.warn('Redis unreachable after 3 attempts — entering degraded mode');
+          return null; // stop retrying
         }
         return Math.min(times * 500, 2000);
       },
@@ -38,10 +39,14 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         errorLogged = true;
         this.logger.error('Redis error', err.message ?? err);
       }
+      // H-03: disable on error so all operations return safe stub values
+      this.enabled = false;
     });
     this.client.on('connect', () => {
+      // H-03: re-enable on successful (re)connect
       this.enabled = true;
       errorLogged = false;
+      this.logger.log('Redis connected');
     });
   }
 
@@ -57,7 +62,9 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   async set(key: string, value: string, ttlSeconds?: number): Promise<void> {
     if (!this.client || !this.enabled) return;
     try {
-      if (ttlSeconds) {
+      // L-10: ttlSeconds=0 is falsy — use explicit null/positive check to prevent
+      // setting a permanent key when caller passes 0 (e.g. already-expired JWT TTL)
+      if (ttlSeconds != null && ttlSeconds > 0) {
         await this.client.set(key, value, 'EX', ttlSeconds);
       } else {
         await this.client.set(key, value);
