@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { Cron, CronExpression, SchedulerRegistry } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
+import { randomInt } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
@@ -100,7 +101,13 @@ export class DeliveryService {
         data: { status: 'EXPIRED' as any },
       });
 
-      this.gateway.server.to(`delivery:${orderId}`).emit('delivery:expired');
+      // L-05: null guard on gateway.server — gateway may not be initialised at expiry time
+      if (!this.gateway?.server) return;
+
+      // H-04: emit to both the order room AND the sender's user room to handle the
+      // race where the client joins the room after the expiry event fires
+      this.gateway.server.to(`delivery:${orderId}`).emit('delivery:expired', { orderId });
+      this.gateway.server.to(`user:${order.senderId}`).emit('delivery:expired', { orderId });
       this.logger.log(`DeliveryOrder ${orderId} expired — no rider matched within 60s`);
     } catch (err) {
       this.logger.error(`expireUnmatchedOrder failed for order ${orderId}`, err.message);
@@ -272,7 +279,8 @@ export class DeliveryService {
     });
 
     // 4. Generate 6-digit OTP and store in Redis with 300s TTL
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    // C-06: use crypto.randomInt (CSPRNG) instead of Math.random()
+    const otp = randomInt(100000, 1000000).toString();
     await this.redis.set(DELIVERY_OTP(order.id), otp, 300);
 
     // 5. Send OTP via Termii to recipientPhone (NOT sender's phone)
@@ -339,27 +347,20 @@ export class DeliveryService {
       throw new ForbiddenException('Rider must be approved to accept orders');
     }
 
-    const order = await this.prisma.deliveryOrder.findFirst({ where: { id: orderId } });
-    if (!order) throw new NotFoundException('Delivery order not found');
-
+    // H-01: atomic updateMany with WHERE status='SEARCHING' prevents TOCTOU race
+    // where two riders both pass the status check and both write their riderId.
     const now = new Date();
+    const updated = await this.prisma.deliveryOrder.updateMany({
+      where: { id: orderId, status: 'SEARCHING' as any },
+      data: { riderId: rider.id, status: 'MATCHED' as any, matchedAt: now },
+    });
+    if (updated.count === 0) {
+      throw new BadRequestException('Order already matched or expired');
+    }
 
-    await this.prisma.$transaction([
-      this.prisma.deliveryOrder.update({
-        where: { id: orderId },
-        data: {
-          riderId: rider.id,
-          status: 'MATCHED' as any,
-          matchedAt: now,
-        },
-      }),
-      this.prisma.deliveryEvent.create({
-        data: {
-          orderId,
-          event: 'RIDER_MATCHED',
-        },
-      }),
-    ]);
+    await this.prisma.deliveryEvent.create({
+      data: { orderId, event: 'RIDER_MATCHED' },
+    });
 
     // Cancel match timeout
     this.cancelMatchTimeout(orderId);
@@ -466,13 +467,26 @@ export class DeliveryService {
     const order = await this.prisma.deliveryOrder.findUnique({ where: { id: orderId } });
     if (!order) throw new NotFoundException('Delivery order not found');
 
+    // C-03: brute-force limit — mirrors auth.service.ts OTP lockout pattern
+    const attemptsKey = `delivery:otp:attempts:${orderId}`;
+    const attemptsStr = await this.redis.get(attemptsKey);
+    const attempts = parseInt(attemptsStr ?? '0', 10);
+    if (attempts >= 5) {
+      throw new BadRequestException('Too many OTP attempts — order is locked. Contact support.');
+    }
+
     const storedOtp = await this.redis.get(DELIVERY_OTP(orderId));
     if (storedOtp === null) {
       throw new BadRequestException('OTP expired. Request a new delivery to get a fresh code.');
     }
     if (storedOtp !== dto.otp) {
-      throw new BadRequestException('Incorrect OTP. Ask the recipient to check their SMS.');
+      // Increment attempt counter with same TTL as OTP (300s)
+      await this.redis.set(attemptsKey, String(attempts + 1), 300);
+      throw new BadRequestException(`Incorrect OTP. Ask the recipient to check their SMS. ${5 - attempts - 1} attempt(s) remaining.`);
     }
+
+    // Correct OTP — clear attempt counter
+    await this.redis.del(attemptsKey);
 
     // Mark OTP as verified in DB — DO NOT delete Redis key (completeDelivery checks otpVerifiedAt field)
     await this.prisma.deliveryOrder.update({
@@ -493,6 +507,11 @@ export class DeliveryService {
 
     const order = await this.prisma.deliveryOrder.findUnique({ where: { id: orderId } });
     if (!order) throw new NotFoundException('Delivery order not found');
+
+    // H-11: check order is in a completable status — prevents earning on cancelled orders
+    if (!(['COLLECTING', 'IN_TRANSIT', 'PICKED_UP'] as string[]).includes(order.status as string)) {
+      throw new BadRequestException(`Order cannot be completed in status: ${order.status}`);
+    }
 
     // DUAL-GATE: OTP must be verified before completing delivery
     if (!order.otpVerifiedAt) {
@@ -525,8 +544,13 @@ export class DeliveryService {
     const ref = `ISY-RDR-${uuidv4().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
     const now = new Date();
 
-    await this.prisma.$transaction([
-      this.prisma.deliveryOrder.update({
+    // C-09: run order status update AND wallet credit inside the same interactive
+    // transaction so a crash between the two cannot leave the order DELIVERED but
+    // the rider unpaid (or paid twice on retry).
+    const riderWallet = await this.prisma.wallet.findFirst({ where: { userId: riderUserId } });
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.deliveryOrder.update({
         where: { id: orderId },
         data: {
           status: 'DELIVERED' as any,
@@ -536,24 +560,38 @@ export class DeliveryService {
           riderEarnings,
           ...(dto.senderRating && { senderRating: dto.senderRating }),
         },
-      }),
-      this.prisma.deliveryEvent.create({
+      });
+      await tx.deliveryEvent.create({
         data: { orderId, event: 'DELIVERY_COMPLETED' },
-      }),
-    ]);
+      });
 
-    // Credit rider wallet — gateway='INTERNAL' for internal transfers
-    const riderWallet = await this.prisma.wallet.findFirst({ where: { userId: riderUserId } });
-    if (riderWallet) {
-      await this.walletService.creditWallet(
-        riderWallet.id,
-        riderEarnings,
-        ref,
-        `Delivery earnings — ${orderId}`,
-        'delivery',
-        'INTERNAL',
-      );
-    }
+      // Credit rider wallet within the same transaction (SELECT FOR UPDATE inside creditWallet
+      // handles the row-lock, but since we are already inside a transaction, use raw update here)
+      if (riderWallet) {
+        await tx.$executeRaw`SELECT id FROM wallets WHERE id = ${riderWallet.id} FOR UPDATE`;
+        const lockedWallet = await tx.wallet.findUnique({ where: { id: riderWallet.id } });
+        if (lockedWallet) {
+          const balanceBefore = Number(lockedWallet.balance);
+          const balanceAfter = balanceBefore + riderEarnings;
+          await tx.wallet.update({ where: { id: riderWallet.id }, data: { balance: balanceAfter } });
+          await tx.transaction.create({
+            data: {
+              walletId: riderWallet.id,
+              type: 'CREDIT',
+              status: 'SUCCESS',
+              amount: riderEarnings,
+              currency: 'NGN',
+              reference: ref,
+              gateway: 'INTERNAL',
+              description: `Delivery earnings — ${orderId}`,
+              balanceBefore,
+              balanceAfter,
+              metadata: { module: 'delivery' },
+            },
+          });
+        }
+      }
+    });
 
     this.logger.log(`Order ${orderId} completed — ₦${riderEarnings} credited to rider ${riderUserId}`);
 
