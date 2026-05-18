@@ -9,6 +9,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
+import { randomInt } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
@@ -55,6 +56,11 @@ export class AuthService {
       throw new BadRequestException('NDPA consent is required to create an account');
     }
 
+    // L-01: enforce that client cannot self-register privileged roles
+    if (dto.role && !REGISTERABLE_ROLES.includes(dto.role as UserRole)) {
+      throw new BadRequestException(`Role ${dto.role} cannot be self-registered`);
+    }
+
     const existing = await this.prisma.user.findFirst({
       where: { OR: [{ email: dto.email }, { phone: dto.phone }] },
     });
@@ -93,14 +99,15 @@ export class AuthService {
     });
     if (!user || !user.passwordHash) throw new UnauthorizedException('Invalid credentials');
 
+    // C-10: status check BEFORE bcrypt.compare to avoid leaking that password was valid
+    if (user.status === 'SUSPENDED' || user.status === 'DELETED') {
+      throw new UnauthorizedException('Account is not accessible');
+    }
+
     const valid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!valid) {
       await this.audit(user.id, 'LOGIN_FAILED', 'User', user.id, ip, ua);
       throw new UnauthorizedException('Invalid credentials');
-    }
-
-    if (user.status === 'SUSPENDED' || user.status === 'DELETED') {
-      throw new UnauthorizedException('Account is not accessible');
     }
 
     await this.audit(user.id, 'LOGIN_SUCCESS', 'User', user.id, ip, ua);
@@ -126,7 +133,7 @@ export class AuthService {
       throw new ForbiddenException('Too many OTP attempts. Try again in 15 minutes');
     }
 
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otp = randomInt(100000, 1000000).toString();
     await this.redis.set(`otp:${dto.phone}`, `${otp}:0`, OTP_TTL);
 
     await this.sendTermii(dto.phone, otp);
@@ -159,8 +166,9 @@ export class AuthService {
 
     await this.redis.del(`otp:${dto.phone}`);
 
-    await this.prisma.user.updateMany({
-      where: { phone: dto.phone, deletedAt: null },
+    // L-06: use update (unique constraint on phone) instead of updateMany
+    await this.prisma.user.update({
+      where: { phone: dto.phone },
       data: { status: 'ACTIVE' },
     });
 
