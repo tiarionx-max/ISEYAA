@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
 import { Response } from 'express';
@@ -95,16 +95,18 @@ export class AiService {
 
   // ── System prompt ──────────────────────────────────────────────────────────
 
-  private buildSystemPrompt(personalisedContext: string): string {
+  private buildSystemPrompt(personalisedContext: string, lgaId?: string | null): string {
     const base = `You are ISEYAA Assistant — the AI companion of Ogun State's digital super-platform.
 You help citizens discover tourism attractions, book events and stays, navigate government services,
 and understand opportunities across Ogun State's 20 LGAs.
 Be concise, helpful, and culturally aware. Respond in the user's language (English or Yoruba).`;
 
+    const lgaContext = lgaId ? `\nUSER'S HOME LGA ID: ${lgaId} — prefer results from this LGA when relevant.` : '';
+
     if (personalisedContext && personalisedContext.length > 0) {
-      return `${base}\n\nPERSONALISED CONTEXT FROM PRIOR INTERACTIONS:\n${personalisedContext}`;
+      return `${base}${lgaContext}\n\nPERSONALISED CONTEXT FROM PRIOR INTERACTIONS:\n${personalisedContext}`;
     }
-    return base;
+    return `${base}${lgaContext}`;
   }
 
   // ── Tool executors ─────────────────────────────────────────────────────────
@@ -236,9 +238,17 @@ Be concise, helpful, and culturally aware. Respond in the user's language (Engli
   // ── streamChatWithTools ───────────────────────────────────────────────────
 
   async streamChatWithTools(userId: string, dto: ChatDto, res: Response) {
+    // L-03: stub guard — fail fast if ANTHROPIC_API_KEY is absent (dev/CI without key)
+    if (!this.config.get('ANTHROPIC_API_KEY')) {
+      this.logger.warn('ANTHROPIC_API_KEY not set — AI stream unavailable (stub mode)');
+      res.write(`data: ${JSON.stringify({ error: 'AI service not configured' })}\n\n`);
+      res.end();
+      return;
+    }
+
     try {
       // ── 1. Load user context ──────────────────────────────────────────────
-      await this.prisma.user.findUnique({
+      const user = await this.prisma.user.findUnique({
         where: { id: userId, deletedAt: null },
         select: { id: true, lgaId: true },
       });
@@ -249,7 +259,7 @@ Be concise, helpful, and culturally aware. Respond in the user's language (Engli
       const personalised = await this.vector.getPersonalisedContext(userId, lastUserMsg);
 
       // ── 3. Build system prompt ────────────────────────────────────────────
-      const systemPrompt = this.buildSystemPrompt(personalised);
+      const systemPrompt = this.buildSystemPrompt(personalised, user?.lgaId);
 
       // ── 4. Agentic loop ───────────────────────────────────────────────────
       const messageHistory = dto.messages.map((m) => ({
@@ -504,6 +514,8 @@ Respond with ONLY valid JSON matching this exact structure — no markdown, no e
 
   async getLgaIntelligence(lgaId: string, question: string) {
     const lga = await this.prisma.lGA.findUnique({ where: { id: lgaId } });
+    // M-06: throw 404 instead of silently substituting lgaId as the name
+    if (!lga) throw new NotFoundException(`LGA not found: ${lgaId}`);
 
     const response = await this.anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
@@ -511,7 +523,7 @@ Respond with ONLY valid JSON matching this exact structure — no markdown, no e
       messages: [
         {
           role: 'user',
-          content: `LGA: ${lga?.name ?? lgaId}\nQuestion: ${question}\nProvide a concise intelligence brief for Ogun State officials.`,
+          content: `LGA: ${lga.name}\nQuestion: ${question}\nProvide a concise intelligence brief for Ogun State officials.`,
         },
       ],
     });
