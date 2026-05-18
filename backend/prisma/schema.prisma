@@ -215,6 +215,8 @@ model User {
   deliveryRiderProfile DeliveryRider?
   senderOrders         DeliveryOrder[]      @relation("SenderOrders")
 
+  @@index([deletedAt])
+  @@index([status])
   @@map("users")
 }
 
@@ -381,6 +383,7 @@ model Booking {
   updatedAt        DateTime      @updatedAt
   deletedAt        DateTime?
 
+  @@index([propertyId, status, escrowReleasedAt])
   @@map("bookings")
 }
 
@@ -694,6 +697,8 @@ model Trip {
 
   events TripEvent[]
 
+  @@index([status, requestedAt])
+  @@index([driverId, status])
   @@map("trips")
 }
 
@@ -764,6 +769,8 @@ model DeliveryOrder {
 
   events DeliveryEvent[]
 
+  @@index([status, createdAt])
+  @@index([riderId, status])
   @@map("delivery_orders")
 }
 
