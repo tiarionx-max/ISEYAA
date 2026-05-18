@@ -1,7 +1,8 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as crypto from 'crypto';
+import { timingSafeEqual } from 'crypto';
 import { WalletService } from '../wallet/wallet.service';
 import { KafkaService } from '../../kafka/kafka.service';
 
@@ -17,9 +18,13 @@ export class WebhooksService {
   ) {}
 
   async handlePaystack(signature: string, body: any, rawBody?: Buffer) {
+    // C-11: rawBody is required — JSON.stringify of parsed body does not reproduce
+    // original byte order and HMAC will never match. Throw 400 if absent.
+    if (!rawBody) {
+      throw new BadRequestException('Missing raw body — rawBody middleware not configured');
+    }
     const secret = this.config.get<string>('PAYSTACK_WEBHOOK_SECRET', '');
-    const payload = rawBody ?? Buffer.from(JSON.stringify(body));
-    const expected = crypto.createHmac('sha512', secret).update(payload).digest('hex');
+    const expected = crypto.createHmac('sha512', secret).update(rawBody).digest('hex');
 
     if (signature !== expected) {
       throw new UnauthorizedException('Invalid Paystack signature');
@@ -59,7 +64,8 @@ export class WebhooksService {
           );
           break;
 
-        default:
+        // M-08: explicit case prevents silent fallback to default for future type mismatches
+        case 'wallet_topup':
           if (metadata?.walletId) {
             await this.walletService.creditWallet(
               metadata.walletId,
@@ -69,8 +75,12 @@ export class WebhooksService {
             );
             this.logger.log(`Wallet ${metadata.walletId} credited ₦${amount / 100} — ref: ${reference}`);
           } else {
-            this.logger.warn(`Unhandled charge.success — ref: ${reference}, type: ${type}`);
+            this.logger.warn(`wallet_topup missing walletId — ref: ${reference}`);
           }
+          break;
+
+        default:
+          this.logger.warn(`Unhandled charge.success — ref: ${reference}, type: ${type}`);
       }
     }
 
@@ -79,8 +89,21 @@ export class WebhooksService {
 
   async handleFlutterwave(hash: string, body: any) {
     const secret = this.config.get<string>('FLUTTERWAVE_SECRET_KEY', '');
-    if (hash !== secret) {
-      throw new UnauthorizedException('Invalid Flutterwave hash');
+    // C-04: Flutterwave's verif-hash scheme sends the literal secret key as the header.
+    // Use timingSafeEqual to prevent timing oracle attacks. Note: this scheme is inherently
+    // less secure than HMAC (the full key is transmitted on every webhook call).
+    if (!hash) {
+      throw new UnauthorizedException('Missing Flutterwave signature');
+    }
+    try {
+      const hashBuf = Buffer.from(hash);
+      const secretBuf = Buffer.from(secret);
+      if (hashBuf.length !== secretBuf.length || !timingSafeEqual(hashBuf, secretBuf)) {
+        throw new UnauthorizedException('Invalid Flutterwave signature');
+      }
+    } catch (err: any) {
+      if (err?.status === 401) throw err;
+      throw new UnauthorizedException('Invalid Flutterwave signature');
     }
 
     if (body.event === 'charge.completed' && body.data?.status === 'successful') {
