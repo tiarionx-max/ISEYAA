@@ -84,14 +84,15 @@ export class KycService {
       throw new ConflictException('BVN already verified for this account');
     }
 
+    // C-07: check for duplicate BVN BEFORE the external Paystack call to avoid wasting
+    // expensive API credits on a BVN that is already registered to another account.
+    await this.ensureNoDuplicateHash('bvnHash', bvn, userId);
+
     // Paystack BVN verification (throws BadRequestException on failure)
     const verification = await this.paystack.resolveBvn(bvn);
     if (!verification.verified) {
       throw new BadRequestException('BVN verification failed');
     }
-
-    // Check for duplicate BVN across other accounts
-    await this.ensureNoDuplicateHash('bvnHash', bvn, userId);
 
     // Encrypt for storage (AES-256-GCM ciphertext) + bcrypt hash for duplicate lookup
     const ciphertext = this.encryption.encrypt(bvn);
@@ -144,14 +145,14 @@ export class KycService {
       throw new ConflictException('NIN already verified for this account');
     }
 
+    // C-07: check for duplicate NIN BEFORE the external Dojah call
+    await this.ensureNoDuplicateHash('ninHash', nin, userId);
+
     // Dojah NIN verification (throws BadRequestException on failure)
     const verification = await this.dojah.verifyNin(nin);
     if (!verification.verified) {
       throw new BadRequestException('NIN verification failed');
     }
-
-    // Check for duplicate NIN across other accounts
-    await this.ensureNoDuplicateHash('ninHash', nin, userId);
 
     // Encrypt for storage (AES-256-GCM ciphertext) + bcrypt hash for duplicate lookup
     const ciphertext = this.encryption.encrypt(nin);
@@ -197,12 +198,20 @@ export class KycService {
   async completeLiveness(userId: string): Promise<KycTierResult> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId, deletedAt: null },
-      select: { id: true, kycLivenessVerifiedAt: true },
+      select: { id: true, kycBvnVerifiedAt: true, kycNinVerifiedAt: true, kycLivenessVerifiedAt: true },
     });
     if (!user) throw new NotFoundException('User not found');
 
     if (user.kycLivenessVerifiedAt) {
       throw new ConflictException('Liveness verification already completed');
+    }
+
+    // L-09: enforce tier progression — Tier 3 requires Tier 1 (BVN) and Tier 2 (NIN)
+    if (!user.kycBvnVerifiedAt) {
+      throw new BadRequestException('BVN verification (Tier 1) required before liveness check');
+    }
+    if (!user.kycNinVerifiedAt) {
+      throw new BadRequestException('NIN verification (Tier 2) required before liveness check');
     }
 
     await this.prisma.user.update({
