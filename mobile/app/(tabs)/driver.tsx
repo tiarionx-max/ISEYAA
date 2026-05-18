@@ -74,6 +74,8 @@ export default function DriverScreen() {
   const [isOnline, setIsOnline] = useState(false);
   const [driverStatus, setDriverStatus] = useState<DriverStatusType>(null);
   const [currentTrip, setCurrentTrip] = useState<IncomingTrip | null>(null);
+  // H-09: useRef mirror so GPS watcher callback always reads latest trip without stale closure
+  const currentTripRef = useRef<IncomingTrip | null>(null);
   const [arrived, setArrived] = useState(false);
   const [myLat, setMyLat] = useState<number | null>(null);
   const [myLng, setMyLng] = useState<number | null>(null);
@@ -117,6 +119,7 @@ export default function DriverScreen() {
       });
 
       socket.on('ride:request', (req: IncomingTrip) => {
+        currentTripRef.current = req;
         setCurrentTrip(req);
         startRespondCountdown();
         setScreen('incoming');
@@ -155,6 +158,7 @@ export default function DriverScreen() {
           clearInterval(respondTimerRef.current!);
           respondTimerRef.current = null;
           setScreen('home');
+          currentTripRef.current = null;
           setCurrentTrip(null);
           return 0;
         }
@@ -186,15 +190,15 @@ export default function DriverScreen() {
         const { latitude, longitude } = loc.coords;
         setMyLat(latitude);
         setMyLng(longitude);
-        // Emit driver location to WebSocket (during active trip)
-        if (socketRef.current && currentTrip) {
-          socketRef.current.emit('driver:location', { tripId: currentTrip.id, lat: latitude, lng: longitude });
+        // H-09: use currentTripRef (not state) to avoid stale closure in long-running watcher
+        if (socketRef.current && currentTripRef.current) {
+          socketRef.current.emit('driver:location', { tripId: currentTripRef.current.id, lat: latitude, lng: longitude });
         }
       }
     );
     locationWatchRef.current = sub;
     return true;
-  }, [currentTrip]);
+  }, []);
 
   const stopLocationWatch = useCallback(() => {
     locationWatchRef.current?.remove();
@@ -261,6 +265,7 @@ export default function DriverScreen() {
     } finally {
       setLoading(false);
       stopRespondCountdown();
+      currentTripRef.current = null;
       setCurrentTrip(null);
       setScreen('home');
     }
@@ -301,6 +306,7 @@ export default function DriverScreen() {
       queryClient.invalidateQueries({ queryKey: ['driver-earnings'] });
       setTimeout(() => {
         setCreditBanner('');
+        currentTripRef.current = null;
         setCurrentTrip(null);
         setArrived(false);
         setScreen('earnings');
