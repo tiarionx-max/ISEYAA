@@ -158,6 +158,38 @@ describe('StaysService', () => {
     });
   });
 
+  // ── uploadPropertyImage ────────────────────────────────────────────────────
+
+  describe('uploadPropertyImage', () => {
+    const mockFile = { buffer: Buffer.from('img'), mimetype: 'image/jpeg', size: 1024 } as any;
+
+    it('stores .webp key and passes image/webp content type to s3', async () => {
+      mockPrisma.property.findFirst.mockResolvedValue(mockProperty);
+      mockImage.resizeEventCover.mockResolvedValue({ buffer: Buffer.from('webp'), contentType: 'image/webp' });
+      mockS3.upload.mockResolvedValue('https://cdn.example.com/properties/prop-001/img.webp');
+
+      const result = await service.uploadPropertyImage(PROP_ID, HOST_ID, mockFile);
+
+      expect(mockImage.resizeEventCover).toHaveBeenCalledWith(mockFile.buffer);
+      expect(mockS3.upload).toHaveBeenCalledWith(
+        expect.stringMatching(/^properties\/.*\.webp$/),
+        expect.any(Buffer),
+        'image/webp',
+      );
+      expect(result.url).toContain('.webp');
+    });
+
+    it('throws NotFoundException when property not found', async () => {
+      mockPrisma.property.findFirst.mockResolvedValue(null);
+      await expect(service.uploadPropertyImage('bad', HOST_ID, mockFile)).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws ForbiddenException when caller is not the host', async () => {
+      mockPrisma.property.findFirst.mockResolvedValue(mockProperty);
+      await expect(service.uploadPropertyImage(PROP_ID, 'wrong-host', mockFile)).rejects.toThrow(ForbiddenException);
+    });
+  });
+
   // ── getAvailability ────────────────────────────────────────────────────────
 
   describe('getAvailability', () => {
