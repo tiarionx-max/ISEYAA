@@ -3,6 +3,7 @@
     "name": "ISEYAA",
     "slug": "iseyaa",
     "version": "1.0.0",
+    "jsEngine": "hermes",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -39,7 +40,8 @@
           "photosPermission": "ISEYAA needs access to your photos to upload proof of delivery.",
           "cameraPermission": "ISEYAA needs camera access to capture proof of delivery."
         }
-      ]
+      ],
+      ["@sentry/react-native/expo", { "organization": "iseyaa", "project": "iseyaa-mobile" }]
     ],
     "scheme": "iseyaa",
     "platforms": ["ios", "android", "web"],
