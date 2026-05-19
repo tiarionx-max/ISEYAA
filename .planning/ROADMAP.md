@@ -209,8 +209,8 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1)*
 - [ ] 06-03-PLAN.md � Cross-user isolation test suites (wallet, stays, marketplace) + EXPLAIN ANALYZE audit script
-- [ ] 06-04-PLAN.md � k6 HTTP load test scripts (QA-01) + Artillery Socket.IO GPS stress scripts (QA-02)
-- [ ] 06-05-PLAN.md � Mobile: Hermes jsEngine + Sentry React Native SDK + Atlas bundle script
+- [x] 06-04-PLAN.md � k6 HTTP load test scripts (QA-01) + Artillery Socket.IO GPS stress scripts (QA-02)
+- [x] 06-05-PLAN.md � Mobile: Hermes jsEngine + Sentry React Native SDK + Atlas bundle script
 
 **Wave 6** *(blocked on all preceding waves)*
 - [ ] 06-06-PLAN.md � Human verification checkpoint: QA-01 through QA-07 all confirmed PASS
