@@ -239,6 +239,13 @@ export class MarketplaceService implements OnModuleInit {
         data: { status: 'PROCESSING' },
       });
 
+      for (const item of order.orderItems) {
+        await this.prisma.product.update({
+          where: { id: item.productId },
+          data: { stock: { decrement: item.quantity } },
+        });
+      }
+
       await this.notifyOrderUpdate(order.id, 'PROCESSING');
     } catch (err) {
       this.logger.error(`handleOrderPayment failed for ref ${payload.reference}`, err.message);

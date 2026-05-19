@@ -278,11 +278,12 @@ export class StaysService implements OnModuleInit {
 
   @Cron(CronExpression.EVERY_HOUR)
   async releaseEscrow(): Promise<void> {
+    // Escrow releases 24 h after checkOut — not checkIn — to give host time to report issues
     const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
     const dueBookings = await this.prisma.booking.findMany({
       where: {
-        checkIn: { lt: cutoff },
+        checkOut: { lt: cutoff },
         status: { in: ['CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT'] as any },
         escrowReleasedAt: null,
         deletedAt: null,
