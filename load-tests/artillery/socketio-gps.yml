@@ -1,0 +1,42 @@
+# Run: artillery run --env BASE_URL=https://staging.railway.app load-tests/artillery/socketio-gps.yml
+# Prereq: npm install -g artillery@2.0.31
+# Note: if Artillery reports connections opened but NestJS shows no "Client connected:" log,
+#   the bundled Socket.IO engine may be v2. Install: npm install -g artillery-engine-socketio-v3
+#   and change engines: to { socketio-v3: {} }
+# QA-02 target: 500 concurrent connections for 10 minutes with zero drops
+
+config:
+  target: "https://iseyaa-api.railway.app"
+  engines:
+    socketio: {}
+  phases:
+    - duration: 60
+      arrivalRate: 5
+      name: "Ramp up to 300 connections"
+    - duration: 540
+      arrivalRate: 2
+      name: "Hold at ~500 connections (10 min total)"
+  processor: "./processor.js"
+  socketio:
+    auth:
+      token: "{{ token }}"
+
+before:
+  flow:
+    - function: "injectToken"
+
+scenarios:
+  - name: "GPS Driver Tracking — 10 min sustained"
+    engine: "socketio"
+    flow:
+      - emit:
+          channel: "join:driver"
+      - loop:
+          - emit:
+              channel: "driver:location"
+              data:
+                tripId: "{{ tripId }}"
+                lat: 6.889
+                lng: 3.721
+          - think: 2
+        count: 300
