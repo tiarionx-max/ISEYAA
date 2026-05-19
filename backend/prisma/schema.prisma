@@ -330,6 +330,8 @@ model Ticket {
   updatedAt    DateTime     @updatedAt
   deletedAt    DateTime?
 
+  @@index([userId])
+  @@index([ticketTypeId])
   @@map("tickets")
 }
 
@@ -384,6 +386,7 @@ model Booking {
   deletedAt        DateTime?
 
   @@index([propertyId, status, escrowReleasedAt])
+  @@index([userId])
   @@map("bookings")
 }
 
@@ -449,6 +452,8 @@ model Order {
 
   orderItems OrderItem[]
 
+  @@index([userId])
+  @@index([vendorId])
   @@map("orders")
 }
 
@@ -466,6 +471,8 @@ model OrderItem {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
+  @@index([orderId])
+  @@index([productId])
   @@map("order_items")
 }
 
@@ -567,6 +574,7 @@ model Transaction {
   updatedAt     DateTime          @updatedAt
   deletedAt     DateTime?
 
+  @@index([walletId])
   @@map("transactions")
 }
 
@@ -599,6 +607,8 @@ model AuditLog {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
+  @@index([userId])
+  @@index([createdAt])
   @@map("audit_logs")
 }
 
@@ -699,6 +709,7 @@ model Trip {
 
   @@index([status, requestedAt])
   @@index([driverId, status])
+  @@index([riderId])
   @@map("trips")
 }
 
