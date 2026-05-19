@@ -15,10 +15,11 @@ export class ImageService {
     }
   }
 
-  async resizeEventCover(buffer: Buffer): Promise<Buffer> {
-    return sharp(buffer)
+  async resizeEventCover(buffer: Buffer): Promise<{ buffer: Buffer; contentType: string }> {
+    const optimized = await sharp(buffer)
       .resize(1200, 630, { fit: 'cover', position: 'centre' })
-      .jpeg({ quality: 85 })
+      .webp({ quality: 85 })
       .toBuffer();
+    return { buffer: optimized, contentType: 'image/webp' };
   }
 }

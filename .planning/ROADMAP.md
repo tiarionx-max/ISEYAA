@@ -203,17 +203,17 @@ Plans:
   5. Mobile cold start on 3G is confirmed below 3 seconds; crash-free rate exceeds 99.5% over a 48-hour test period
 **Plans**: 6 plans
 Plans:
-**Wave 1** *(no dependencies — runs immediately)*
-- [ ] 06-01-PLAN.md — Bug fixes: admin v.category SQL, escrow checkOut cutoff, marketplace stock decrement, webhook rawBody verification
-- [ ] 06-02-PLAN.md — FK index migration (9 indexes) + WebP image pipeline (ImageService + 2 callers)
+**Wave 1** *(no dependencies ï¿½ runs immediately)*
+- [x] 06-01-PLAN.md ï¿½ Bug fixes: admin v.category SQL, escrow checkOut cutoff, marketplace stock decrement, webhook rawBody verification
+- [ ] 06-02-PLAN.md ï¿½ FK index migration (9 indexes) + WebP image pipeline (ImageService + 2 callers)
 
 **Wave 2** *(blocked on Wave 1)*
-- [ ] 06-03-PLAN.md — Cross-user isolation test suites (wallet, stays, marketplace) + EXPLAIN ANALYZE audit script
-- [ ] 06-04-PLAN.md — k6 HTTP load test scripts (QA-01) + Artillery Socket.IO GPS stress scripts (QA-02)
-- [ ] 06-05-PLAN.md — Mobile: Hermes jsEngine + Sentry React Native SDK + Atlas bundle script
+- [ ] 06-03-PLAN.md ï¿½ Cross-user isolation test suites (wallet, stays, marketplace) + EXPLAIN ANALYZE audit script
+- [ ] 06-04-PLAN.md ï¿½ k6 HTTP load test scripts (QA-01) + Artillery Socket.IO GPS stress scripts (QA-02)
+- [ ] 06-05-PLAN.md ï¿½ Mobile: Hermes jsEngine + Sentry React Native SDK + Atlas bundle script
 
 **Wave 6** *(blocked on all preceding waves)*
-- [ ] 06-06-PLAN.md — Human verification checkpoint: QA-01 through QA-07 all confirmed PASS
+- [ ] 06-06-PLAN.md ï¿½ Human verification checkpoint: QA-01 through QA-07 all confirmed PASS
 
 **Cross-cutting constraints:**
 - All 270+ existing tests continue to pass after every plan

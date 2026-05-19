@@ -124,9 +124,9 @@ export class StaysService implements OnModuleInit {
     if (property.hostId !== hostId) throw new ForbiddenException('Not your property');
 
     this.imageService.validateEventImage(file);
-    const resized = await this.imageService.resizeEventCover(file.buffer);
-    const key = `properties/${id}/${uuidv4()}.jpg`;
-    const url = await this.s3.upload(key, resized, 'image/jpeg');
+    const { buffer: resized, contentType } = await this.imageService.resizeEventCover(file.buffer);
+    const key = `properties/${id}/${uuidv4()}.webp`;
+    const url = await this.s3.upload(key, resized, contentType);
 
     await this.prisma.property.update({
       where: { id },

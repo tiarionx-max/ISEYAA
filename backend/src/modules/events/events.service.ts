@@ -139,9 +139,9 @@ export class EventsService implements OnModuleInit {
     if (event.organizerId !== organizerId) throw new ForbiddenException('Not your event');
 
     this.imageService.validateEventImage(file);
-    const resized = await this.imageService.resizeEventCover(file.buffer);
-    const key = `events/${id}/${uuidv4()}.jpg`;
-    const url = await this.s3.upload(key, resized, 'image/jpeg');
+    const { buffer: resized, contentType } = await this.imageService.resizeEventCover(file.buffer);
+    const key = `events/${id}/${uuidv4()}.webp`;
+    const url = await this.s3.upload(key, resized, contentType);
 
     await this.prisma.event.update({
       where: { id },
