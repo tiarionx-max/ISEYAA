@@ -48,7 +48,7 @@ export class AdminService {
   // ── Revenue ────────────────────────────────────────────────────────────────
 
   async getRevenue() {
-    const [govtLevyResult, byLga, byCategory, byMonth] = await Promise.all([
+    const [govtLevyResult, byLga, byVendorStatus, byMonth] = await Promise.all([
       // Total govt levy collected
       this.prisma.order.aggregate({
         where: { deletedAt: null, status: { not: 'CANCELLED' } },
@@ -66,13 +66,13 @@ export class AdminService {
         ORDER BY total DESC
       `,
 
-      // Breakdown by vendor category
-      this.prisma.$queryRaw<{ category: string; total: number }[]>`
-        SELECT v.category, COALESCE(SUM(o."govtLevy"), 0) AS total
+      // Breakdown by vendor status (PENDING | ACTIVE | SUSPENDED)
+      this.prisma.$queryRaw<{ status: string; total: number }[]>`
+        SELECT v.status, COALESCE(SUM(o."govtLevy"), 0) AS total
         FROM orders o
         JOIN vendors v ON o."vendorId" = v.id
         WHERE o."deletedAt" IS NULL AND o.status != 'CANCELLED'
-        GROUP BY v.category
+        GROUP BY v.status
         ORDER BY total DESC
       `,
 
@@ -92,7 +92,7 @@ export class AdminService {
     return {
       govt_levy_total: Number(govtLevyResult._sum.govtLevy ?? 0),
       by_lga: byLga.map(r => ({ ...r, total: Number(r.total) })),
-      by_category: byCategory.map(r => ({ ...r, total: Number(r.total) })),
+      by_vendor_status: byVendorStatus.map(r => ({ ...r, total: Number(r.total) })),
       by_month: byMonth.map(r => ({ ...r, total: Number(r.total) })),
     };
   }

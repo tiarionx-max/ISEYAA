@@ -72,7 +72,7 @@ describe('AdminService', () => {
       mockPrisma.order.aggregate.mockResolvedValue({ _sum: { govtLevy: 150000 } });
       mockPrisma.$queryRaw
         .mockResolvedValueOnce([{ lgaId: 'lga-1', lgaName: 'Abeokuta', total: '80000' }])
-        .mockResolvedValueOnce([{ category: 'FOOD', total: '40000' }])
+        .mockResolvedValueOnce([{ status: 'ACTIVE', total: '40000' }])
         .mockResolvedValueOnce([{ month: '2026-04', total: '150000' }]);
 
       const result = await service.getRevenue();
@@ -80,7 +80,7 @@ describe('AdminService', () => {
       expect(result.govt_levy_total).toBe(150000);
       expect(result.by_lga[0].lgaName).toBe('Abeokuta');
       expect(result.by_lga[0].total).toBe(80000);
-      expect(result.by_category[0].category).toBe('FOOD');
+      expect(result.by_vendor_status[0].status).toBe('ACTIVE');
       expect(result.by_month[0].month).toBe('2026-04');
     });
   });
