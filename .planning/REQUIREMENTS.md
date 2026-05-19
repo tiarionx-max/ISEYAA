@@ -88,8 +88,8 @@ These requirements are locked. They shipped and are confirmed working.
 - [ ] **QA-02**: 500 concurrent WebSocket connections (transport GPS tracking) sustain for 10 minutes with zero drops
 - [x] **QA-03**: RLS test suite confirms user A cannot read user B's wallet, bookings, orders, or personal data
 - [x] **QA-04**: OWASP ZAP scan on staging returns zero critical findings on wallet, KYC, and auth endpoints
-- [ ] **QA-05**: All hot database queries have EXPLAIN ANALYZE output confirming no sequential scans; indexes added where missing
-- [ ] **QA-06**: All images served via Cloudflare R2 are WebP-optimized; largest-contentful-paint < 2.5s on 3G
+- [x] **QA-05**: All hot database queries have EXPLAIN ANALYZE output confirming no sequential scans; indexes added where missing
+- [x] **QA-06**: All images served via Cloudflare R2 are WebP-optimized; largest-contentful-paint < 2.5s on 3G
 - [ ] **QA-07**: App cold start time < 3s on a 3G connection; crash-free rate > 99.5%
 
 ### Deployment & Launch (LAUNCH)

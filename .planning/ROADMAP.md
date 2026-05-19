@@ -205,7 +205,7 @@ Plans:
 Plans:
 **Wave 1** *(no dependencies � runs immediately)*
 - [x] 06-01-PLAN.md � Bug fixes: admin v.category SQL, escrow checkOut cutoff, marketplace stock decrement, webhook rawBody verification
-- [ ] 06-02-PLAN.md � FK index migration (9 indexes) + WebP image pipeline (ImageService + 2 callers)
+- [x] 06-02-PLAN.md � FK index migration (9 indexes) + WebP image pipeline (ImageService + 2 callers)
 
 **Wave 2** *(blocked on Wave 1)*
 - [ ] 06-03-PLAN.md � Cross-user isolation test suites (wallet, stays, marketplace) + EXPLAIN ANALYZE audit script
@@ -246,5 +246,5 @@ Plans:
 | 3. Transport Module | 7/8 | In Progress (03-08 human checkpoint pending) |  |
 | 4. Delivery Module | 8/8 | In progress (04-08 human checkpoint deferred) | - |
 | 5. AI Concierge + KYC | 6/7 | In progress (05-07 human checkpoint deferred) | - |
-| 6. QA, Security & Performance | 0/6 | Not started | - |
+| 6. QA, Security & Performance | 2/6 | In Progress|  |
 | 7. Deployment & Launch | 0/TBD | Not started | - |
