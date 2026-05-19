@@ -201,7 +201,25 @@ Plans:
   3. OWASP ZAP scan on staging returns zero critical findings on wallet, KYC, and auth endpoints; RLS test suite confirms user A cannot access user B's data
   4. EXPLAIN ANALYZE output for all hot queries shows index scans only â€” no sequential scans remain; all images served as WebP via Cloudflare R2 with LCP below 2.5s on 3G
   5. Mobile cold start on 3G is confirmed below 3 seconds; crash-free rate exceeds 99.5% over a 48-hour test period
-**Plans**: TBD
+**Plans**: 6 plans
+Plans:
+**Wave 1** *(no dependencies — runs immediately)*
+- [ ] 06-01-PLAN.md — Bug fixes: admin v.category SQL, escrow checkOut cutoff, marketplace stock decrement, webhook rawBody verification
+- [ ] 06-02-PLAN.md — FK index migration (9 indexes) + WebP image pipeline (ImageService + 2 callers)
+
+**Wave 2** *(blocked on Wave 1)*
+- [ ] 06-03-PLAN.md — Cross-user isolation test suites (wallet, stays, marketplace) + EXPLAIN ANALYZE audit script
+- [ ] 06-04-PLAN.md — k6 HTTP load test scripts (QA-01) + Artillery Socket.IO GPS stress scripts (QA-02)
+- [ ] 06-05-PLAN.md — Mobile: Hermes jsEngine + Sentry React Native SDK + Atlas bundle script
+
+**Wave 6** *(blocked on all preceding waves)*
+- [ ] 06-06-PLAN.md — Human verification checkpoint: QA-01 through QA-07 all confirmed PASS
+
+**Cross-cutting constraints:**
+- All 270+ existing tests continue to pass after every plan
+- ZAP scan runs only against staging (never production)
+- k6 and Artillery target staging URL by default (__ENV.BASE_URL)
+- Neon PgBouncer pooling must be enabled before 10K VU k6 run
 **UI hint**: no
 
 ### Phase 7: Deployment & Launch
@@ -228,5 +246,5 @@ Plans:
 | 3. Transport Module | 7/8 | In Progress (03-08 human checkpoint pending) |  |
 | 4. Delivery Module | 8/8 | In progress (04-08 human checkpoint deferred) | - |
 | 5. AI Concierge + KYC | 6/7 | In progress (05-07 human checkpoint deferred) | - |
-| 6. QA, Security & Performance | 0/TBD | Not started | - |
+| 6. QA, Security & Performance | 0/6 | Not started | - |
 | 7. Deployment & Launch | 0/TBD | Not started | - |
