@@ -232,7 +232,25 @@ Plans:
   3. iOS build is submitted to App Store under 40MB and Android APK to Play Store under 30MB; TestFlight has 50+ active testers with crash-free rate above 99.5%
   4. Grafana Cloud dashboards show all live KPIs; Sentry alerts fire correctly for error rate spikes; rollback to the previous Railway deployment completes in under 5 minutes
   5. 48-hour invite-only soft launch in Abeokuta runs with error rate below 0.5%, confirming the public launch trigger is met
-**Plans**: TBD
+**Plans**: 5 plans
+Plans:
+**Wave 1** *(no dependencies — runs immediately)*
+- [x] 07-01-PLAN.md — EAS build config (eas.json, expo-dev-client, build scripts, app.json projectId)
+
+**Wave 2** *(blocked on Wave 1)*
+- [ ] 07-02-PLAN.md — Production backend: CORS hardening, Swagger gate, Railway env var checklist
+
+**Wave 3** *(blocked on Wave 2)*
+- [ ] 07-03-PLAN.md — Monitoring: Grafana dashboard JSON + Sentry alert runbook + Railway rollback procedure
+- [ ] 07-04-PLAN.md — App store prep: buildNumber, versionCode, privacyManifests, submission checklist
+
+**Wave 4** *(blocked on all preceding waves)*
+- [ ] 07-05-PLAN.md — Human verification checkpoint: 10-step production launch gate (LAUNCH-01 through LAUNCH-08)
+
+**Cross-cutting constraints:**
+- Development build (07-01) is the fastest path for the operator to test on their mobile device
+- All backend changes must pass the existing test suite before merging
+- Real-money E2E test (LAUNCH-03) requires Paystack LIVE keys — document clearly in MANUAL-ACTIONS.md
 **UI hint**: no
 
 ## Progress
@@ -247,4 +265,4 @@ Plans:
 | 4. Delivery Module | 8/8 | In progress (04-08 human checkpoint deferred) | - |
 | 5. AI Concierge + KYC | 6/7 | In progress (05-07 human checkpoint deferred) | - |
 | 6. QA, Security & Performance | 5/6 | In Progress|  |
-| 7. Deployment & Launch | 0/TBD | Not started | - |
+| 7. Deployment & Launch | 1/5 | In Progress|  |
