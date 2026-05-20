@@ -27,8 +27,12 @@ async function bootstrap() {
   app.use(helmet());
   app.use(compression());
 
+  const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+    : ['http://localhost:3000', 'http://localhost:19006'];
+
   app.enableCors({
-    origin: config.get<string>('ALLOWED_ORIGINS', '*').split(','),
+    origin: allowedOrigins,
     credentials: true,
   });
 
@@ -38,7 +42,7 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api/v1');
 
-  if (config.get('APP_ENV') !== 'production') {
+  if (process.env.NODE_ENV !== 'production') {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('ISEYAA API')
       .setDescription('Ogun State Digital Super-Platform — REST API')
@@ -51,7 +55,7 @@ async function bootstrap() {
   const port = config.get<number>('PORT', 3001);
   await app.listen(port);
   console.log(`ISEYAA backend running on http://localhost:${port}/api/v1`);
-  if (config.get('APP_ENV') !== 'production') {
+  if (process.env.NODE_ENV !== 'production') {
     console.log(`Swagger docs at http://localhost:${port}/api/docs`);
   }
 }
