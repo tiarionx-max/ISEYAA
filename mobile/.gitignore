@@ -59,4 +59,7 @@ web-build/
 dist/
 
 expo-env.d.ts
+
+# Google Play service account credentials — never commit
+google-service-account.json
 # @end expo-cli
