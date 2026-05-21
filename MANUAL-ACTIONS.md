@@ -649,3 +649,42 @@ npm run submit:android
 - iOS: increment `expo.ios.buildNumber` (e.g., "2", "3")
 - Android: increment `expo.android.versionCode` (e.g., 2, 3)
 - Both: update `expo.version` for user-visible version (e.g., "1.0.1")
+
+---
+
+### LAUNCH-07: 5-Minute Rollback Procedure
+
+Railway automatically keeps the last 10 deployment images. To rollback:
+
+1. Open Railway dashboard → your service → "Deployments" tab
+2. Find the previous successful deployment (green checkmark)
+3. Click the three-dot menu (⋮) → "Redeploy"
+4. Railway spins up the previous image (typically 2-3 minutes)
+5. Verify: `curl https://iseyaa-api.up.railway.app/api/v1/health`
+
+**To test the rollback procedure before soft launch (required for LAUNCH-07):**
+1. Make a small intentional break (e.g., add `process.exit(1)` to health endpoint, push)
+2. Confirm the deployment fails or health check returns 500
+3. Follow steps 1-5 above
+4. Time the full cycle — must complete in under 5 minutes
+5. Revert: remove the `process.exit(1)` line, push again
+
+**Database caveat:** Railway rollback only reverts the container image — NOT the database schema.
+- Before any deployment that includes a migration: create a Neon branch snapshot
+- To revert a migration: `npx prisma migrate resolve --rolled-back <migration-name>` on the Neon branch
+
+---
+
+### LAUNCH-06: Grafana + Sentry Monitoring Setup
+
+See `monitoring/grafana-dashboard.json` and `monitoring/sentry-alerts.md` for complete setup.
+
+**Quick Grafana setup:**
+1. Grafana Cloud → Dashboards → New → Import → Upload JSON file
+2. Select `monitoring/grafana-dashboard.json`
+3. Choose your Prometheus data source
+4. Dashboard is live — shows RPS, P95 latency, error rate, WebSocket connections, wallet transactions
+
+**Verify monitoring works:**
+- Grafana: make an API request, confirm RPS panel updates within 30 seconds
+- Sentry: use "Send Test Notification" on each alert rule (see `monitoring/sentry-alerts.md`)
