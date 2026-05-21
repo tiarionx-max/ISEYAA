@@ -1,18 +1,22 @@
 import { Tabs } from 'expo-router';
-import { View, StyleSheet, Platform } from 'react-native';
-import { Map, Calendar, Home, Music, User, Car, Truck, Package, Bike } from 'lucide-react-native';
+import { View, Platform, StyleSheet } from 'react-native';
+import { Globe, Grid2x2, CreditCard, Sparkles, User } from 'lucide-react-native';
+import {
+  SURFACE_DEEP,
+  GOLD,
+  GOLD_DIM,
+  INK_FAINT,
+} from '../../lib/tokens';
 
-const MIDNIGHT = '#0A1515';
-const GOLD = '#C8962A';
-const GOLD_LIGHT = '#E0AA42';
-const INACTIVE = 'rgba(255,255,255,0.28)';
-
-function TabIcon({ icon: Icon, focused, label }: { icon: any; focused: boolean; label: string }) {
-  return (
-    <View style={[styles.iconWrapper, focused && styles.iconWrapperActive]}>
-      <Icon size={22} color={focused ? GOLD_LIGHT : INACTIVE} strokeWidth={focused ? 2 : 1.5} />
-    </View>
-  );
+function TabIcon({ icon: Icon, focused }: { icon: any; focused: boolean }) {
+  if (focused) {
+    return (
+      <View style={styles.iconWrapperActive}>
+        <Icon size={24} color={GOLD} strokeWidth={2} />
+      </View>
+    );
+  }
+  return <Icon size={24} color={INK_FAINT} strokeWidth={1.5} />;
 }
 
 export default function TabsLayout() {
@@ -20,15 +24,14 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: GOLD_LIGHT,
-        tabBarInactiveTintColor: INACTIVE,
+        tabBarActiveTintColor: GOLD,
+        tabBarInactiveTintColor: INK_FAINT,
         tabBarStyle: {
-          backgroundColor: MIDNIGHT,
+          backgroundColor: SURFACE_DEEP,
           borderTopWidth: 0,
           height: Platform.OS === 'ios' ? 80 : 68,
           paddingTop: 8,
-          paddingBottom: Platform.OS === 'ios' ? 24 : 10,
-          // Native shadow for depth on Android
+          paddingBottom: Platform.OS === 'ios' ? 24 : 8,
           elevation: 24,
           shadowColor: '#000',
           shadowOffset: { width: 0, height: -4 },
@@ -36,89 +39,69 @@ export default function TabsLayout() {
           shadowRadius: 12,
         },
         tabBarLabelStyle: {
-          fontSize: 10,
-          fontWeight: '600',
+          fontSize: 12,
+          fontWeight: '700',
           letterSpacing: 0.2,
           marginTop: 1,
         },
       }}
     >
+      {/* ── Visible tabs (5) ─────────────────────────── */}
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ focused }) => <TabIcon icon={Map} focused={focused} label="Explore" />,
+          title: 'Discover',
+          tabBarIcon: ({ focused }) => <TabIcon icon={Globe} focused={focused} />,
         }}
       />
       <Tabs.Screen
-        name="events"
+        name="book"
         options={{
-          title: 'Events',
-          tabBarIcon: ({ focused }) => <TabIcon icon={Calendar} focused={focused} label="Events" />,
+          title: 'Book',
+          tabBarIcon: ({ focused }) => <TabIcon icon={Grid2x2} focused={focused} />,
         }}
       />
       <Tabs.Screen
-        name="stays"
+        name="wallet"
         options={{
-          title: 'Stays',
-          tabBarIcon: ({ focused }) => <TabIcon icon={Home} focused={focused} label="Stays" />,
+          title: 'Wallet',
+          tabBarIcon: ({ focused }) => <TabIcon icon={CreditCard} focused={focused} />,
         }}
       />
       <Tabs.Screen
-        name="studio"
+        name="concierge"
         options={{
-          title: 'Studio',
-          tabBarIcon: ({ focused }) => <TabIcon icon={Music} focused={focused} label="Studio" />,
-        }}
-      />
-      <Tabs.Screen
-        name="transport"
-        options={{
-          title: 'Transport',
-          tabBarIcon: ({ focused }) => <TabIcon icon={Car} focused={focused} label="Transport" />,
-        }}
-      />
-      <Tabs.Screen
-        name="driver"
-        options={{
-          title: 'Driver',
-          tabBarIcon: ({ focused }) => <TabIcon icon={Truck} focused={focused} label="Driver" />,
-        }}
-      />
-      <Tabs.Screen
-        name="delivery"
-        options={{
-          title: 'Delivery',
-          tabBarIcon: ({ focused }) => <TabIcon icon={Package} focused={focused} label="Delivery" />,
-        }}
-      />
-      <Tabs.Screen
-        name="rider"
-        options={{
-          title: 'Rider',
-          tabBarIcon: ({ focused }) => <TabIcon icon={Bike} focused={focused} label="Rider" />,
+          title: 'Concierge',
+          tabBarIcon: ({ focused }) => <TabIcon icon={Sparkles} focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Profile',
-          tabBarIcon: ({ focused }) => <TabIcon icon={User} focused={focused} label="Profile" />,
+          title: 'You',
+          tabBarIcon: ({ focused }) => <TabIcon icon={User} focused={focused} />,
         }}
       />
+
+      {/* ── Hidden legacy tabs (href: null removes from tab bar) ── */}
+      <Tabs.Screen name="events" options={{ href: null }} />
+      <Tabs.Screen name="stays" options={{ href: null }} />
+      <Tabs.Screen name="studio" options={{ href: null }} />
+      <Tabs.Screen name="transport" options={{ href: null }} />
+      <Tabs.Screen name="delivery" options={{ href: null }} />
+      <Tabs.Screen name="driver" options={{ href: null }} />
+      <Tabs.Screen name="rider" options={{ href: null }} />
     </Tabs>
   );
 }
 
 const styles = StyleSheet.create({
-  iconWrapper: {
+  iconWrapperActive: {
     width: 40,
     height: 30,
+    borderRadius: 10,
+    backgroundColor: GOLD_DIM,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 10,
-  },
-  iconWrapperActive: {
-    backgroundColor: 'rgba(200,150,42,0.15)',
   },
 });
