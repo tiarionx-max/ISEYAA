@@ -17,12 +17,17 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { v4 as uuidv4 } from 'uuid';
 import EventSource from 'react-native-sse';
-import { Send, Bot, MapPin, Calendar, Home, Car, Cloud } from 'lucide-react-native';
+import { Send, Bot, MapPin, Calendar, Home, Car, Cloud, Sparkles } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import {
+  SURFACE_DEEP, SURFACE_MID, SURFACE_RAISED,
+  FOREST, FOREST_LIGHT, GOLD, GOLD_DIM, GOLD_LINE, CREAM,
+  INK, INK_MID, INK_FAINT, BORDER, BORDER_MID,
+  ERROR, SUCCESS,
+  RADIUS_SM, RADIUS_MD, RADIUS_LG,
+  FONT_DISPLAY, FONT_MONO,
+} from '../lib/tokens';
 
-// ── Constants ──────────────────────────────────────────────────────────────────
-const FOREST = '#1A6B3C';
-const GOLD = '#C8962A';
-const JUNGLE = '#1C2B2B';
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1';
 const CHAT_STORAGE_KEY = 'ai_chat_history';
 const MAX_STORED_MESSAGES = 100;
@@ -90,7 +95,9 @@ function ToolCardView({ card }: { card: ToolCard }) {
   return (
     <View style={styles.toolCard}>
       <View style={styles.toolCardHeader}>
-        <Icon size={14} color={GOLD} />
+        <View style={styles.toolCardIconBox}>
+          <Icon size={13} color={GOLD} />
+        </View>
         <Text style={styles.toolLabel}>{label}</Text>
       </View>
       {!!body && <Text style={styles.toolBody}>{body}</Text>}
@@ -111,7 +118,7 @@ function MessageBubble({ message }: { message: Message }) {
         {message.isError ? (
           <Text style={styles.errorText}>{message.content}</Text>
         ) : (
-          <Text style={styles.bubbleText}>{message.content}</Text>
+          <Text style={isUser ? styles.userBubbleText : styles.bubbleText}>{message.content}</Text>
         )}
         {!isUser && message.toolCards && message.toolCards.length > 0 && (
           message.toolCards.map((card, idx) => (
@@ -177,10 +184,17 @@ function TypingIndicator() {
 function EmptyState() {
   return (
     <View style={styles.emptyState}>
-      <Bot size={48} color={GOLD} style={{ marginBottom: 16 }} />
-      <Text style={styles.emptyHeading}>Ask me anything about Ogun State</Text>
+      <LinearGradient
+        colors={[GOLD, FOREST_LIGHT]}
+        start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+        style={styles.emptyIconBox}
+      >
+        <Sparkles size={28} color="#050E0E" />
+      </LinearGradient>
+      <Text style={styles.emptyHeading}>E kú aaro.</Text>
+      <Text style={styles.emptySubheading}>Ask me anything about Ogun State</Text>
       <Text style={styles.emptyBody}>
-        Discover attractions, events, stays, and more. I can check prices, find rides, and plan your trip.
+        Plan trips, find events, book rides, check prices. Ask in any language.
       </Text>
     </View>
   );
@@ -205,8 +219,8 @@ function InputBar({
         style={styles.inputBox}
         value={value}
         onChangeText={onChange}
-        placeholder="Ask about Ogun State..."
-        placeholderTextColor="rgba(255,255,255,0.3)"
+        placeholder="Ask anything, in any language…"
+        placeholderTextColor={INK_MID}
         multiline
         editable={!disabled}
         returnKeyType="default"
@@ -218,10 +232,7 @@ function InputBar({
         accessibilityLabel="Send message"
         accessibilityState={{ disabled: !canSend }}
       >
-        <Send
-          size={20}
-          color={canSend ? JUNGLE : 'rgba(28,43,43,0.5)'}
-        />
+        <Send size={18} color={canSend ? '#050E0E' : INK_FAINT} />
       </TouchableOpacity>
     </View>
   );
@@ -433,120 +444,150 @@ export default function AiChatScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: JUNGLE,
+    backgroundColor: SURFACE_DEEP,
   },
 
   // AI bubble
   aiBubbleContainer: {
-    alignItems: 'flex-start',
+    alignItems: 'flex-end',
     marginBottom: 4,
-  },
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    gap: 8,
+  } as any,
   aiBubble: {
-    backgroundColor: 'rgba(26,107,60,0.25)',
+    backgroundColor: SURFACE_MID,
     borderRadius: 16,
     borderTopLeftRadius: 4,
     paddingVertical: 12,
-    paddingHorizontal: 16,
-    maxWidth: '80%',
-    alignSelf: 'flex-start',
-    marginLeft: 16,
+    paddingHorizontal: 14,
+    maxWidth: '82%',
+    borderWidth: 1,
+    borderColor: BORDER,
     marginBottom: 8,
+  },
+  aiAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+    flexShrink: 0,
   },
 
   // User bubble
   userBubbleContainer: {
     alignItems: 'flex-end',
     marginBottom: 4,
+    paddingHorizontal: 16,
   },
   userBubble: {
-    backgroundColor: 'rgba(200,150,42,0.15)',
+    backgroundColor: GOLD,
     borderRadius: 16,
     borderTopRightRadius: 4,
     paddingVertical: 12,
-    paddingHorizontal: 16,
-    maxWidth: '80%',
-    alignSelf: 'flex-end',
-    marginRight: 16,
+    paddingHorizontal: 14,
+    maxWidth: '78%',
     marginBottom: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(200,150,42,0.3)',
+    shadowColor: GOLD,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 14,
+    elevation: 4,
+  },
+  userBubbleText: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#050E0E',
+    fontWeight: '500',
   },
 
   bubbleText: {
-    fontSize: 14,
-    color: 'white',
-    lineHeight: 21,
+    fontSize: 13,
+    color: INK,
+    lineHeight: 20,
   },
 
   errorText: {
-    fontSize: 14,
-    color: '#DC2626',
-    lineHeight: 21,
+    fontSize: 13,
+    color: ERROR,
+    lineHeight: 20,
   },
 
   // Timestamps
   timestamp: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.3)',
+    fontSize: 10,
+    color: INK_FAINT,
     marginBottom: 4,
+    fontFamily: FONT_MONO,
   },
   timestampLeft: {
-    marginLeft: 20,
+    marginLeft: 52,
     alignSelf: 'flex-start',
   },
   timestampRight: {
-    marginRight: 20,
+    marginRight: 16,
     alignSelf: 'flex-end',
   },
 
   // Tool card
   toolCard: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 12,
+    backgroundColor: SURFACE_RAISED,
+    borderRadius: RADIUS_MD,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: BORDER,
     padding: 12,
-    marginTop: 8,
+    marginTop: 10,
   },
   toolCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 8,
+    marginBottom: 6,
+  },
+  toolCardIconBox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    backgroundColor: GOLD_DIM,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   toolLabel: {
-    fontSize: 13,
-    fontWeight: 'bold',
+    fontSize: 12,
+    fontWeight: '700',
     color: GOLD,
     flex: 1,
   },
   toolBody: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.7)',
+    fontSize: 12,
+    color: INK_MID,
     lineHeight: 18,
   },
 
   // Typing indicator
   typingBubble: {
-    backgroundColor: 'rgba(26,107,60,0.25)',
+    backgroundColor: SURFACE_MID,
     borderRadius: 16,
     borderTopLeftRadius: 4,
     paddingVertical: 12,
     paddingHorizontal: 16,
     width: 64,
-    marginLeft: 16,
     marginBottom: 8,
+    borderWidth: 1,
+    borderColor: BORDER,
   },
   dotsRow: {
     flexDirection: 'row',
-    gap: 4,
+    gap: 5,
     alignItems: 'center',
     height: 20,
   },
   dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
     backgroundColor: GOLD,
   },
 
@@ -554,30 +595,34 @@ const styles = StyleSheet.create({
   inputBar: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    backgroundColor: 'rgba(255,255,255,0.07)',
+    backgroundColor: SURFACE_RAISED,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.06)',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    borderTopColor: BORDER_MID,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    paddingLeft: 16,
     gap: 8,
   },
   inputBox: {
     flex: 1,
-    fontSize: 14,
-    color: 'white' as const,
+    fontSize: 13,
+    color: INK,
     maxHeight: 100,
     backgroundColor: 'transparent',
+    lineHeight: 20,
   },
   sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 36,
+    height: 36,
+    borderRadius: RADIUS_SM + 2,
     backgroundColor: GOLD,
     alignItems: 'center',
     justifyContent: 'center',
   },
   sendButtonDisabled: {
-    backgroundColor: 'rgba(200,150,42,0.3)',
+    backgroundColor: GOLD_DIM,
+    borderWidth: 1,
+    borderColor: GOLD_LINE,
   },
 
   // Empty state
@@ -586,18 +631,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 32,
+    gap: 12,
   },
-  emptyHeading: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: 'white',
-    textAlign: 'center',
+  emptyIconBox: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 8,
   },
-  emptyBody: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.5)',
+  emptyHeading: {
+    fontFamily: FONT_DISPLAY,
+    fontSize: 28,
+    fontWeight: '400',
+    color: CREAM,
     textAlign: 'center',
-    lineHeight: 21,
+    fontStyle: 'italic',
+  },
+  emptySubheading: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: INK,
+    textAlign: 'center',
+  },
+  emptyBody: {
+    fontSize: 13,
+    color: INK_MID,
+    textAlign: 'center',
+    lineHeight: 20,
+    maxWidth: 260,
   },
 });

@@ -1,5 +1,11 @@
+import React, { useState } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert,
+  View,
+  Text,
+  Pressable,
+  StyleSheet,
+  ScrollView,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -7,317 +13,981 @@ import { useQuery } from '@tanstack/react-query';
 import { fetcher } from '../../lib/api';
 import * as SecureStore from 'expo-secure-store';
 import { router } from 'expo-router';
-import { Wallet, Ticket, Home, Package, LogOut, ChevronRight, Settings, Shield, MessageSquare, BadgeCheck } from 'lucide-react-native';
+import Svg, { G, Rect, Path, Circle } from 'react-native-svg';
 
-const MIDNIGHT = '#0D1B1B';
-const SURFACE = '#162525';
-const SURFACE_HIGH = '#1E3232';
-const FOREST = '#1A6B3C';
-const GOLD = '#C8962A';
-const GOLD_LIGHT = '#E0AA42';
-const BORDER = 'rgba(255,255,255,0.07)';
-const TEXT = '#FFFFFF';
-const TEXT_SEC = 'rgba(255,255,255,0.55)';
-const TEXT_MUTED = 'rgba(255,255,255,0.28)';
-const DANGER = '#F87171';
+// expo-haptics — loaded dynamically so missing package is a runtime no-op, not a TS error
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let Haptics: any = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  Haptics = require('expo-haptics');
+} catch (_) {
+  // Package not installed — haptic feedback is silently skipped
+}
+
+import {
+  Check,
+  CheckCircle,
+  ChevronRight,
+  Car,
+  Shield,
+  Ticket,
+  ShoppingBag,
+  Heart,
+  Clock,
+  type LucideProps,
+} from 'lucide-react-native';
+
+import {
+  SURFACE_DEEP,
+  SURFACE_RAISED,
+  FOREST,
+  FOREST_LIGHT,
+  GOLD,
+  GOLD_BRIGHT,
+  GOLD_DIM,
+  GOLD_LINE,
+  CREAM,
+  INK,
+  INK_MID,
+  INK_FAINT,
+  BORDER,
+  SUCCESS,
+  ERROR,
+  RADIUS_SM,
+  RADIUS_LG,
+  SPACE_3,
+  SPACE_4,
+  SPACE_5,
+  FONT_DISPLAY,
+  FONT_MONO,
+} from '../../lib/tokens';
+
+// ── Types ──────────────────────────────────────────
+
+interface UserProfile {
+  id: string;
+  name?: string;
+  phone?: string;
+  role: string;
+  kyc_tier?: number;
+  kyc_verified?: boolean;
+  created_at?: string;
+  trips_count?: number;
+  stays_count?: number;
+}
+
+interface WalletBalance {
+  balance_ngn: number;
+  kyc_tier: number;
+  daily_limit_ngn: number;
+}
+
+// ── Helpers ────────────────────────────────────────
+
+function getInitials(name?: string, phone?: string): string {
+  if (name && name.trim().length > 0) {
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return name.trim().slice(0, 2).toUpperCase();
+  }
+  if (phone) return phone.slice(-2);
+  return 'DA';
+}
+
+function getMemberSince(createdAt?: string): string {
+  if (!createdAt) return 'Mar 2024';
+  const d = new Date(createdAt);
+  return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+}
+
+function getHandle(name?: string, phone?: string): string {
+  if (name && name.trim()) {
+    return name.trim().toLowerCase().replace(/\s+/g, '');
+  }
+  if (phone) return phone.slice(-6);
+  return 'damiola';
+}
+
+// ── Adire Ornament ─────────────────────────────────
+
+function AdireOrnament({ size = 120, opacity = 0.4 }: { size?: number; opacity?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 80 80" opacity={opacity}>
+      <G fill="none" stroke={GOLD} strokeWidth={1}>
+        <Rect x="6" y="6" width="68" height="68" />
+        <Rect x="14" y="14" width="52" height="52" />
+        <Rect x="22" y="22" width="36" height="36" />
+        <Path d="M6 6 L74 74 M74 6 L6 74" />
+        <Circle cx="40" cy="40" r="8" />
+        <Circle cx="40" cy="40" r="14" />
+      </G>
+    </Svg>
+  );
+}
+
+// ── Avatar Ring ────────────────────────────────────
+
+function AvatarRing({ initials }: { initials: string }) {
+  return (
+    <View style={avatarStyles.outerRing}>
+      <LinearGradient
+        colors={[GOLD, GOLD_BRIGHT, GOLD, FOREST_LIGHT, GOLD]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={avatarStyles.gradientRing}
+      >
+        <View style={avatarStyles.innerCircle}>
+          <LinearGradient
+            colors={['#3a2820', '#1c130d']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={avatarStyles.photoCircle}
+          >
+            <Text style={avatarStyles.initials}>{initials}</Text>
+          </LinearGradient>
+        </View>
+      </LinearGradient>
+      {/* Verified badge */}
+      <View style={avatarStyles.badge}>
+        <Check size={11} color="#050E0E" />
+      </View>
+    </View>
+  );
+}
+
+const avatarStyles = StyleSheet.create({
+  outerRing: {
+    width: 72,
+    height: 72,
+    position: 'relative',
+  },
+  gradientRing: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    padding: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  innerCircle: {
+    width: 66,
+    height: 66,
+    borderRadius: 33,
+    backgroundColor: SURFACE_DEEP,
+    padding: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoCircle: {
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  initials: {
+    fontFamily: FONT_DISPLAY,
+    fontSize: 20,
+    fontWeight: '400',
+    color: CREAM,
+    letterSpacing: 0,
+  },
+  badge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: GOLD,
+    borderWidth: 3,
+    borderColor: SURFACE_DEEP,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
+
+// ── Toggle Switch ──────────────────────────────────
+
+function ToggleSwitch({ value, onValueChange }: { value: boolean; onValueChange: (v: boolean) => void }) {
+  return (
+    <Pressable
+      onPress={() => onValueChange(!value)}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: value }}
+      style={[toggleStyles.track, value && toggleStyles.trackOn]}
+    >
+      <View style={[toggleStyles.thumb, value && toggleStyles.thumbOn]} />
+    </Pressable>
+  );
+}
+
+const toggleStyles = StyleSheet.create({
+  track: {
+    width: 46,
+    height: 28,
+    borderRadius: 99,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  trackOn: {
+    backgroundColor: GOLD,
+  },
+  thumb: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    alignSelf: 'flex-start',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  thumbOn: {
+    alignSelf: 'flex-end',
+  },
+});
+
+// ── Menu Row ────────────────────────────────────────
+
+interface MenuRowItem {
+  icon: React.ComponentType<LucideProps>;
+  label: string;
+  sub: string;
+  onPress: () => void;
+  isLast?: boolean;
+}
+
+function MenuRow({ icon: Icon, label, sub, onPress, isLast }: MenuRowItem) {
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        menuStyles.row,
+        !isLast && menuStyles.rowBorder,
+        pressed && { opacity: 0.75 },
+      ]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <View style={menuStyles.iconBox}>
+        <Icon size={18} color={GOLD} />
+      </View>
+      <View style={menuStyles.textBlock}>
+        <Text style={menuStyles.label}>{label}</Text>
+        <Text style={menuStyles.sub}>{sub}</Text>
+      </View>
+      <ChevronRight size={16} color={INK_FAINT} />
+    </Pressable>
+  );
+}
+
+const menuStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 12,
+  },
+  rowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: BORDER,
+  },
+  iconBox: {
+    width: 34,
+    height: 34,
+    borderRadius: RADIUS_SM,
+    backgroundColor: GOLD_DIM,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  textBlock: {
+    flex: 1,
+    gap: 2,
+  },
+  label: {
+    fontSize: 13.5,
+    fontWeight: '600',
+    color: INK,
+    letterSpacing: 0,
+    lineHeight: 19,
+  },
+  sub: {
+    fontSize: 10.5,
+    fontWeight: '400',
+    color: INK_MID,
+    lineHeight: 15,
+  },
+});
+
+// ── Main Screen ─────────────────────────────────────
 
 export default function ProfileScreen() {
-  const { data: balance } = useQuery({
+  const [driverMode, setDriverMode] = useState(false);
+
+  const { data: balance } = useQuery<WalletBalance>({
     queryKey: ['wallet-balance-mobile'],
     queryFn: () => fetcher('/wallet/balance'),
   });
 
+  const { data: user } = useQuery<UserProfile>({
+    queryKey: ['me'],
+    queryFn: () => fetcher('/users/me'),
+  });
+
   async function handleLogout() {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign Out', style: 'destructive',
-        onPress: async () => {
-          await SecureStore.deleteItemAsync('access_token');
-          router.replace('/login' as any);
+    Alert.alert(
+      'Sign out?',
+      "You'll need to log in again.",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            if (Haptics) {
+              try {
+                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              } catch (_) { /* silently skip */ }
+            }
+            await SecureStore.deleteItemAsync('access_token');
+            router.replace('/login' as any);
+          },
         },
-      },
-    ]);
+      ]
+    );
   }
 
-  const tier = balance?.kyc_tier ?? 0;
-  const balanceNgn = Number(balance?.balance_ngn ?? 0);
+  const tier = balance?.kyc_tier ?? user?.kyc_tier ?? 0;
+  const initials = getInitials(user?.name, user?.phone);
+  const displayName = user?.name ?? user?.phone ?? 'Damiola A.';
+  const handle = getHandle(user?.name, user?.phone);
+  const memberSince = getMemberSince(user?.created_at);
+  const role = user?.role ?? 'CITIZEN';
+  const isDriverOrAdmin = role === 'DRIVER' || role === 'ADMIN';
 
-  const menuSections = [
+  // Stats
+  const tripsCount = user?.trips_count ?? 0;
+  const staysCount = user?.stays_count ?? 0;
+
+  // KYC tier data
+  const tierData = [
+    { num: 1, label: 'TIER 1', limit: '₦200K', sub: 'daily limit' },
+    { num: 2, label: 'TIER 2', limit: '₦1M', sub: 'daily limit' },
+    { num: 3, label: 'TIER 3', limit: '₦5M', sub: 'daily limit' },
+  ];
+
+  const menuRows: MenuRowItem[] = [
     {
-      title: 'Activity',
-      items: [
-        { label: 'My Tickets', icon: Ticket, onPress: () => {} },
-        { label: 'My Bookings', icon: Home, onPress: () => {} },
-        { label: 'My Orders', icon: Package, onPress: () => {} },
-      ],
+      icon: Ticket,
+      label: 'My Bookings',
+      sub: '3 upcoming · 12 past',
+      onPress: () => {},
     },
     {
-      title: 'Account',
-      items: [
-        { label: 'AI Concierge', icon: MessageSquare, onPress: () => router.push('/ai-chat' as any) },
-        { label: 'Verify Identity', icon: BadgeCheck, onPress: () => router.push('/kyc' as any) },
-        { label: 'Security', icon: Shield, onPress: () => {} },
-        { label: 'Settings', icon: Settings, onPress: () => {} },
-      ],
+      icon: ShoppingBag,
+      label: 'My Orders',
+      sub: '1 in progress',
+      onPress: () => {},
+    },
+    {
+      icon: Heart,
+      label: 'Saved Places',
+      sub: '8 saved',
+      onPress: () => {},
+    },
+    {
+      icon: Clock,
+      label: 'Activity',
+      sub: 'All app activity',
+      onPress: () => {},
+    },
+    {
+      icon: Shield,
+      label: 'Security & ID',
+      sub: 'NIN · BVN · 2FA',
+      onPress: () => router.push('/kyc' as any),
+      isLast: true,
     },
   ];
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-        {/* Avatar + name */}
-        <View style={styles.profileSection}>
-          <LinearGradient
-            colors={['#1A6B3C', '#0A3A1F']}
-            style={styles.avatar}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            <Text style={styles.avatarInitial}>U</Text>
-          </LinearGradient>
-          <View style={styles.profileInfo}>
-            <Text style={styles.userName}>My Account</Text>
-            <View style={styles.tierBadge}>
-              <Shield size={10} color={GOLD} />
-              <Text style={styles.tierText}>KYC Tier {tier}</Text>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scroll}
+      >
+
+        {/* ── Header ─────────────────────────────────── */}
+        <View style={styles.header}>
+          <View style={styles.avatarNameRow}>
+            <AvatarRing initials={initials} />
+
+            <View style={styles.nameBlock}>
+              {/* Display name + inline check */}
+              <View style={styles.nameRow}>
+                <Text style={styles.displayName} numberOfLines={1}>{displayName}</Text>
+                <View style={styles.nameCheckBadge}>
+                  <CheckCircle size={16} color={GOLD} fill={GOLD} />
+                </View>
+              </View>
+              {/* Handle + member since */}
+              <Text style={styles.handleText}>@{handle} · Member since {memberSince}</Text>
+              {/* Chips row */}
+              <View style={styles.chipsRow}>
+                <View style={styles.chipTier}>
+                  <Text style={styles.chipTierText}>Tier {tier >= 2 ? '2' : tier >= 1 ? '1' : '0'} Verified</Text>
+                </View>
+                <View style={styles.chipLocation}>
+                  <Text style={styles.chipLocationText}>Lagos · Ogun</Text>
+                </View>
+              </View>
             </View>
           </View>
         </View>
 
-        {/* Wallet card */}
-        <LinearGradient
-          colors={['#1A6B3C', '#0D3A20']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.walletCard}
-        >
-          {/* Decorative circles */}
-          <View style={styles.walletCircle1} />
-          <View style={styles.walletCircle2} />
-
-          <View style={styles.walletHeader}>
-            <View style={styles.walletLabelRow}>
-              <Wallet size={14} color="rgba(255,255,255,0.7)" />
-              <Text style={styles.walletLabel}>ISEYAA Wallet</Text>
+        {/* ── KYC Progress Card ──────────────────────── */}
+        <View style={styles.kycCard}>
+          <LinearGradient
+            colors={['rgba(212,168,67,0.10)', 'rgba(13,31,31,0.6)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.kycGradient}
+          >
+            {/* Adire ornament top-right */}
+            <View style={styles.adireContainer} pointerEvents="none">
+              <AdireOrnament size={120} opacity={0.4} />
             </View>
-            <View style={styles.walletTierBadge}>
-              <Text style={styles.walletTierText}>TIER {tier}</Text>
-            </View>
-          </View>
 
-          <Text style={styles.walletCurrency}>NGN</Text>
-          <Text style={styles.walletAmount}>
-            {balanceNgn.toLocaleString('en-NG', { minimumFractionDigits: 2 })}
-          </Text>
+            {/* Kicker + headline */}
+            <Text style={styles.kycKicker}>KYC PROGRESS</Text>
+            <Text style={styles.kycHeadline}>Two of three tiers unlocked</Text>
 
-          <View style={styles.walletFooter}>
-            <Text style={styles.walletLimit}>
-              Daily limit: ₦{Number(balance?.daily_limit_ngn ?? 0).toLocaleString()}
-            </Text>
-            <TouchableOpacity style={styles.topUpBtn}>
-              <Text style={styles.topUpText}>Top Up</Text>
-            </TouchableOpacity>
-          </View>
-        </LinearGradient>
-
-        {/* Menu sections */}
-        {menuSections.map((section) => (
-          <View key={section.title} style={styles.menuSection}>
-            <Text style={styles.menuSectionTitle}>{section.title}</Text>
-            <View style={styles.menuGroup}>
-              {section.items.map(({ label, icon: Icon, onPress }, idx) => (
-                <TouchableOpacity
-                  key={label}
-                  style={[
-                    styles.menuItem,
-                    idx < section.items.length - 1 && styles.menuItemBorder,
-                  ]}
-                  onPress={onPress}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.menuIconBox}>
-                    <Icon size={16} color={TEXT_SEC} />
+            {/* Tier boxes */}
+            <View style={styles.tierGrid}>
+              {tierData.map((t) => {
+                const done = tier >= t.num;
+                const isPending = tier === t.num - 1;
+                return (
+                  <View
+                    key={t.num}
+                    style={[
+                      styles.tierBox,
+                      done
+                        ? styles.tierBoxDone
+                        : styles.tierBoxPending,
+                    ]}
+                  >
+                    {/* Badge top-right */}
+                    <View style={styles.tierBadgeWrap}>
+                      {done ? (
+                        <View style={styles.tierBadgeDone}>
+                          <Check size={10} color="#050E0E" />
+                        </View>
+                      ) : (
+                        <View style={styles.tierBadgePending}>
+                          <View style={styles.tierBadgePendingDot} />
+                        </View>
+                      )}
+                    </View>
+                    <Text style={[styles.tierLabel, done ? styles.tierLabelDone : styles.tierLabelPending]}>
+                      {t.label}
+                    </Text>
+                    <Text style={[styles.tierLimit, done ? styles.tierLimitDone : styles.tierLimitPending]}>
+                      {t.limit}
+                    </Text>
+                    <Text style={styles.tierSub}>{t.sub}</Text>
                   </View>
-                  <Text style={styles.menuLabel}>{label}</Text>
-                  <ChevronRight size={15} color={TEXT_MUTED} />
-                </TouchableOpacity>
-              ))}
+                );
+              })}
             </View>
-          </View>
-        ))}
 
-        {/* Sign out */}
-        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.7}>
-          <View style={styles.logoutIconBox}>
-            <LogOut size={16} color={DANGER} />
-          </View>
-          <Text style={styles.logoutText}>Sign Out</Text>
-        </TouchableOpacity>
+            {/* CTA */}
+            <Pressable
+              style={({ pressed }) => [styles.kycCta, pressed && { opacity: 0.85 }]}
+              onPress={() => router.push('/kyc' as any)}
+              accessibilityRole="button"
+              accessibilityLabel="Verify NIN"
+            >
+              <Text style={styles.kycCtaText}>Verify NIN →</Text>
+            </Pressable>
+          </LinearGradient>
+        </View>
 
-        <View style={{ height: 16 }} />
+        {/* ── Stats Row ──────────────────────────────── */}
+        <View style={styles.statsRow}>
+          {[
+            { value: String(tripsCount), label: 'TRIPS' },
+            { value: String(staysCount), label: 'STAYS' },
+            { value: '₦340k', label: 'SAVED' },
+          ].map((stat) => (
+            <View key={stat.label} style={styles.statCell}>
+              <Text style={styles.statValue}>{stat.value}</Text>
+              <Text style={styles.statLabel}>{stat.label}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* ── Driver Mode Toggle Card ─────────────────── */}
+        {isDriverOrAdmin && (
+          <View style={styles.driverCardWrap}>
+            {driverMode ? (
+              <LinearGradient
+                colors={[FOREST, SURFACE_DEEP]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.driverCardGradient}
+              >
+                <DriverCardContent driverMode={driverMode} setDriverMode={setDriverMode} />
+              </LinearGradient>
+            ) : (
+              <View style={[styles.driverCardSolid, { backgroundColor: SURFACE_RAISED }]}>
+                <DriverCardContent driverMode={driverMode} setDriverMode={setDriverMode} />
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* ── Menu Section ───────────────────────────── */}
+        <View style={styles.menuSection}>
+          <View style={styles.menuCard}>
+            {menuRows.map((row, idx) => (
+              <MenuRow
+                key={row.label}
+                icon={row.icon}
+                label={row.label}
+                sub={row.sub}
+                onPress={row.onPress}
+                isLast={idx === menuRows.length - 1}
+              />
+            ))}
+          </View>
+        </View>
+
+        {/* ── Sign Out + Version ─────────────────────── */}
+        <View style={styles.signOutSection}>
+          <Pressable
+            style={({ pressed }) => [styles.signOutBtn, pressed && { opacity: 0.75 }]}
+            onPress={handleLogout}
+            accessibilityRole="button"
+            accessibilityLabel="Sign out"
+          >
+            <Text style={styles.signOutText}>Sign out</Text>
+          </Pressable>
+          <Text style={styles.versionText}>ISEYAA · v1.0.0 (Build 1)</Text>
+        </View>
+
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: MIDNIGHT },
-  scroll: { paddingBottom: 24 },
+// ── Driver Card Inner ──────────────────────────────
+// Extracted to avoid repeating JSX inside conditional gradient/view
 
-  profileSection: {
+function DriverCardContent({
+  driverMode,
+  setDriverMode,
+}: {
+  driverMode: boolean;
+  setDriverMode: (v: boolean) => void;
+}) {
+  return (
+    <View style={driverStyles.inner}>
+      <View style={[driverStyles.iconBox, driverMode && driverStyles.iconBoxOn]}>
+        <Car size={20} color={driverMode ? '#050E0E' : GOLD} />
+      </View>
+      <View style={driverStyles.textBlock}>
+        <Text style={driverStyles.title}>
+          {driverMode ? 'Driver mode is ON' : 'Become a driver'}
+        </Text>
+        <Text style={driverStyles.sub}>
+          {driverMode ? 'You are visible to riders' : 'Go online to accept rides'}
+        </Text>
+      </View>
+      <ToggleSwitch value={driverMode} onValueChange={setDriverMode} />
+    </View>
+  );
+}
+
+const driverStyles = StyleSheet.create({
+  inner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 20,
+    gap: 12,
+    padding: 16,
   },
-  avatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+  iconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS_SM,
+    backgroundColor: GOLD_DIM,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarInitial: { fontSize: 22, fontWeight: '800', color: TEXT },
-  profileInfo: { gap: 5 },
-  userName: { fontSize: 20, fontWeight: '800', color: TEXT, letterSpacing: -0.3 },
-  tierBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(200,150,42,0.12)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    alignSelf: 'flex-start',
-    borderWidth: 1,
-    borderColor: 'rgba(200,150,42,0.2)',
+  iconBoxOn: {
+    backgroundColor: GOLD,
   },
-  tierText: { color: GOLD, fontSize: 10, fontWeight: '700', letterSpacing: 0.3 },
-
-  walletCard: {
-    marginHorizontal: 16,
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 24,
-    overflow: 'hidden',
-    position: 'relative',
+  textBlock: {
+    flex: 1,
+    gap: 3,
   },
-  walletCircle1: {
-    position: 'absolute',
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    top: -40,
-    right: -30,
-  },
-  walletCircle2: {
-    position: 'absolute',
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    bottom: -20,
-    left: 20,
-  },
-  walletHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  walletLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  walletLabel: { color: 'rgba(255,255,255,0.65)', fontSize: 12, fontWeight: '600', letterSpacing: 0.3 },
-  walletTierBadge: {
-    backgroundColor: 'rgba(200,150,42,0.2)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  walletTierText: { color: GOLD_LIGHT, fontSize: 9, fontWeight: '800', letterSpacing: 0.8 },
-
-  walletCurrency: { color: 'rgba(255,255,255,0.5)', fontSize: 11, fontWeight: '600', letterSpacing: 0.5 },
-  walletAmount: {
-    fontSize: 36,
-    fontWeight: '800',
-    color: TEXT,
-    marginTop: 2,
-    marginBottom: 16,
-    letterSpacing: -1,
-  },
-
-  walletFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  walletLimit: { color: 'rgba(255,255,255,0.45)', fontSize: 11 },
-  topUpBtn: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 10,
-  },
-  topUpText: { color: TEXT, fontSize: 12, fontWeight: '700' },
-
-  menuSection: { marginBottom: 8 },
-  menuSectionTitle: {
-    color: TEXT_MUTED,
-    fontSize: 11,
+  title: {
+    fontSize: 13.5,
     fontWeight: '600',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    paddingHorizontal: 20,
-    marginBottom: 8,
+    color: INK,
+    lineHeight: 19,
   },
-  menuGroup: {
-    marginHorizontal: 16,
-    backgroundColor: SURFACE,
-    borderRadius: 16,
+  sub: {
+    fontSize: 10.5,
+    fontWeight: '400',
+    color: INK_MID,
+    lineHeight: 15,
+  },
+});
+
+// ── Screen Styles ──────────────────────────────────
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: SURFACE_DEEP,
+  },
+  scroll: {
+    paddingBottom: 120,
+  },
+
+  // Header
+  header: {
+    paddingTop: 64,
+    paddingHorizontal: SPACE_5,
+    paddingBottom: SPACE_4,
+  },
+  avatarNameRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACE_3,
+  },
+  nameBlock: {
+    flex: 1,
+    paddingTop: 2,
+    gap: 5,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    flexWrap: 'nowrap',
+  },
+  displayName: {
+    fontFamily: FONT_DISPLAY,
+    fontSize: 24,
+    fontWeight: '400',
+    color: INK,
+    letterSpacing: -0.3,
+    lineHeight: 30,
+    flexShrink: 1,
+  },
+  nameCheckBadge: {
+    width: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  handleText: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: INK_MID,
+    lineHeight: 17,
+    fontFamily: undefined,
+  },
+  chipsRow: {
+    flexDirection: 'row',
+    gap: 6,
+    flexWrap: 'wrap',
+    marginTop: 2,
+  },
+  chipTier: {
+    height: 22,
+    paddingHorizontal: 8,
+    borderRadius: 99,
+    backgroundColor: GOLD_DIM,
+    borderWidth: 1,
+    borderColor: GOLD_LINE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chipTierText: {
+    fontFamily: FONT_MONO,
+    fontSize: 9.5,
+    fontWeight: '600',
+    color: GOLD,
+    letterSpacing: 0.3,
+    lineHeight: 14,
+  },
+  chipLocation: {
+    height: 22,
+    paddingHorizontal: 8,
+    borderRadius: 99,
+    backgroundColor: 'rgba(26,107,60,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(42,139,82,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chipLocationText: {
+    fontFamily: FONT_MONO,
+    fontSize: 9.5,
+    fontWeight: '600',
+    color: '#7DD49E',
+    letterSpacing: 0.3,
+    lineHeight: 14,
+  },
+
+  // KYC Progress Card
+  kycCard: {
+    marginHorizontal: SPACE_5,
+    borderRadius: RADIUS_LG,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: GOLD_LINE,
+  },
+  kycGradient: {
+    padding: SPACE_4,
+    paddingBottom: SPACE_4,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  adireContainer: {
+    position: 'absolute',
+    top: -10,
+    right: -10,
+  },
+  kycKicker: {
+    fontFamily: FONT_MONO,
+    fontSize: 9.5,
+    fontWeight: '600',
+    color: GOLD,
+    letterSpacing: 1.8,
+    lineHeight: 14,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  kycHeadline: {
+    fontFamily: FONT_DISPLAY,
+    fontSize: 20,
+    fontWeight: '400',
+    color: CREAM,
+    letterSpacing: -0.3,
+    lineHeight: 26,
+    marginBottom: SPACE_4,
+  },
+  tierGrid: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: SPACE_4,
+  },
+  tierBox: {
+    flex: 1,
+    borderRadius: 10,
+    padding: 10,
+    paddingTop: 24,
+    position: 'relative',
+    minHeight: 80,
+    justifyContent: 'flex-end',
+  },
+  tierBoxDone: {
+    backgroundColor: 'rgba(46,204,113,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(46,204,113,0.30)',
+  },
+  tierBoxPending: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: GOLD_LINE,
+  },
+  tierBadgeWrap: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+  },
+  tierBadgeDone: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: SUCCESS,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tierBadgePending: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: GOLD_LINE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tierBadgePendingDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: GOLD_LINE,
+  },
+  tierLabel: {
+    fontFamily: FONT_MONO,
+    fontSize: 8.5,
+    fontWeight: '600',
+    letterSpacing: 1,
+    lineHeight: 13,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  tierLabelDone: {
+    color: GOLD,
+  },
+  tierLabelPending: {
+    color: GOLD_LINE,
+  },
+  tierLimit: {
+    fontFamily: FONT_MONO,
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 20,
+  },
+  tierLimitDone: {
+    color: INK,
+  },
+  tierLimitPending: {
+    color: INK_MID,
+  },
+  tierSub: {
+    fontFamily: FONT_MONO,
+    fontSize: 9.5,
+    fontWeight: '400',
+    color: INK_MID,
+    lineHeight: 13,
+  },
+  kycCta: {
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: GOLD,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  kycCtaText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#050E0E',
+    letterSpacing: 0,
+    lineHeight: 20,
+  },
+
+  // Stats Row
+  statsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: SPACE_5,
+    marginTop: 18,
+    gap: 8,
+  },
+  statCell: {
+    flex: 1,
+    backgroundColor: SURFACE_RAISED,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  statValue: {
+    fontFamily: FONT_DISPLAY,
+    fontSize: 22,
+    fontWeight: '400',
+    color: GOLD,
+    letterSpacing: -0.3,
+    lineHeight: 28,
+  },
+  statLabel: {
+    fontFamily: FONT_MONO,
+    fontSize: 9.5,
+    fontWeight: '600',
+    color: INK_MID,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    lineHeight: 14,
+  },
+
+  // Driver card wrapper
+  driverCardWrap: {
+    paddingHorizontal: SPACE_5,
+    marginTop: 14,
+    borderRadius: 18,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  driverCardGradient: {
+    borderRadius: 18,
+  },
+  driverCardSolid: {
+    borderRadius: 18,
+  },
+
+  // Menu section
+  menuSection: {
+    paddingHorizontal: SPACE_5,
+    marginTop: 18,
+  },
+  menuCard: {
+    backgroundColor: SURFACE_RAISED,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: BORDER,
     overflow: 'hidden',
   },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-  },
-  menuItemBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: BORDER,
-  },
-  menuIconBox: {
-    width: 32,
-    height: 32,
-    borderRadius: 9,
-    backgroundColor: SURFACE_HIGH,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  menuLabel: { flex: 1, color: TEXT, fontSize: 14, fontWeight: '500' },
 
-  logoutBtn: {
-    flexDirection: 'row',
+  // Sign Out + Version
+  signOutSection: {
+    paddingHorizontal: SPACE_5,
+    marginTop: 14,
+    gap: SPACE_3,
     alignItems: 'center',
-    gap: 12,
-    marginHorizontal: 16,
-    marginTop: 8,
-    backgroundColor: SURFACE,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(248,113,113,0.15)',
   },
-  logoutIconBox: {
-    width: 32,
-    height: 32,
-    borderRadius: 9,
-    backgroundColor: 'rgba(248,113,113,0.1)',
+  signOutBtn: {
+    width: '100%',
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: BORDER,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  logoutText: { color: DANGER, fontSize: 14, fontWeight: '600' },
+  signOutText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: ERROR,
+    letterSpacing: 0,
+    lineHeight: 19,
+  },
+  versionText: {
+    fontFamily: FONT_MONO,
+    fontSize: 9,
+    fontWeight: '600',
+    color: INK_FAINT,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    lineHeight: 14,
+  },
 });

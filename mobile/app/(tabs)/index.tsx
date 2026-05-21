@@ -1,307 +1,1065 @@
 import {
-  View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, TextInput, FlatList, Dimensions,
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+  TextInput,
+  FlatList,
+  Animated,
+  Pressable,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useQuery } from '@tanstack/react-query';
 import { fetcher } from '../../lib/api';
 import { cacheGet, cacheSet, toggleBookmark, getBookmarks } from '../../lib/storage';
-import { useEffect, useState } from 'react';
-import { MapPin, Bookmark, BookmarkCheck, Search, Bell } from 'lucide-react-native';
+import { useEffect, useRef, useState } from 'react';
+import { router } from 'expo-router';
+import {
+  MapPin,
+  Bell,
+  Search,
+  Mic,
+  Sun,
+  Car,
+  Home,
+  Ticket,
+  ShoppingBag,
+  QrCode,
+  Star,
+  Heart,
+  LucideProps,
+} from 'lucide-react-native';
+import Svg, { G, Rect, Path, Circle } from 'react-native-svg';
+import {
+  SURFACE_DEEP,
+  SURFACE_MID,
+  SURFACE_RAISED,
+  SURFACE_ELEV,
+  FOREST,
+  FOREST_LIGHT,
+  FOREST_DEEP,
+  GOLD,
+  GOLD_BRIGHT,
+  GOLD_DIM,
+  GOLD_LINE,
+  CREAM,
+  INK,
+  INK_MID,
+  INK_FAINT,
+  BORDER,
+  BORDER_MID,
+  SUCCESS,
+  SUCCESS_TEXT,
+  RADIUS_SM,
+  RADIUS_MD,
+  RADIUS_LG,
+  RADIUS_PILL,
+  SPACE_1,
+  SPACE_2,
+  SPACE_3,
+  SPACE_4,
+  SPACE_5,
+  SPACE_6,
+  SPACE_8,
+  SPACE_10,
+  SPACE_12,
+  TYPE,
+  FONT_DISPLAY,
+  FONT_MONO,
+  CARD_GRADIENTS,
+} from '../../lib/tokens';
 
-const MIDNIGHT = '#0D1B1B';
-const SURFACE = '#162525';
-const GOLD = '#C8962A';
-const GOLD_LIGHT = '#E0AA42';
-const BORDER = 'rgba(255,255,255,0.07)';
-const TEXT = '#FFFFFF';
-const TEXT_SEC = 'rgba(255,255,255,0.55)';
-const TEXT_MUTED = 'rgba(255,255,255,0.28)';
+// ── Adire ornament SVG ────────────────────────────────────────────────────────
 
-const { width } = Dimensions.get('window');
-const CARD_W = (width - 48) / 2;
-
-const CARD_COLORS: [string, string][] = [
-  ['#1A6B3C', '#0A3A1F'],
-  ['#1A4A3C', '#0A2A22'],
-  ['#2A3A1A', '#152010'],
-  ['#1A3A4A', '#0A1F2A'],
-  ['#3A2A1A', '#20160A'],
-  ['#2A1A3A', '#160A20'],
-];
-
-const LGA_FILTERS = ['All', 'Abeokuta', 'Ijebu Ode', 'Sagamu', 'Ota', 'Ilaro'];
-
-function SkeletonCard() {
+function AdireOrnament({
+  size = 80,
+  color = GOLD,
+  opacity = 0.18,
+}: {
+  size?: number;
+  color?: string;
+  opacity?: number;
+}) {
   return (
-    <View style={[styles.card, { opacity: 0.4 }]}>
-      <View style={[styles.cardGradient, { backgroundColor: SURFACE }]} />
-      <View style={styles.cardBody}>
-        <View style={{ height: 12, width: '80%', backgroundColor: SURFACE, borderRadius: 6, marginBottom: 6 }} />
-        <View style={{ height: 10, width: '50%', backgroundColor: SURFACE, borderRadius: 6 }} />
-      </View>
+    <Svg width={size} height={size} viewBox="0 0 80 80" opacity={opacity}>
+      <G fill="none" stroke={color} strokeWidth={1}>
+        <Rect x="6" y="6" width="68" height="68" />
+        <Rect x="14" y="14" width="52" height="52" />
+        <Rect x="22" y="22" width="36" height="36" />
+        <Path d="M6 6 L74 74 M74 6 L6 74" />
+        <Circle cx="40" cy="40" r="8" />
+        <Circle cx="40" cy="40" r="14" />
+      </G>
+    </Svg>
+  );
+}
+
+// ── Shimmer skeleton ──────────────────────────────────────────────────────────
+
+function SkeletonCard({ width, height }: { width: number; height: number }) {
+  const opacity = useRef(new Animated.Value(0.3)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, { toValue: 0.7, duration: 800, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 0.3, duration: 800, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+
+  return (
+    <Animated.View
+      style={{ width, height, borderRadius: RADIUS_LG, backgroundColor: SURFACE_RAISED, opacity }}
+    />
+  );
+}
+
+function EventSkeletonCard() {
+  const opacity = useRef(new Animated.Value(0.3)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, { toValue: 0.7, duration: 800, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 0.3, duration: 800, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+
+  return (
+    <Animated.View
+      style={{
+        width: 240,
+        height: 210,
+        borderRadius: RADIUS_LG,
+        backgroundColor: SURFACE_RAISED,
+        opacity,
+        marginRight: SPACE_3,
+      }}
+    />
+  );
+}
+
+// ── Animated card press wrapper ───────────────────────────────────────────────
+
+function AnimatedCard({
+  children,
+  style,
+  onPress,
+}: {
+  children: React.ReactNode;
+  style?: object;
+  onPress?: () => void;
+}) {
+  const scale = useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = () => {
+    Animated.spring(scale, {
+      toValue: 0.97,
+      useNativeDriver: true,
+      stiffness: 300,
+      damping: 20,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scale, {
+      toValue: 1,
+      useNativeDriver: true,
+      stiffness: 300,
+      damping: 20,
+    }).start();
+  };
+
+  return (
+    <Pressable onPressIn={handlePressIn} onPressOut={handlePressOut} onPress={onPress}>
+      <Animated.View style={[style, { transform: [{ scale }] }]}>{children}</Animated.View>
+    </Pressable>
+  );
+}
+
+// ── Live badge with pulsing dot ───────────────────────────────────────────────
+
+function LiveBadge() {
+  const pulseOpacity = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseOpacity, { toValue: 0.3, duration: 600, useNativeDriver: true }),
+        Animated.timing(pulseOpacity, { toValue: 1, duration: 600, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+
+  return (
+    <View style={styles.liveBadge}>
+      <Animated.View style={[styles.liveDot, { opacity: pulseOpacity }]} />
+      <Text style={styles.liveText}>LIVE</Text>
     </View>
   );
 }
 
-export default function ExploreScreen() {
+// ── Event card (horizontal list) ─────────────────────────────────────────────
+
+const GRADIENT_KEYS = Object.keys(CARD_GRADIENTS) as Array<keyof typeof CARD_GRADIENTS>;
+const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+
+function EventCard({ item, index }: { item: any; index: number }) {
+  const key = GRADIENT_KEYS[index % GRADIENT_KEYS.length];
+  const [c0, c1] = CARD_GRADIENTS[key];
+  const dateStr: string = item.startDate ?? item.date ?? '';
+  const d = dateStr ? new Date(dateStr) : null;
+  const isLive = item.status === 'LIVE' || item.isLive;
+
+  return (
+    <AnimatedCard
+      style={styles.eventCard}
+      onPress={() => router.push(`/events/${item.id}` as any)}
+    >
+      {/* Photo placeholder — full-bleed gradient */}
+      <LinearGradient
+        colors={[c0, c1]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.eventCardPhoto}
+      >
+        {/* Scrim */}
+        <LinearGradient
+          colors={['transparent', 'rgba(5,14,14,0.65)']}
+          style={StyleSheet.absoluteFillObject}
+        />
+        {/* Date badge — top left */}
+        {d && (
+          <View style={styles.eventDateBadge}>
+            <Text style={styles.eventDateDay}>{d.getDate()}</Text>
+            <Text style={styles.eventDateMonth}>{MONTHS[d.getMonth()]}</Text>
+          </View>
+        )}
+        {/* LIVE badge — top right */}
+        {isLive && (
+          <View style={styles.eventLivePos}>
+            <LiveBadge />
+          </View>
+        )}
+      </LinearGradient>
+
+      {/* Bottom content */}
+      <View style={styles.eventCardBody}>
+        {/* Tag chip */}
+        <View style={styles.eventTagChip}>
+          <Text style={styles.eventTagText} numberOfLines={1}>
+            {(item.category ?? 'Event').toUpperCase()}
+          </Text>
+        </View>
+        <Text style={styles.eventCardTitle} numberOfLines={1}>
+          {item.title ?? item.name}
+        </Text>
+        <View style={styles.eventLocRow}>
+          <MapPin size={11} color={INK_FAINT} />
+          <Text style={styles.eventLocText} numberOfLines={1}>
+            {item.venue ?? item.location ?? 'Ogun State'}
+          </Text>
+        </View>
+      </View>
+    </AnimatedCard>
+  );
+}
+
+// ── Attraction grid card (2-col) ──────────────────────────────────────────────
+
+function AttractionCard({
+  item,
+  index,
+  cardWidth,
+  isBookmarked,
+  onBookmark,
+}: {
+  item: any;
+  index: number;
+  cardWidth: number;
+  isBookmarked: boolean;
+  onBookmark: (id: string) => void;
+}) {
+  const key = GRADIENT_KEYS[index % GRADIENT_KEYS.length];
+  const [c0, c1] = CARD_GRADIENTS[key];
+  const rating: number = item.rating ?? 4.2;
+  const distance: string = item.distance ?? '1.2 km';
+
+  return (
+    <AnimatedCard
+      style={[styles.attractionCard, { width: cardWidth }]}
+      onPress={() => router.push(`/attractions/${item.id}` as any)}
+    >
+      {/* Photo placeholder gradient */}
+      <LinearGradient
+        colors={[c0, c1]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.attractionPhoto}
+      >
+        {/* Heart bookmark — top right, circular glass */}
+        <TouchableOpacity
+          onPress={() => onBookmark(item.id)}
+          style={styles.heartBtn}
+          accessibilityLabel={isBookmarked ? 'Remove bookmark' : 'Bookmark'}
+          hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+        >
+          <Heart
+            size={14}
+            color={isBookmarked ? GOLD : INK_FAINT}
+            fill={isBookmarked ? GOLD : 'transparent'}
+          />
+        </TouchableOpacity>
+      </LinearGradient>
+
+      {/* Body */}
+      <View style={styles.attractionBody}>
+        <Text style={styles.attractionName} numberOfLines={2}>
+          {item.name}
+        </Text>
+        {/* Sub info row: star rating + distance */}
+        <View style={styles.attractionMeta}>
+          <Star size={11} color={GOLD} fill={GOLD} />
+          <Text style={styles.attractionRating}>{rating.toFixed(1)}</Text>
+          <Text style={styles.attractionDistance}>{distance}</Text>
+        </View>
+      </View>
+    </AnimatedCard>
+  );
+}
+
+// ── Section header ────────────────────────────────────────────────────────────
+
+function SectionHeader({
+  kicker,
+  title,
+  linkLabel = 'See all',
+  onLink,
+}: {
+  kicker: string;
+  title: string;
+  linkLabel?: string;
+  onLink?: () => void;
+}) {
+  return (
+    <View style={styles.sectionHeader}>
+      <View style={styles.sectionHeaderLeft}>
+        <Text style={styles.sectionKicker}>{kicker}</Text>
+        <Text style={styles.sectionTitle}>{title}</Text>
+      </View>
+      {onLink && (
+        <TouchableOpacity onPress={onLink}>
+          <Text style={styles.sectionLink}>{linkLabel}</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
+// ── Quick action definitions ──────────────────────────────────────────────────
+
+const QUICK_ACTIONS = [
+  { label: 'Book Ride', Icon: Car, route: '/(tabs)/concierge' },
+  { label: 'Find Stay', Icon: Home, route: '/(tabs)/book' },
+  { label: 'Buy Ticket', Icon: Ticket, route: '/(tabs)/book' },
+  { label: 'Order Food', Icon: ShoppingBag, route: '/(tabs)/book' },
+  { label: 'Scan', Icon: QrCode, route: '/(tabs)/book' },
+] as const;
+
+// ── Main screen ───────────────────────────────────────────────────────────────
+
+export default function DiscoverScreen() {
+  const { width: screenWidth } = useWindowDimensions();
+  const CARD_W = (screenWidth - 48) / 2;
+
   const [search, setSearch] = useState('');
   const [bookmarks, setBookmarks] = useState<string[]>([]);
   const [attractions, setAttractions] = useState<any[]>([]);
-  const [activeLga, setActiveLga] = useState('All');
 
+  // Load cached attractions + bookmarks on mount
   useEffect(() => {
-    cacheGet<any[]>('attractions').then((cached) => { if (cached) setAttractions(cached); });
+    cacheGet<any[]>('attractions').then((cached) => {
+      if (cached) setAttractions(cached);
+    });
     getBookmarks().then(setBookmarks);
   }, []);
 
-  const { data, isSuccess, isFetching } = useQuery({
+  // Attractions query (preserved)
+  const {
+    data: attractionsData,
+    isSuccess: attractionsSuccess,
+    isFetching: attractionsFetching,
+  } = useQuery({
     queryKey: ['attractions'],
     queryFn: () => fetcher('/attractions?limit=50'),
   });
 
   useEffect(() => {
-    if (isSuccess && Array.isArray(data) && data.length > 0) {
-      setAttractions(data);
-      cacheSet('attractions', data);
+    if (attractionsSuccess && Array.isArray(attractionsData) && attractionsData.length > 0) {
+      setAttractions(attractionsData);
+      cacheSet('attractions', attractionsData);
     }
-  }, [isSuccess, data]);
+  }, [attractionsSuccess, attractionsData]);
 
-  const filtered = attractions.filter((a) => {
-    const matchSearch = !search || a.name.toLowerCase().includes(search.toLowerCase());
-    const matchLga = activeLga === 'All' || (a.lga?.name ?? '').includes(activeLga);
-    return matchSearch && matchLga;
+  // Events query
+  const { data: eventsData, isFetching: eventsFetching } = useQuery({
+    queryKey: ['events-discover'],
+    queryFn: () => fetcher('/events?limit=10'),
   });
+
+  const events: any[] = eventsData?.data ?? [];
+
+  const filteredAttractions = attractions.filter(
+    (a) => !search || a.name.toLowerCase().includes(search.toLowerCase())
+  );
 
   async function handleBookmark(id: string) {
     const added = await toggleBookmark(id);
-    setBookmarks((prev) => added ? [...prev, id] : prev.filter((b) => b !== id));
+    setBookmarks((prev) => (added ? [...prev, id] : prev.filter((b) => b !== id)));
   }
 
-  const showSkeleton = isFetching && attractions.length === 0;
+  const showAttractionSkeleton = attractionsFetching && attractions.length === 0;
+  const showEventSkeleton = eventsFetching && events.length === 0;
 
+  // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>Discover</Text>
-          <Text style={styles.title}>Ogun State</Text>
-        </View>
-        <TouchableOpacity style={styles.notifBtn}>
-          <Bell size={20} color={TEXT_SEC} />
-          <View style={styles.notifDot} />
-        </TouchableOpacity>
-      </View>
-
-      {/* Search */}
-      <View style={styles.searchRow}>
-        <Search size={15} color={TEXT_MUTED} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search attractions, LGAs..."
-          placeholderTextColor={TEXT_MUTED}
-          value={search}
-          onChangeText={setSearch}
-        />
-      </View>
-
-      {/* LGA Filter Pills — explicit height to prevent web stretching */}
       <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.pillScroll}
-        contentContainerStyle={styles.pillContent}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
       >
-        {LGA_FILTERS.map((lga) => (
-          <TouchableOpacity
-            key={lga}
-            style={[styles.pill, activeLga === lga && styles.pillActive]}
-            onPress={() => setActiveLga(lga)}
-          >
-            <Text style={[styles.pillText, activeLga === lga && styles.pillTextActive]}>
-              {lga}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+        {/* ── HERO ──────────────────────────────────────────────────────────── */}
+        <View style={styles.heroWrapper}>
+          {/* Background: dusk gradient photo placeholder */}
+          <LinearGradient
+            colors={[CARD_GRADIENTS.dusk[0], CARD_GRADIENTS.dusk[1]]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFillObject}
+          />
 
-      {/* Section label */}
-      <View style={styles.sectionRow}>
-        <Text style={styles.sectionLabel}>
-          {filtered.length > 0 ? `${filtered.length} Attractions` : 'Attractions'}
-        </Text>
-      </View>
+          {/* Gradient scrim overlay */}
+          <LinearGradient
+            colors={[
+              'rgba(5,14,14,0.5)',
+              'rgba(5,14,14,0.2)',
+              'rgba(5,14,14,0.85)',
+            ]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            style={StyleSheet.absoluteFillObject}
+          />
 
-      {/* Grid — skeleton or real data */}
-      {showSkeleton ? (
-        <View style={styles.skeletonGrid}>
-          {[0, 1, 2, 3].map((i) => <SkeletonCard key={i} />)}
-        </View>
-      ) : (
-        <FlatList
-          data={filtered}
-          keyExtractor={(item) => item.id}
-          numColumns={2}
-          contentContainerStyle={styles.grid}
-          showsVerticalScrollIndicator={false}
-          ListEmptyComponent={
-            <View style={styles.empty}>
-              <MapPin size={36} color={TEXT_MUTED} />
-              <Text style={styles.emptyTitle}>No Attractions Found</Text>
-              <Text style={styles.emptyText}>
-                {attractions.length === 0
-                  ? 'Start the backend to load attractions'
-                  : 'Try a different search or filter'}
-              </Text>
+          {/* Adire ornament — top right */}
+          <View style={styles.adireOrnamentPos}>
+            <AdireOrnament size={120} color={GOLD} opacity={0.22} />
+          </View>
+
+          {/* Top row: location pill + bell */}
+          <View style={styles.heroTopRow}>
+            {/* Location pill — glass morphism */}
+            <View style={styles.locationPill}>
+              <MapPin size={13} color={GOLD} />
+              <Text style={styles.locationPillText}>Abeokuta, Ogun</Text>
+              <View style={styles.locationPillDivider} />
+              <Sun size={12} color={INK_MID} />
+              <Text style={styles.locationPillTemp}>29°</Text>
             </View>
-          }
-          columnWrapperStyle={styles.gridRow}
-          renderItem={({ item, index }) => {
-            const [c0, c1] = CARD_COLORS[index % CARD_COLORS.length];
-            const isBookmarked = bookmarks.includes(item.id);
-            return (
-              <TouchableOpacity style={styles.card} activeOpacity={0.88}>
-                <LinearGradient colors={[c0, c1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.cardGradient}>
-                  <TouchableOpacity
-                    onPress={() => handleBookmark(item.id)}
-                    style={styles.bookmarkBtn}
-                    hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
-                  >
-                    {isBookmarked
-                      ? <BookmarkCheck size={16} color={GOLD_LIGHT} />
-                      : <Bookmark size={16} color="rgba(255,255,255,0.45)" />}
-                  </TouchableOpacity>
-                  <View style={styles.categoryBadge}>
-                    <Text style={styles.categoryText} numberOfLines={1}>
-                      {item.category ?? 'Attraction'}
-                    </Text>
-                  </View>
-                </LinearGradient>
-                <View style={styles.cardBody}>
-                  <Text style={styles.cardTitle} numberOfLines={2}>{item.name}</Text>
-                  <View style={styles.cardLocRow}>
-                    <MapPin size={10} color={TEXT_MUTED} />
-                    <Text style={styles.cardLoc} numberOfLines={1}>{item.lga?.name ?? 'Ogun State'}</Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
-            );
-          }}
-        />
-      )}
+
+            {/* Bell button */}
+            <TouchableOpacity
+              style={styles.bellBtn}
+              accessibilityLabel="Notifications"
+            >
+              <Bell size={16} color={INK} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Greeting block */}
+          <View style={styles.greetingBlock}>
+            <Text style={styles.greetingKicker}>E kú aaro · Tuesday</Text>
+            <View style={styles.greetingDisplay}>
+              <Text style={styles.greetingLine}>Good morning,</Text>
+              <Text style={styles.greetingName}>Damilola.</Text>
+            </View>
+          </View>
+
+          {/* Floating search bar — overlaps hero bottom edge */}
+          <View style={styles.heroSearchOuter}>
+            <View style={styles.heroSearchBar}>
+              <Search size={16} color={INK_FAINT} />
+              <TextInput
+                style={styles.heroSearchInput}
+                placeholder="Search Ogun — places, events, rides"
+                placeholderTextColor={INK_FAINT}
+                value={search}
+                onChangeText={setSearch}
+              />
+              <View style={styles.micBtn}>
+                <Mic size={14} color={GOLD} />
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* ── QUICK ACTIONS ─────────────────────────────────────────────────── */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.quickScroll}
+          contentContainerStyle={styles.quickContent}
+        >
+          {QUICK_ACTIONS.map(({ label, Icon, route }) => (
+            <TouchableOpacity
+              key={label}
+              style={styles.quickPill}
+              onPress={() => router.push(route as any)}
+              accessibilityRole="button"
+            >
+              <View style={styles.quickIconBox}>
+                <Icon size={16} color={GOLD} />
+              </View>
+              <Text style={styles.quickPillText}>{label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        {/* ── HAPPENING NOW ─────────────────────────────────────────────────── */}
+        <View style={styles.section}>
+          <SectionHeader
+            kicker="HAPPENING NOW"
+            title="This week in Ogun"
+            onLink={() => router.push('/(tabs)/book' as any)}
+          />
+          {showEventSkeleton ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.eventListContent}
+            >
+              <EventSkeletonCard />
+              <EventSkeletonCard />
+              <EventSkeletonCard />
+            </ScrollView>
+          ) : events.length === 0 ? (
+            <View style={styles.emptyHorizontal}>
+              <Text style={styles.emptyHorizontalText}>No events right now</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={events}
+              keyExtractor={(item) => item.id}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.eventListContent}
+              snapToInterval={252} // 240 card + 12 gap
+              decelerationRate="fast"
+              renderItem={({ item, index }) => <EventCard item={item} index={index} />}
+            />
+          )}
+        </View>
+
+        {/* ── NEAR YOU ──────────────────────────────────────────────────────── */}
+        <View style={[styles.section, styles.sectionLast]}>
+          <SectionHeader
+            kicker="NEAR YOU"
+            title="Within 5 km"
+            linkLabel="Map"
+            onLink={() => {}}
+          />
+          {showAttractionSkeleton ? (
+            <View style={styles.attractionGrid}>
+              <SkeletonCard width={CARD_W} height={200} />
+              <SkeletonCard width={CARD_W} height={200} />
+              <SkeletonCard width={CARD_W} height={200} />
+              <SkeletonCard width={CARD_W} height={200} />
+            </View>
+          ) : filteredAttractions.length === 0 ? (
+            <View style={styles.empty}>
+              <MapPin size={36} color={INK_FAINT} />
+              <Text style={styles.emptyTitle}>Nothing nearby yet</Text>
+              <Text style={styles.emptyBody}>Try a different area or check back later.</Text>
+            </View>
+          ) : (
+            <View style={styles.attractionGrid}>
+              {filteredAttractions.map((item, index) => (
+                <AttractionCard
+                  key={item.id}
+                  item={item}
+                  index={index}
+                  cardWidth={CARD_W}
+                  isBookmarked={bookmarks.includes(item.id)}
+                  onBookmark={handleBookmark}
+                />
+              ))}
+            </View>
+          )}
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
+// ── Styles ────────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: MIDNIGHT },
+  container: {
+    flex: 1,
+    backgroundColor: SURFACE_MID,
+  },
+  scrollContent: {
+    paddingBottom: 120,
+  },
 
-  header: {
-    flexDirection: 'row',
+  // ── Hero ──────────────────────────────────────────────────────────────────
+  heroWrapper: {
+    height: 310,
+    borderBottomLeftRadius: 28,
+    overflow: 'hidden',
+    paddingHorizontal: SPACE_5,
+    paddingTop: SPACE_4,
+    paddingBottom: SPACE_8,
     justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 16,
+    position: 'relative',
   },
-  greeting: { fontSize: 12, color: TEXT_MUTED, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase' },
-  title: { fontSize: 30, fontWeight: '800', color: TEXT, marginTop: 2, letterSpacing: -1 },
-  notifBtn: { position: 'relative', padding: 6 },
-  notifDot: {
-    position: 'absolute', top: 6, right: 6,
-    width: 7, height: 7, borderRadius: 3.5,
-    backgroundColor: GOLD, borderWidth: 1.5, borderColor: MIDNIGHT,
+  adireOrnamentPos: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
   },
 
-  searchRow: {
-    flexDirection: 'row', alignItems: 'center',
-    marginHorizontal: 16, marginBottom: 12,
-    backgroundColor: SURFACE, borderRadius: 14,
-    paddingHorizontal: 14, paddingVertical: 12,
-    borderWidth: 1, borderColor: BORDER,
+  // Top row
+  heroTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  searchInput: { flex: 1, color: TEXT, fontSize: 14, marginLeft: 10 },
-
-  // Explicit height on pillScroll prevents react-native-web from stretching pills
-  pillScroll: { height: 38, marginBottom: 14 },
-  pillContent: { paddingHorizontal: 16, alignItems: 'center' },
-  pill: {
-    height: 32,
-    paddingHorizontal: 16,
-    borderRadius: 16,
-    backgroundColor: SURFACE,
+  locationPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACE_1,
+    backgroundColor: 'rgba(5,14,14,0.45)',
+    borderRadius: RADIUS_PILL,
     borderWidth: 1,
-    borderColor: BORDER,
-    marginRight: 8,
+    borderColor: BORDER_MID,
+    paddingHorizontal: SPACE_3,
+    paddingVertical: 6,
+  },
+  locationPillText: {
+    fontFamily: TYPE.caption.fontFamily,
+    fontSize: 12,
+    fontWeight: '600' as const,
+    color: INK,
+    letterSpacing: 0.2,
+    marginLeft: 2,
+  },
+  locationPillDivider: {
+    width: 1,
+    height: 12,
+    backgroundColor: BORDER_MID,
+    marginHorizontal: SPACE_1,
+  },
+  locationPillTemp: {
+    fontFamily: FONT_MONO,
+    fontSize: 12,
+    color: INK_MID,
+    marginLeft: 2,
+  },
+  bellBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(5,14,14,0.45)',
+    borderWidth: 1,
+    borderColor: BORDER_MID,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pillActive: {
-    backgroundColor: 'rgba(200,150,42,0.18)',
-    borderColor: 'rgba(200,150,42,0.5)',
+
+  // Greeting
+  greetingBlock: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    paddingBottom: SPACE_6,
   },
-  pillText: { color: TEXT_SEC, fontSize: 12, fontWeight: '500' },
-  pillTextActive: { color: GOLD_LIGHT, fontWeight: '700' },
-
-  sectionRow: { paddingHorizontal: 16, marginBottom: 12 },
-  sectionLabel: { color: TEXT_SEC, fontSize: 12, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
-
-  // Skeleton grid
-  skeletonGrid: {
-    flexDirection: 'row', flexWrap: 'wrap',
-    paddingHorizontal: 16, gap: 12,
+  greetingKicker: {
+    fontFamily: FONT_MONO,
+    fontSize: 10,
+    fontWeight: '600' as const,
+    letterSpacing: 1.8,
+    color: GOLD,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  greetingDisplay: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-end',
+  },
+  greetingLine: {
+    fontFamily: FONT_DISPLAY,
+    fontSize: 38,
+    fontWeight: '400' as const,
+    color: CREAM,
+    lineHeight: 44,
+    letterSpacing: -0.5,
+  },
+  greetingName: {
+    fontFamily: FONT_DISPLAY,
+    fontSize: 38,
+    fontWeight: '400' as const,
+    fontStyle: 'italic' as const,
+    color: GOLD_BRIGHT,
+    lineHeight: 44,
+    letterSpacing: -0.5,
+    marginLeft: 6,
   },
 
-  grid: { paddingHorizontal: 16, paddingBottom: 24 },
-  gridRow: { justifyContent: 'space-between', marginBottom: 12 },
+  // Floating search bar
+  heroSearchOuter: {
+    position: 'absolute',
+    bottom: -22,
+    left: SPACE_4,
+    right: SPACE_4,
+  },
+  heroSearchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(22,43,43,0.85)',
+    borderRadius: RADIUS_MD,
+    borderWidth: 1,
+    borderColor: BORDER_MID,
+    height: 50,
+    paddingHorizontal: SPACE_4,
+    gap: SPACE_2,
+  },
+  heroSearchInput: {
+    flex: 1,
+    fontFamily: TYPE.body.fontFamily,
+    fontSize: 14,
+    color: INK,
+    height: '100%',
+  },
+  micBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: RADIUS_SM,
+    backgroundColor: GOLD_DIM,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
-  card: {
-    width: CARD_W,
-    backgroundColor: SURFACE,
-    borderRadius: 16,
+  // ── Quick actions ────────────────────────────────────────────────────────
+  quickScroll: {
+    marginTop: 38,
+  },
+  quickContent: {
+    paddingHorizontal: SPACE_4,
+    gap: SPACE_2,
+    alignItems: 'center',
+  },
+  quickPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: SURFACE_MID,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+    paddingLeft: 10,
+    paddingRight: SPACE_3,
+    height: 44,
+    marginRight: SPACE_2,
+    gap: SPACE_2,
+  },
+  quickIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: GOLD_DIM,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickPillText: {
+    fontFamily: TYPE.body.fontFamily,
+    fontSize: 13,
+    fontWeight: '700' as const,
+    color: INK,
+    letterSpacing: 0,
+  },
+
+  // ── Section layout ───────────────────────────────────────────────────────
+  section: {
+    marginTop: 26,
+  },
+  sectionLast: {
+    marginTop: 28,
+    paddingBottom: SPACE_4,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    paddingHorizontal: SPACE_4,
+    marginBottom: SPACE_3,
+  },
+  sectionHeaderLeft: {
+    gap: 2,
+  },
+  sectionKicker: {
+    fontFamily: FONT_MONO,
+    fontSize: 10,
+    fontWeight: '600' as const,
+    letterSpacing: 1.8,
+    color: GOLD,
+    textTransform: 'uppercase',
+  },
+  sectionTitle: {
+    fontFamily: TYPE.heading.fontFamily,
+    fontSize: 20,
+    fontWeight: '400' as const,
+    color: CREAM,
+    lineHeight: 24,
+    letterSpacing: -0.2,
+  },
+  sectionLink: {
+    fontFamily: TYPE.body.fontFamily,
+    fontSize: 13,
+    fontWeight: '500' as const,
+    color: GOLD,
+    letterSpacing: 0,
+  },
+
+  // ── Event cards ──────────────────────────────────────────────────────────
+  eventListContent: {
+    paddingLeft: SPACE_4,
+    paddingRight: SPACE_2,
+  },
+  eventCard: {
+    width: 240,
+    backgroundColor: SURFACE_RAISED,
+    borderRadius: RADIUS_LG,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: BORDER_MID,
+    marginRight: SPACE_3,
+    elevation: 8,
+    shadowColor: SURFACE_DEEP,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+  },
+  eventCardPhoto: {
+    height: 150,
+    padding: SPACE_2,
+    justifyContent: 'flex-start',
+    alignItems: 'flex-start',
+  },
+  eventDateBadge: {
+    backgroundColor: 'rgba(5,14,14,0.65)',
+    borderRadius: RADIUS_SM,
+    paddingHorizontal: SPACE_2,
+    paddingVertical: SPACE_1,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: GOLD_LINE,
+  },
+  eventDateDay: {
+    fontFamily: FONT_MONO,
+    fontSize: 18,
+    fontWeight: '800' as const,
+    color: GOLD,
+    lineHeight: 22,
+  },
+  eventDateMonth: {
+    fontFamily: FONT_MONO,
+    fontSize: 8,
+    fontWeight: '700' as const,
+    color: GOLD,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    lineHeight: 11,
+  },
+  eventLivePos: {
+    position: 'absolute',
+    top: SPACE_2,
+    right: SPACE_2,
+  },
+  liveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(5,14,14,0.7)',
+    borderRadius: RADIUS_PILL,
+    paddingHorizontal: SPACE_2,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: SUCCESS,
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: SUCCESS,
+  },
+  liveText: {
+    fontFamily: FONT_MONO,
+    fontSize: 9,
+    fontWeight: '700' as const,
+    color: SUCCESS_TEXT,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  },
+  eventCardBody: {
+    padding: SPACE_3,
+    gap: 4,
+  },
+  eventTagChip: {
+    alignSelf: 'flex-start',
+    backgroundColor: GOLD_DIM,
+    borderRadius: RADIUS_SM,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: GOLD_LINE,
+    marginBottom: 2,
+  },
+  eventTagText: {
+    fontFamily: FONT_MONO,
+    fontSize: 9,
+    fontWeight: '700' as const,
+    color: GOLD,
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+  },
+  eventCardTitle: {
+    fontFamily: TYPE.body.fontFamily,
+    fontSize: 15,
+    fontWeight: '700' as const,
+    color: INK,
+    lineHeight: 20,
+  },
+  eventLocRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginTop: 1,
+  },
+  eventLocText: {
+    fontFamily: TYPE.caption.fontFamily,
+    fontSize: 11,
+    color: INK_FAINT,
+    flex: 1,
+    lineHeight: 15,
+  },
+
+  // ── Attraction grid ──────────────────────────────────────────────────────
+  attractionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: SPACE_4,
+    gap: SPACE_3,
+  },
+  attractionCard: {
+    backgroundColor: SURFACE_RAISED,
+    borderRadius: RADIUS_LG,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: BORDER,
     elevation: 6,
-    shadowColor: '#000',
+    shadowColor: SURFACE_DEEP,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
   },
-  cardGradient: {
-    height: 130,
-    padding: 10,
+  attractionPhoto: {
+    height: 96,
+    padding: SPACE_2,
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     alignItems: 'flex-start',
   },
-  bookmarkBtn: {
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    borderRadius: 8,
-    padding: 5,
+  heartBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(5,14,14,0.55)',
+    borderWidth: 1,
+    borderColor: BORDER_MID,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  categoryBadge: {
-    position: 'absolute',
-    bottom: 10,
-    left: 10,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    borderRadius: 6,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
+  attractionBody: {
+    padding: SPACE_3,
+    gap: 5,
   },
-  categoryText: {
-    color: 'rgba(255,255,255,0.85)',
-    fontSize: 9, fontWeight: '700',
-    letterSpacing: 0.8, textTransform: 'uppercase',
+  attractionName: {
+    fontFamily: TYPE.body.fontFamily,
+    fontSize: 13,
+    fontWeight: '700' as const,
+    color: INK,
+    lineHeight: 17,
   },
-  cardBody: { padding: 10 },
-  cardTitle: { color: TEXT, fontSize: 13, fontWeight: '700', marginBottom: 5, lineHeight: 17 },
-  cardLocRow: { flexDirection: 'row', alignItems: 'center' },
-  cardLoc: { color: TEXT_MUTED, fontSize: 10, marginLeft: 3, flex: 1 },
+  attractionMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  attractionRating: {
+    fontFamily: FONT_MONO,
+    fontSize: 11,
+    fontWeight: '600' as const,
+    color: GOLD,
+    letterSpacing: -0.1,
+  },
+  attractionDistance: {
+    fontFamily: FONT_MONO,
+    fontSize: 11,
+    color: CREAM,
+    letterSpacing: -0.1,
+    marginLeft: 'auto',
+    opacity: 0.7,
+  },
 
-  empty: { alignItems: 'center', paddingTop: 60, gap: 10 },
-  emptyTitle: { color: TEXT_SEC, fontSize: 16, fontWeight: '700', marginTop: 8 },
-  emptyText: { color: TEXT_MUTED, fontSize: 13, textAlign: 'center', maxWidth: 220, lineHeight: 19 },
+  // ── Empty states ─────────────────────────────────────────────────────────
+  emptyHorizontal: {
+    height: 100,
+    marginHorizontal: SPACE_4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: SURFACE_RAISED,
+    borderRadius: RADIUS_LG,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  emptyHorizontalText: {
+    fontFamily: TYPE.body.fontFamily,
+    fontSize: 14,
+    color: INK_FAINT,
+  },
+  empty: {
+    alignItems: 'center',
+    paddingTop: SPACE_12,
+    paddingHorizontal: SPACE_4,
+    gap: SPACE_2,
+  },
+  emptyTitle: {
+    fontFamily: TYPE.body.fontFamily,
+    fontSize: 15,
+    fontWeight: '700' as const,
+    color: INK_MID,
+    marginTop: SPACE_2,
+  },
+  emptyBody: {
+    fontFamily: TYPE.body.fontFamily,
+    fontSize: 13,
+    color: INK_FAINT,
+    textAlign: 'center',
+    maxWidth: 220,
+    lineHeight: 20,
+  },
 });
