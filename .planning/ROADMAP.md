@@ -238,11 +238,11 @@ Plans:
 - [x] 07-01-PLAN.md — EAS build config (eas.json, expo-dev-client, build scripts, app.json projectId)
 
 **Wave 2** *(blocked on Wave 1)*
-- [ ] 07-02-PLAN.md — Production backend: CORS hardening, Swagger gate, Railway env var checklist
+- [x] 07-02-PLAN.md — Production backend: CORS hardening, Swagger gate, Railway env var checklist
 
 **Wave 3** *(blocked on Wave 2)*
-- [ ] 07-03-PLAN.md — Monitoring: Grafana dashboard JSON + Sentry alert runbook + Railway rollback procedure
-- [ ] 07-04-PLAN.md — App store prep: buildNumber, versionCode, privacyManifests, submission checklist
+- [x] 07-03-PLAN.md — Monitoring: Grafana dashboard JSON + Sentry alert runbook + Railway rollback procedure
+- [x] 07-04-PLAN.md — App store prep: buildNumber, versionCode, privacyManifests, submission checklist
 
 **Wave 4** *(blocked on all preceding waves)*
 - [ ] 07-05-PLAN.md — Human verification checkpoint: 10-step production launch gate (LAUNCH-01 through LAUNCH-08)
@@ -265,4 +265,4 @@ Plans:
 | 4. Delivery Module | 8/8 | In progress (04-08 human checkpoint deferred) | - |
 | 5. AI Concierge + KYC | 6/7 | In progress (05-07 human checkpoint deferred) | - |
 | 6. QA, Security & Performance | 5/6 | In Progress|  |
-| 7. Deployment & Launch | 1/5 | In Progress|  |
+| 7. Deployment & Launch | 4/5 | In Progress|  |

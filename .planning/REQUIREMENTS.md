@@ -97,10 +97,10 @@ These requirements are locked. They shipped and are confirmed working.
 - [ ] **LAUNCH-01**: All services are deployed to Railway production with Neon production branch and Upstash production tier
 - [ ] **LAUNCH-02**: Cloudflare WAF and DDoS protection active on *.iseyaa.ng with SSL/TLS termination
 - [ ] **LAUNCH-03**: Paystack LIVE keys configured; real-money end-to-end test (₦100 topup → ticket purchase → escrow → refund) passes
-- [ ] **LAUNCH-04**: iOS build submitted to App Store (< 40MB); Android APK submitted to Play Store (< 30MB)
+- [x] **LAUNCH-04**: iOS build submitted to App Store (< 40MB); Android APK submitted to Play Store (< 30MB)
 - [ ] **LAUNCH-05**: TestFlight invite sent to 50+ testers; crash-free rate > 99.5% confirmed before App Store review submission
-- [ ] **LAUNCH-06**: Grafana Cloud dashboards show live KPIs; Sentry alerts configured for error rate spikes
-- [ ] **LAUNCH-07**: Rollback procedure tested and confirmed < 5 minutes to previous Railway deployment
+- [x] **LAUNCH-06**: Grafana Cloud dashboards show live KPIs; Sentry alerts configured for error rate spikes
+- [x] **LAUNCH-07**: Rollback procedure tested and confirmed < 5 minutes to previous Railway deployment
 - [ ] **LAUNCH-08**: 48-hour invite-only soft launch in Abeokuta with error rate < 0.5%; public launch trigger met
 
 ---
