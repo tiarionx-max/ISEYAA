@@ -44,6 +44,8 @@ import {
   FONT_DISPLAY,
   FONT_MONO,
 } from '../../lib/tokens';
+import { useQuery } from '@tanstack/react-query';
+import { fetcher } from '../../lib/api';
 
 // ── Live dot animation ──────────────────────────────────────────────────
 function LiveDot() {
@@ -165,9 +167,20 @@ function RideCard() {
   );
 }
 
+// ── Time greeting ────────────────────────────────────────────────────────
+function getYorubaTimeGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return 'E kú aaro';
+  if (h < 17) return 'E kú ọsán';
+  return 'E kú irọlẹ';
+}
+
 // ── Main screen ─────────────────────────────────────────────────────────
 export default function ConciergeScreen() {
   const [mode, setMode] = useState<'chat' | 'ride' | 'delivery'>('chat');
+
+  const { data: userData } = useQuery({ queryKey: ['me'], queryFn: () => fetcher('/users/me') });
+  const firstName = ((userData?.data?.name ?? userData?.name) ?? '').split(' ')[0];
 
   const handlePrompt = (prompt: string) => {
     router.push({ pathname: '/ai-chat', params: { prompt } });
@@ -210,7 +223,7 @@ export default function ConciergeScreen() {
         <View style={styles.msgRowAI}>
           <AiAvatar />
           <View style={styles.bubbleAI}>
-            <Text style={styles.bubbleGreeting}>E kú aaro, Damilola.</Text>
+            <Text style={styles.bubbleGreeting}>{`${getYorubaTimeGreeting()}${firstName ? `, ${firstName}` : ''}.`}</Text>
             <Text style={styles.bubbleBody}>
               {"I'm "}
               <Text style={styles.boldText}>Iseyaa</Text>

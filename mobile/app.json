@@ -19,13 +19,22 @@
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "ISEYAA needs access to your photos to upload proof of delivery.",
         "NSCameraUsageDescription": "ISEYAA needs camera access to capture proof of delivery.",
-        "NSMicrophoneUsageDescription": "ISEYAA needs microphone access for video (not used, required by SDK)."
+        "NSMicrophoneUsageDescription": "ISEYAA needs microphone access for video (not used, required by SDK).",
+        "ITSAppUsesNonExemptEncryption": false
       },
       "privacyManifests": {
         "NSPrivacyAccessedAPITypes": [
           {
             "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
-            "NSPrivacyAccessedAPITypeReasons": ["CA92.1"]
+            "NSPrivacyAccessedAPITypeReasons": [
+              "CA92.1"
+            ]
+          },
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
+            "NSPrivacyAccessedAPITypeReasons": [
+              "CA92.1"
+            ]
           }
         ]
       }
@@ -38,8 +47,13 @@
       "package": "ng.gov.ogun.iseyaa",
       "versionCode": 1,
       "config": {
-        "googleMaps": { "apiKey": "${GOOGLE_MAPS_API_KEY}" }
-      }
+        "googleMaps": {
+          "apiKey": "${GOOGLE_MAPS_API_KEY}"
+        }
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "plugins": [
       "expo-router",
@@ -51,10 +65,20 @@
           "cameraPermission": "ISEYAA needs camera access to capture proof of delivery."
         }
       ],
-      ["@sentry/react-native/expo", { "organization": "iseyaa", "project": "iseyaa-mobile" }]
+      [
+        "@sentry/react-native/expo",
+        {
+          "organization": "iseyaa",
+          "project": "iseyaa-mobile"
+        }
+      ]
     ],
     "scheme": "iseyaa",
-    "platforms": ["ios", "android", "web"],
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
     "web": {
       "bundler": "metro",
       "output": "single",
@@ -64,9 +88,13 @@
       "typedRoutes": true
     },
     "extra": {
+      "router": {
+        "origin": false
+      },
       "eas": {
-        "projectId": "PLACEHOLDER_EAS_PROJECT_ID"
+        "projectId": "338da02d-7d01-410a-93e6-2daa359217da"
       }
-    }
+    },
+    "owner": "tiarionxmob"
   }
 }

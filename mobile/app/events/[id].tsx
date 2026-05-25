@@ -1,26 +1,66 @@
+import React, { useState } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Alert,
+  View, Text, ScrollView, TouchableOpacity, StyleSheet,
+  ActivityIndicator, Alert, Platform, Share,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { fetcher, api } from '../../lib/api';
-import { Calendar, MapPin, Tag, ArrowLeft, Users } from 'lucide-react-native';
+import { ChevronLeft, Heart, Share2, MapPin } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Rect, Line, Circle } from 'react-native-svg';
 
-const MIDNIGHT = '#0D1B1B';
-const SURFACE = '#162525';
-const FOREST = '#1A6B3C';
-const GOLD = '#C8962A';
-const GOLD_LIGHT = '#E0AA42';
-const BORDER = 'rgba(255,255,255,0.07)';
-const TEXT = '#FFFFFF';
-const TEXT_SEC = 'rgba(255,255,255,0.55)';
-const TEXT_MUTED = 'rgba(255,255,255,0.28)';
+import {
+  SURFACE_DEEP, SURFACE_MID, SURFACE_ELEV,
+  FOREST, GOLD, GOLD_BRIGHT, GOLD_DIM, GOLD_LINE,
+  CREAM, INK, INK_MID, INK_FAINT,
+  BORDER, BORDER_MID,
+  FONT_DISPLAY, FONT_MONO,
+  ERROR,
+} from '../../lib/tokens';
 
+// ── AdireOrnament ──────────────────────────────────
+function AdireOrnament({ size = 120, opacity = 0.2 }: { size?: number; opacity?: number }) {
+  const s = size;
+  const c = s / 2;
+  return (
+    <Svg width={s} height={s} viewBox={`0 0 ${s} ${s}`} opacity={opacity}>
+      <Rect x={s * 0.1} y={s * 0.1} width={s * 0.8} height={s * 0.8} fill="none" stroke={GOLD} strokeWidth={s * 0.018} />
+      <Rect x={s * 0.2} y={s * 0.2} width={s * 0.6} height={s * 0.6} fill="none" stroke={GOLD} strokeWidth={s * 0.012} />
+      <Line x1={s * 0.1} y1={s * 0.1} x2={s * 0.9} y2={s * 0.9} stroke={GOLD} strokeWidth={s * 0.01} />
+      <Line x1={s * 0.9} y1={s * 0.1} x2={s * 0.1} y2={s * 0.9} stroke={GOLD} strokeWidth={s * 0.01} />
+      <Circle cx={c} cy={c} r={s * 0.12} fill="none" stroke={GOLD} strokeWidth={s * 0.012} />
+      <Circle cx={c} cy={c} r={s * 0.05} fill={GOLD} />
+    </Svg>
+  );
+}
+
+// ── Helpers ───────────────────────────────────────
+function formatCurrency(amount: number) {
+  return `₦${amount.toLocaleString('en-NG')}`;
+}
+
+function formatDate(iso: string) {
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-NG', {
+    day: 'numeric', month: 'short', year: 'numeric',
+  });
+}
+
+function formatWeekdayTime(iso: string) {
+  const d = new Date(iso);
+  const weekday = d.toLocaleDateString('en-NG', { weekday: 'short' });
+  const time = d.toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' });
+  return `${weekday} · ${time}`;
+}
+
+// ── Screen ────────────────────────────────────────
 export default function EventDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
+  const [selectedTier, setSelectedTier] = useState(0);
+  const [isLiked, setIsLiked] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['event', id],
@@ -38,7 +78,7 @@ export default function EventDetailScreen() {
 
   if (isLoading) {
     return (
-      <View style={[styles.centered, { backgroundColor: MIDNIGHT }]}>
+      <View style={[s.centered, { backgroundColor: SURFACE_DEEP }]}>
         <ActivityIndicator color={GOLD} size="large" />
       </View>
     );
@@ -46,255 +86,506 @@ export default function EventDetailScreen() {
 
   if (!event) {
     return (
-      <View style={[styles.centered, { backgroundColor: MIDNIGHT }]}>
-        <Text style={styles.errorText}>Event not found.</Text>
+      <View style={[s.centered, { backgroundColor: SURFACE_DEEP }]}>
+        <Text style={s.errorText}>Event not found.</Text>
       </View>
     );
   }
 
   const isFree = !event.ticketPrice || Number(event.ticketPrice) === 0;
   const dateStr = event.startDate ?? event.date;
-  const formattedDate = dateStr
-    ? new Date(dateStr).toLocaleDateString('en-NG', {
-        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-      })
-    : 'Date TBD';
+  const displayDate = dateStr ? formatDate(dateStr) : 'Date TBD';
+  const displaySub = dateStr ? formatWeekdayTime(dateStr) : '';
+  const venue = event.location ?? event.venue ?? 'Venue TBD';
+
+  const tiers = [
+    {
+      tier: 'General',
+      price: isFree ? 'Free' : formatCurrency(Number(event.ticketPrice)),
+      perks: 'General admission',
+    },
+    ...((!isFree && Number(event.ticketPrice) > 0)
+      ? [{
+          tier: 'VIP',
+          price: formatCurrency(Math.round(Number(event.ticketPrice) * 2.5)),
+          perks: 'Priority entry · Lounge access',
+        }]
+      : []),
+  ];
+
+  const selectedPrice = tiers[selectedTier]?.price ?? 'Free';
+  const selectedTierName = tiers[selectedTier]?.tier ?? 'General';
 
   return (
-    <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
-        {/* Hero */}
-        <LinearGradient
-          colors={['#1A5A3C', '#0A2E1E', MIDNIGHT]}
-          style={styles.hero}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
-        >
-          {/* Decorative circles */}
-          <View style={styles.circle1} />
-          <View style={styles.circle2} />
+    <View style={[s.root, { backgroundColor: SURFACE_DEEP }]}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 120 }}
+      >
+        {/* ── HERO ── */}
+        <View style={s.hero}>
+          <LinearGradient
+            colors={['#3D2A05', '#1A1200']}
+            style={StyleSheet.absoluteFillObject}
+            start={{ x: 0.3, y: 0 }}
+            end={{ x: 0.7, y: 1 }}
+          />
 
-          {/* Back button */}
-          <TouchableOpacity
-            style={[styles.backBtn, { marginTop: insets.top + 8 }]}
-            onPress={() => router.back()}
-          >
-            <ArrowLeft size={18} color={TEXT} />
-          </TouchableOpacity>
-
-          {/* Hero icon */}
-          <View style={styles.heroIconWrapper}>
-            <Calendar size={52} color={GOLD} strokeWidth={1.5} />
+          {/* Adire ornament */}
+          <View style={s.ornamentWrap} pointerEvents="none">
+            <AdireOrnament size={200} opacity={0.32} />
           </View>
 
-          {/* Status badge */}
-          {event.status && (
-            <View style={styles.statusBadge}>
-              <View style={styles.statusDot} />
-              <Text style={styles.statusText}>{event.status}</Text>
-            </View>
-          )}
-        </LinearGradient>
+          {/* Gradient overlay: dark top → clear → dark bottom */}
+          <LinearGradient
+            colors={[
+              'rgba(5,14,14,0.50)',
+              'transparent',
+              SURFACE_DEEP,
+            ]}
+            locations={[0, 0.30, 1]}
+            style={StyleSheet.absoluteFillObject}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+          />
 
-        {/* Content */}
-        <View style={styles.content}>
-          <Text style={styles.title}>{event.title}</Text>
-
-          {/* Info pills */}
-          <View style={styles.infoPills}>
-            <View style={styles.infoPill}>
-              <Calendar size={13} color={GOLD} />
-              <Text style={styles.infoPillText}>{formattedDate}</Text>
+          {/* Top nav */}
+          <View style={[s.heroNav, { top: insets.top + 12 }]}>
+            <TouchableOpacity style={s.glassBtn} onPress={() => router.back()}>
+              <ChevronLeft size={20} color={INK} strokeWidth={2.2} />
+            </TouchableOpacity>
+            <View style={s.heroNavRight}>
+              <TouchableOpacity style={s.glassBtn} onPress={() => setIsLiked(v => !v)} activeOpacity={0.8}>
+                <Heart size={18} color={isLiked ? GOLD : INK} fill={isLiked ? GOLD : 'none'} strokeWidth={2} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={s.glassBtn}
+                activeOpacity={0.8}
+                onPress={() => Share.share({ title: event?.title ?? 'Event', message: `Check out ${event?.title ?? 'this event'} on Iseyaa!` })}
+              >
+                <Share2 size={18} color={INK} strokeWidth={2} />
+              </TouchableOpacity>
             </View>
-            {(event.location ?? event.venue) && (
-              <View style={styles.infoPill}>
-                <MapPin size={13} color={GOLD} />
-                <Text style={styles.infoPillText}>{event.location ?? event.venue}</Text>
-              </View>
-            )}
-            {event.capacity && (
-              <View style={styles.infoPill}>
-                <Users size={13} color={GOLD} />
-                <Text style={styles.infoPillText}>{event.capacity} capacity</Text>
-              </View>
-            )}
           </View>
 
-          {/* Description */}
-          {event.description && (
-            <View style={styles.descSection}>
-              <Text style={styles.descTitle}>About This Event</Text>
-              <Text style={styles.descText}>{event.description}</Text>
+          {/* Hero text */}
+          <View style={s.heroText}>
+            {/* Tag chips */}
+            <View style={s.chipRow}>
+              <View style={s.chipCultural}>
+                <Text style={s.chipCulturalText}>Cultural</Text>
+              </View>
+              {venue !== 'Venue TBD' && (
+                <View style={s.chipLocation}>
+                  <MapPin size={10} color="#7DD49E" />
+                  <Text style={s.chipLocationText} numberOfLines={1}>{venue}</Text>
+                </View>
+              )}
             </View>
-          )}
 
-          {/* Ticket info */}
-          <View style={styles.ticketSection}>
-            <Text style={styles.ticketLabel}>Ticket Price</Text>
-            <Text style={styles.ticketPrice}>
-              {isFree ? 'FREE ENTRY' : `₦${Number(event.ticketPrice).toLocaleString()}`}
+            {/* Title */}
+            <Text style={s.heroTitle} numberOfLines={3}>
+              {event.title
+                ? event.title.split(' ').slice(0, -1).join(' ') + '\n'
+                : ''}
+              <Text style={s.heroTitleItalic}>
+                {event.title
+                  ? event.title.split(' ').slice(-1).join(' ')
+                  : event.title ?? 'Event'}
+              </Text>
             </Text>
+
+            {/* Sub */}
+            {event.category && (
+              <Text style={s.heroMono}>
+                {String(event.category).toUpperCase()} · SEE DETAILS
+              </Text>
+            )}
+          </View>
+        </View>
+
+        {/* ── KEY FACTS ROW ── */}
+        <View style={s.factsRow}>
+          {[
+            { k: 'Date', v: displayDate, sub: displaySub },
+            { k: 'Venue', v: 'Venue', sub: venue },
+            { k: 'Duration', v: 'Event', sub: 'See details' },
+          ].map((cell) => (
+            <View key={cell.k} style={s.factCell}>
+              <Text style={s.factKicker}>{cell.k.toUpperCase()}</Text>
+              <Text style={s.factValue} numberOfLines={1}>{cell.v}</Text>
+              <Text style={s.factSub} numberOfLines={1}>{cell.sub}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* ── ABOUT ── */}
+        <View style={s.section}>
+          <Text style={s.kicker}>ABOUT</Text>
+          <Text style={s.body}>
+            {event.description ?? 'Join us for an unforgettable cultural experience celebrating the rich heritage of Ogun State.'}
+          </Text>
+        </View>
+
+        {/* ── TICKET TIERS ── */}
+        <View style={s.tiersSection}>
+          <View style={s.tiersSectionHeader}>
+            <Text style={s.kicker}>TICKETS</Text>
+            <Text style={s.tiersSectionTitle}>Available tiers</Text>
+          </View>
+
+          <View style={s.tiersList}>
+            {tiers.map((tier, idx) => {
+              const isSelected = selectedTier === idx;
+              return (
+                <TouchableOpacity
+                  key={tier.tier}
+                  style={[s.tierCard, isSelected && s.tierCardSelected]}
+                  onPress={() => setSelectedTier(idx)}
+                  activeOpacity={0.8}
+                >
+                  {/* Radio */}
+                  <View style={[s.radio, isSelected && s.radioSelected]} />
+
+                  {/* Info */}
+                  <View style={s.tierInfo}>
+                    <Text style={s.tierName}>{tier.tier}</Text>
+                    <Text style={s.tierPerks}>{tier.perks}</Text>
+                  </View>
+
+                  {/* Price */}
+                  <Text style={[s.tierPrice, isSelected && s.tierPriceSelected]}>
+                    {tier.price}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
       </ScrollView>
 
-      {/* Fixed bottom CTA */}
-      <View style={styles.bottomBar}>
-        <View style={styles.pricePreview}>
-          <Text style={styles.pricePreviewLabel}>per ticket</Text>
-          <Text style={styles.pricePreviewAmount}>
-            {isFree ? 'Free' : `₦${Number(event.ticketPrice).toLocaleString()}`}
-          </Text>
-        </View>
-        <TouchableOpacity
-          style={[styles.ctaBtn, purchaseMutation.isPending && styles.ctaBtnDisabled]}
-          onPress={() => purchaseMutation.mutate()}
-          disabled={purchaseMutation.isPending}
-          activeOpacity={0.85}
-        >
-          <LinearGradient
-            colors={['#1A6B3C', '#0D4025']}
-            style={styles.ctaGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
+      {/* ── STICKY CTA BAR ── */}
+      <View style={s.ctaOuter} pointerEvents="box-none">
+        <LinearGradient
+          colors={['rgba(5,14,14,0)', 'rgba(5,14,14,0.95)']}
+          style={s.ctaGradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          pointerEvents="none"
+        />
+        <View style={[s.ctaPill, { marginBottom: insets.bottom + 10 }]}>
+          <View style={s.ctaPillLeft}>
+            <Text style={s.ctaTierLabel}>{selectedTierName}</Text>
+            <Text style={s.ctaPrice}>{selectedPrice}</Text>
+          </View>
+          <TouchableOpacity
+            style={[s.ctaButton, purchaseMutation.isPending && s.ctaButtonDisabled]}
+            onPress={() => purchaseMutation.mutate()}
+            disabled={purchaseMutation.isPending}
+            activeOpacity={0.85}
           >
-            <Text style={styles.ctaBtnText}>
-              {purchaseMutation.isPending ? 'Processing…' : 'Buy Ticket'}
+            <Text style={s.ctaButtonText}>
+              {purchaseMutation.isPending ? 'Processing…' : 'Buy ticket'}
             </Text>
-          </LinearGradient>
-        </TouchableOpacity>
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: MIDNIGHT },
+// ── Styles ────────────────────────────────────────
+const s = StyleSheet.create({
+  root: { flex: 1 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  errorText: { color: TEXT_SEC, fontSize: 16 },
+  errorText: { color: INK_MID, fontSize: 16 },
 
+  // Hero
   hero: {
-    height: 280,
-    alignItems: 'center',
-    justifyContent: 'center',
+    height: 420,
     position: 'relative',
     overflow: 'hidden',
+    justifyContent: 'flex-end',
   },
-  circle1: {
+  ornamentWrap: {
     position: 'absolute',
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-    top: -40,
-    right: -60,
+    top: 100,
+    right: -30,
   },
-  circle2: {
+  heroNav: {
     position: 'absolute',
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: 'rgba(26,107,60,0.1)',
-    bottom: 10,
-    left: -40,
-  },
-  backBtn: {
-    position: 'absolute',
-    top: 0,
     left: 16,
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroIconWrapper: {
-    width: 96,
-    height: 96,
-    borderRadius: 24,
-    backgroundColor: 'rgba(26,107,60,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(200,150,42,0.2)',
-  },
-  statusBadge: {
-    position: 'absolute',
-    bottom: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 20,
-  },
-  statusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#6EE7A0' },
-  statusText: { color: '#6EE7A0', fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
-
-  content: { padding: 20 },
-  title: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: TEXT,
-    marginBottom: 16,
-    letterSpacing: -0.5,
-    lineHeight: 30,
-  },
-
-  infoPills: { gap: 8, marginBottom: 24 },
-  infoPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: SURFACE,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderWidth: 1,
-    borderColor: BORDER,
-  },
-  infoPillText: { color: TEXT_SEC, fontSize: 13, flex: 1 },
-
-  descSection: { marginBottom: 20 },
-  descTitle: { fontSize: 14, fontWeight: '700', color: TEXT_SEC, marginBottom: 8, letterSpacing: 0.3 },
-  descText: { color: TEXT_SEC, fontSize: 14, lineHeight: 22 },
-
-  ticketSection: {
-    backgroundColor: SURFACE,
-    borderRadius: 14,
-    padding: 16,
+    right: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    zIndex: 10,
+  },
+  heroNavRight: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  glassBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.40)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroText: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    bottom: 28,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 10,
+    flexWrap: 'wrap',
+  },
+  chipCultural: {
+    height: 24,
+    paddingHorizontal: 10,
+    borderRadius: 99,
+    backgroundColor: GOLD_DIM,
+    borderWidth: 1,
+    borderColor: GOLD_LINE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chipCulturalText: {
+    color: GOLD,
+    fontSize: 11,
+    fontFamily: FONT_MONO,
+    fontWeight: '600',
+  },
+  chipLocation: {
+    height: 24,
+    paddingHorizontal: 10,
+    borderRadius: 99,
+    backgroundColor: 'rgba(26,107,60,0.30)',
+    borderWidth: 1,
+    borderColor: 'rgba(26,107,60,0.50)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    maxWidth: 180,
+  },
+  chipLocationText: {
+    color: '#7DD49E',
+    fontSize: 11,
+    fontFamily: FONT_MONO,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  heroTitle: {
+    fontFamily: FONT_DISPLAY,
+    fontSize: 38,
+    color: CREAM,
+    letterSpacing: -0.6,
+    lineHeight: 40,
+    marginBottom: 6,
+  },
+  heroTitleItalic: {
+    fontFamily: FONT_DISPLAY,
+    fontSize: 38,
+    color: GOLD,
+    fontStyle: 'italic',
+    letterSpacing: -0.6,
+  },
+  heroMono: {
+    fontFamily: FONT_MONO,
+    fontSize: 10.5,
+    color: CREAM,
+    opacity: 0.7,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+  },
+
+  // Key facts
+  factsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    paddingVertical: 4,
+    gap: 8,
+  },
+  factCell: {
+    flex: 1,
+    backgroundColor: SURFACE_MID,
     borderWidth: 1,
     borderColor: BORDER,
+    borderRadius: 14,
+    padding: 12,
   },
-  ticketLabel: { color: TEXT_MUTED, fontSize: 12, fontWeight: '600' },
-  ticketPrice: { color: GOLD_LIGHT, fontSize: 20, fontWeight: '800' },
+  factKicker: {
+    fontFamily: FONT_MONO,
+    fontSize: 9,
+    color: GOLD,
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
+    marginBottom: 4,
+  },
+  factValue: {
+    fontFamily: FONT_DISPLAY,
+    fontSize: 20,
+    color: INK,
+    marginBottom: 2,
+  },
+  factSub: {
+    fontSize: 10,
+    color: INK_MID,
+  },
 
-  bottomBar: {
+  // Section
+  section: {
+    paddingHorizontal: 20,
+    paddingTop: 18,
+  },
+  kicker: {
+    fontFamily: FONT_MONO,
+    fontSize: 9,
+    color: GOLD,
+    textTransform: 'uppercase',
+    letterSpacing: 2,
+    marginBottom: 6,
+  },
+  body: {
+    fontSize: 13.5,
+    color: INK_MID,
+    lineHeight: 13.5 * 1.55,
+  },
+
+  // Ticket tiers
+  tiersSection: {
+    paddingTop: 20,
+  },
+  tiersSectionHeader: {
+    paddingHorizontal: 20,
+    marginBottom: 10,
+  },
+  tiersSectionTitle: {
+    fontFamily: FONT_DISPLAY,
+    fontSize: 18,
+    color: INK,
+    marginTop: 2,
+  },
+  tiersList: {
+    paddingHorizontal: 20,
+    gap: 10,
+  },
+  tierCard: {
+    backgroundColor: SURFACE_MID,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 14,
+    padding: 14,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  tierCardSelected: {
+    backgroundColor: GOLD_DIM,
+    borderColor: GOLD,
+    borderWidth: 1.5,
+  },
+  radio: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.5,
+    borderColor: INK_FAINT,
+  },
+  radioSelected: {
+    borderWidth: 6,
+    borderColor: GOLD,
+  },
+  tierInfo: {
+    flex: 1,
+  },
+  tierName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: INK,
+    marginBottom: 2,
+  },
+  tierPerks: {
+    fontSize: 12,
+    color: INK_MID,
+  },
+  tierPrice: {
+    fontFamily: FONT_MONO,
+    fontSize: 15,
+    fontWeight: '600',
+    color: INK_MID,
+  },
+  tierPriceSelected: {
+    color: GOLD,
+  },
+
+  // CTA bar
+  ctaOuter: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
+  },
+  ctaGradient: {
+    position: 'absolute',
+    top: -30,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  ctaPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: MIDNIGHT,
-    borderTopWidth: 1,
-    borderTopColor: BORDER,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 16,
-    gap: 12,
+    backgroundColor: SURFACE_ELEV,
+    borderWidth: 1,
+    borderColor: BORDER_MID,
+    borderRadius: 18,
+    marginHorizontal: 14,
+    padding: 10,
+    paddingLeft: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 8,
   },
-  pricePreview: { flex: 1 },
-  pricePreviewLabel: { color: TEXT_MUTED, fontSize: 11, fontWeight: '500' },
-  pricePreviewAmount: { color: TEXT, fontSize: 20, fontWeight: '800', marginTop: 1 },
-  ctaBtn: { flex: 1.4, borderRadius: 14, overflow: 'hidden' },
-  ctaBtnDisabled: { opacity: 0.55 },
-  ctaGradient: { paddingVertical: 15, alignItems: 'center', justifyContent: 'center' },
-  ctaBtnText: { color: TEXT, fontWeight: '800', fontSize: 15, letterSpacing: 0.2 },
+  ctaPillLeft: {
+    flex: 1,
+  },
+  ctaTierLabel: {
+    fontSize: 11,
+    color: INK_MID,
+    marginBottom: 2,
+  },
+  ctaPrice: {
+    fontFamily: FONT_MONO,
+    fontSize: 17,
+    fontWeight: '600',
+    color: GOLD,
+  },
+  ctaButton: {
+    flex: 1,
+    height: 46,
+    borderRadius: 12,
+    backgroundColor: GOLD,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ctaButtonDisabled: {
+    opacity: 0.55,
+  },
+  ctaButtonText: {
+    fontWeight: '700',
+    fontSize: 15,
+    color: '#0D1200',
+    letterSpacing: 0.2,
+  },
 });

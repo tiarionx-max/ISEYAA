@@ -358,7 +358,8 @@ export default function ProfileScreen() {
               } catch (_) { /* silently skip */ }
             }
             await SecureStore.deleteItemAsync('access_token');
-            router.replace('/login' as any);
+            await SecureStore.deleteItemAsync('refresh_token');
+            router.replace('/onboarding' as any);
           },
         },
       ]
@@ -445,9 +446,11 @@ export default function ProfileScreen() {
                 <View style={styles.chipTier}>
                   <Text style={styles.chipTierText}>Tier {tier >= 2 ? '2' : tier >= 1 ? '1' : '0'} Verified</Text>
                 </View>
+                {user?.role && (
                 <View style={styles.chipLocation}>
-                  <Text style={styles.chipLocationText}>Lagos · Ogun</Text>
+                  <Text style={styles.chipLocationText}>{user.role === 'DRIVER' ? 'Driver · Ogun' : 'Ogun State'}</Text>
                 </View>
+              )}
               </View>
             </View>
           </View>
@@ -526,7 +529,7 @@ export default function ProfileScreen() {
           {[
             { value: String(tripsCount), label: 'TRIPS' },
             { value: String(staysCount), label: 'STAYS' },
-            { value: '₦340k', label: 'SAVED' },
+            { value: balance ? `₦${Math.round(Number(balance.balance_ngn) / 1000)}k` : '—', label: 'WALLET' },
           ].map((stat) => (
             <View key={stat.label} style={styles.statCell}>
               <Text style={styles.statValue}>{stat.value}</Text>

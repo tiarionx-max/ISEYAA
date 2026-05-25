@@ -1,9 +1,10 @@
 import * as Sentry from '@sentry/react-native';
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import * as SecureStore from 'expo-secure-store';
 
 Sentry.init({
   dsn: process.env.EXPO_PUBLIC_SENTRY_DSN || '',
@@ -16,6 +17,14 @@ export default function RootLayout() {
   const [queryClient] = useState(() => new QueryClient({
     defaultOptions: { queries: { staleTime: 60_000, retry: 1 } },
   }));
+
+  useEffect(() => {
+    SecureStore.getItemAsync('access_token').then((token) => {
+      if (!token) {
+        router.replace('/onboarding' as any);
+      }
+    });
+  }, []);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -40,6 +49,13 @@ export default function RootLayout() {
           <Stack.Screen name="delivery-flow" options={{ headerShown: false, presentation: 'fullScreenModal' }} />
           <Stack.Screen name="driver-dashboard" options={{ headerShown: false, presentation: 'fullScreenModal' }} />
           <Stack.Screen name="rider-dashboard" options={{ headerShown: false, presentation: 'fullScreenModal' }} />
+          <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+          <Stack.Screen name="auth/phone" options={{ headerShown: false }} />
+          <Stack.Screen name="auth/otp" options={{ headerShown: false }} />
+          <Stack.Screen name="search" options={{ headerShown: false, presentation: 'fullScreenModal' }} />
+          <Stack.Screen name="notifications" options={{ title: 'Notifications' }} />
+          <Stack.Screen name="topup" options={{ headerShown: false, presentation: 'modal' }} />
+          <Stack.Screen name="send" options={{ headerShown: false }} />
         </Stack>
       </QueryClientProvider>
     </GestureHandlerRootView>

@@ -293,7 +293,7 @@ function AttractionCard({
   return (
     <AnimatedCard
       style={[styles.attractionCard, { width: cardWidth }]}
-      onPress={() => router.push(`/attractions/${item.id}` as any)}
+      onPress={() => router.push({ pathname: '/ai-chat', params: { prompt: `Tell me about ${item.name} attraction` } } as any)}
     >
       {/* Photo placeholder gradient */}
       <LinearGradient
@@ -361,6 +361,31 @@ function SectionHeader({
   );
 }
 
+// ── Greeting helpers ──────────────────────────────────────────────────────────
+
+function getYorubaTimeGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return 'E kú aaro';
+  if (h < 17) return 'E kú ọsán';
+  return 'E kú irọlẹ';
+}
+
+function getEnglishGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning,';
+  if (h < 17) return 'Good afternoon,';
+  return 'Good evening,';
+}
+
+function getCurrentDayName(): string {
+  return new Date().toLocaleDateString('en-NG', { weekday: 'long' });
+}
+
+function getFirstName(name?: string): string {
+  if (!name?.trim()) return '';
+  return name.trim().split(/\s+/)[0];
+}
+
 // ── Quick action definitions ──────────────────────────────────────────────────
 
 const QUICK_ACTIONS = [
@@ -380,6 +405,14 @@ export default function DiscoverScreen() {
   const [search, setSearch] = useState('');
   const [bookmarks, setBookmarks] = useState<string[]>([]);
   const [attractions, setAttractions] = useState<any[]>([]);
+
+  const { data: meData } = useQuery({
+    queryKey: ['me'],
+    queryFn: () => fetcher('/users/me'),
+    retry: 1,
+    staleTime: 5 * 60_000,
+  });
+  const firstName = getFirstName(meData?.name) || getFirstName(meData?.data?.name);
 
   // Load cached attractions + bookmarks on mount
   useEffect(() => {
@@ -435,29 +468,27 @@ export default function DiscoverScreen() {
       >
         {/* ── HERO ──────────────────────────────────────────────────────────── */}
         <View style={styles.heroWrapper}>
-          {/* Background: dusk gradient photo placeholder */}
-          <LinearGradient
-            colors={[CARD_GRADIENTS.dusk[0], CARD_GRADIENTS.dusk[1]]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={StyleSheet.absoluteFillObject}
-          />
-
-          {/* Gradient scrim overlay */}
-          <LinearGradient
-            colors={[
-              'rgba(5,14,14,0.5)',
-              'rgba(5,14,14,0.2)',
-              'rgba(5,14,14,0.85)',
-            ]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0, y: 1 }}
-            style={StyleSheet.absoluteFillObject}
-          />
-
-          {/* Adire ornament — top right */}
-          <View style={styles.adireOrnamentPos}>
-            <AdireOrnament size={120} color={GOLD} opacity={0.22} />
+          {/* Clipped background layer — gradients + ornament */}
+          <View style={styles.heroBackground}>
+            <LinearGradient
+              colors={[CARD_GRADIENTS.dusk[0], CARD_GRADIENTS.dusk[1]]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFillObject}
+            />
+            <LinearGradient
+              colors={[
+                'rgba(5,14,14,0.5)',
+                'rgba(5,14,14,0.2)',
+                'rgba(5,14,14,0.85)',
+              ]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0, y: 1 }}
+              style={StyleSheet.absoluteFillObject}
+            />
+            <View style={styles.adireOrnamentPos}>
+              <AdireOrnament size={120} color={GOLD} opacity={0.22} />
+            </View>
           </View>
 
           {/* Top row: location pill + bell */}
@@ -474,6 +505,7 @@ export default function DiscoverScreen() {
             {/* Bell button */}
             <TouchableOpacity
               style={styles.bellBtn}
+              onPress={() => router.push('/notifications' as any)}
               accessibilityLabel="Notifications"
             >
               <Bell size={16} color={INK} />
@@ -482,10 +514,10 @@ export default function DiscoverScreen() {
 
           {/* Greeting block */}
           <View style={styles.greetingBlock}>
-            <Text style={styles.greetingKicker}>E kú aaro · Tuesday</Text>
+            <Text style={styles.greetingKicker}>{getYorubaTimeGreeting()} · {getCurrentDayName()}</Text>
             <View style={styles.greetingDisplay}>
-              <Text style={styles.greetingLine}>Good morning,</Text>
-              <Text style={styles.greetingName}>Damilola.</Text>
+              <Text style={styles.greetingLine}>{getEnglishGreeting()}</Text>
+              {firstName ? <Text style={styles.greetingName}> {firstName}.</Text> : null}
             </View>
           </View>
 
@@ -499,6 +531,7 @@ export default function DiscoverScreen() {
                 placeholderTextColor={INK_FAINT}
                 value={search}
                 onChangeText={setSearch}
+                onFocus={() => router.push('/search' as any)}
               />
               <View style={styles.micBtn}>
                 <Mic size={14} color={GOLD} />
@@ -619,13 +652,16 @@ const styles = StyleSheet.create({
   // ── Hero ──────────────────────────────────────────────────────────────────
   heroWrapper: {
     height: 310,
-    borderBottomLeftRadius: 28,
-    overflow: 'hidden',
     paddingHorizontal: SPACE_5,
     paddingTop: SPACE_4,
     paddingBottom: SPACE_8,
     justifyContent: 'space-between',
     position: 'relative',
+  },
+  heroBackground: {
+    ...StyleSheet.absoluteFillObject,
+    borderBottomLeftRadius: 28,
+    overflow: 'hidden',
   },
   adireOrnamentPos: {
     position: 'absolute',
@@ -756,7 +792,7 @@ const styles = StyleSheet.create({
 
   // ── Quick actions ────────────────────────────────────────────────────────
   quickScroll: {
-    marginTop: 38,
+    marginTop: 46,
   },
   quickContent: {
     paddingHorizontal: SPACE_4,

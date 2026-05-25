@@ -192,6 +192,8 @@ export default function WalletScreen() {
   const [revealed, setRevealed] = useState(false);
   const shimmerAnim = useRef(new Animated.Value(0)).current;
   const balanceAnim = useRef(new Animated.Value(0)).current;
+  const scrollRef = useRef<ScrollView>(null);
+  const txYRef = useRef(0);
 
   // Shimmer animation loop
   useEffect(() => {
@@ -229,6 +231,22 @@ export default function WalletScreen() {
   const balanceNgn = Number(walletData?.balance_ngn ?? 0);
   const transactions: Transaction[] = txData?.data ?? [];
 
+  // Monthly in/out from real transactions
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthlyIn = transactions
+    .filter(tx => tx.type === 'CREDIT' && new Date(tx.createdAt) >= monthStart)
+    .reduce((sum, tx) => sum + Number(tx.amount), 0);
+  const monthlyOut = transactions
+    .filter(tx => tx.type === 'DEBIT' && new Date(tx.createdAt) >= monthStart)
+    .reduce((sum, tx) => sum + Number(tx.amount), 0);
+
+  function formatShort(n: number): string {
+    if (n >= 1_000_000) return `₦${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000) return `₦${Math.round(n / 1_000)}k`;
+    return `₦${Math.round(n)}`;
+  }
+
   // Balance reveal animation: 0 → balanceNgn over 900ms cubic ease-out
   useEffect(() => {
     if (revealed && balanceNgn > 0) {
@@ -249,19 +267,19 @@ export default function WalletScreen() {
   }
 
   function handleTopUp() {
-    Alert.alert('Top Up', 'Top Up Wallet feature coming soon.');
+    router.push('/topup' as any);
   }
 
   function handleSend() {
-    Alert.alert('Send Money', 'Send Money feature coming soon.');
+    router.push('/send' as any);
   }
 
   function handleWithdraw() {
-    Alert.alert('Withdraw', 'Withdraw feature coming soon.');
+    Alert.alert('Withdraw', 'Bank withdrawal coming soon.');
   }
 
   function handleHistory() {
-    Alert.alert('Transaction History', 'Full history feature coming soon.');
+    scrollRef.current?.scrollTo({ y: txYRef.current, animated: true });
   }
 
   function handleKycPress() {
@@ -269,7 +287,7 @@ export default function WalletScreen() {
   }
 
   function handleQrPress() {
-    Alert.alert('QR Code', 'QR Code feature coming soon.');
+    router.push('/qr-checkin' as any);
   }
 
   // KYC tier progress percentage
@@ -278,6 +296,7 @@ export default function WalletScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView
+        ref={scrollRef}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
@@ -356,11 +375,11 @@ export default function WalletScreen() {
               <Text style={styles.balanceBottomLabel}>This month</Text>
               <View style={styles.balanceFlowItem}>
                 <ArrowDown size={12} color={SUCCESS_TEXT} />
-                <Text style={styles.balanceFlowIn}>₦340k in</Text>
+                <Text style={styles.balanceFlowIn}>{formatShort(monthlyIn)} in</Text>
               </View>
               <View style={styles.balanceFlowItem}>
                 <ArrowUp size={12} color={CREAM} />
-                <Text style={styles.balanceFlowOut}>₦92k out</Text>
+                <Text style={styles.balanceFlowOut}>{formatShort(monthlyOut)} out</Text>
               </View>
               <Text style={styles.balanceCardLast4}>•• 4291</Text>
             </View>
@@ -448,7 +467,7 @@ export default function WalletScreen() {
         </Pressable>
 
         {/* ── Transactions ── */}
-        <View style={styles.txSection}>
+        <View style={styles.txSection} onLayout={(e) => { txYRef.current = e.nativeEvent.layout.y; }}>
           <SectionHeader
             kicker="TRANSACTIONS"
             title="Recent"

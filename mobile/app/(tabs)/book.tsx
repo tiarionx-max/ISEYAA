@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   Animated,
-  Pressable,
 } from 'react-native';
 import { useState, useRef, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,7 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useQuery } from '@tanstack/react-query';
 import { fetcher } from '../../lib/api';
 import { router } from 'expo-router';
-import { Filter, MapPin, Heart, Star, ChevronRight } from 'lucide-react-native';
+import { Filter, MapPin, Heart, Star } from 'lucide-react-native';
 import {
   SURFACE_DEEP,
   SURFACE_MID,
@@ -21,14 +20,9 @@ import {
   GOLD,
   GOLD_DIM,
   GOLD_LINE,
-  GOLD_BRIGHT,
   INK,
   INK_MID,
-  INK_FAINT,
   BORDER,
-  BORDER_MID,
-  SUCCESS,
-  SUCCESS_TEXT,
   RADIUS_SM,
   RADIUS_MD,
   RADIUS_LG,
@@ -36,13 +30,8 @@ import {
   FONT_DISPLAY,
   FONT_MONO,
   FONT_UI,
-  SPACE_1,
-  SPACE_2,
-  SPACE_3,
   SPACE_4,
   SPACE_5,
-  SPACE_6,
-  TYPE,
   CARD_GRADIENTS,
 } from '../../lib/tokens';
 
@@ -109,16 +98,8 @@ function TagChip({ label }: { label: string }) {
 function HeartButton() {
   const [liked, setLiked] = useState(false);
   return (
-    <TouchableOpacity
-      style={styles.heartBtn}
-      onPress={() => setLiked((v) => !v)}
-      activeOpacity={0.75}
-    >
-      <Heart
-        size={14}
-        color={liked ? '#F87171' : INK}
-        fill={liked ? '#F87171' : 'transparent'}
-      />
+    <TouchableOpacity style={styles.heartBtn} onPress={() => setLiked((v) => !v)} activeOpacity={0.75}>
+      <Heart size={14} color={liked ? '#F87171' : INK} fill={liked ? '#F87171' : 'transparent'} />
     </TouchableOpacity>
   );
 }
@@ -133,6 +114,7 @@ interface FeedCardProps {
   meta: string;
   actionLabel: string;
   gradientIndex: number;
+  rating?: number;
   onAction: () => void;
   onPress: () => void;
 }
@@ -146,6 +128,7 @@ function FeedCard({
   meta,
   actionLabel,
   gradientIndex,
+  rating,
   onAction,
   onPress,
 }: FeedCardProps) {
@@ -154,52 +137,30 @@ function FeedCard({
     <TouchableOpacity style={styles.card} activeOpacity={0.88} onPress={onPress}>
       {/* Photo hero */}
       <View style={styles.cardHero}>
-        <LinearGradient
-          colors={colors}
-          style={StyleSheet.absoluteFillObject}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        />
-        {/* Scrim */}
-        <LinearGradient
-          colors={['transparent', 'rgba(5,14,14,0.55)']}
-          style={StyleSheet.absoluteFillObject}
-          start={{ x: 0, y: 0.3 }}
-          end={{ x: 0, y: 1 }}
-        />
-        {/* Tag top-left */}
-        <View style={styles.heroTagWrap}>
-          <TagChip label={tag} />
-        </View>
-        {/* Heart top-right */}
-        <View style={styles.heroHeartWrap}>
-          <HeartButton />
-        </View>
-        {/* Star bottom-left */}
-        <View style={styles.heroStarWrap}>
-          <Star size={11} color={GOLD} fill={GOLD} />
-          <Text style={styles.heroRating}>4.8</Text>
-        </View>
+        <LinearGradient colors={colors} style={StyleSheet.absoluteFillObject} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+        <LinearGradient colors={['transparent', 'rgba(5,14,14,0.55)']} style={StyleSheet.absoluteFillObject} start={{ x: 0, y: 0.3 }} end={{ x: 0, y: 1 }} />
+        <View style={styles.heroTagWrap}><TagChip label={tag} /></View>
+        <View style={styles.heroHeartWrap}><HeartButton /></View>
+        {/* Only show star rating when data provides a value */}
+        {rating != null && (
+          <View style={styles.heroStarWrap}>
+            <Star size={11} color={GOLD} fill={GOLD} />
+            <Text style={styles.heroRating}>{rating.toFixed(1)}</Text>
+          </View>
+        )}
       </View>
 
       {/* Body */}
       <View style={styles.cardBody}>
-        {/* Title */}
         <Text style={styles.cardTitle} numberOfLines={2}>{title}</Text>
-
-        {/* Location */}
         <View style={styles.locationRow}>
           <MapPin size={11} color={INK_MID} />
           <Text style={styles.locationText} numberOfLines={1}>{location}</Text>
         </View>
-
-        {/* Price row */}
         <View style={styles.priceRow}>
           <Text style={styles.priceText}>{price}</Text>
           <Text style={styles.priceLabelText}>{priceLabel}</Text>
         </View>
-
-        {/* Divider + meta + action */}
         <View style={styles.divider} />
         <View style={styles.cardFooter}>
           <Text style={styles.metaText} numberOfLines={1}>{meta}</Text>
@@ -215,12 +176,7 @@ function FeedCard({
 // ── Events feed ────────────────────────────────────────────────────────
 function EventsFeed({ data, isLoading }: { data: any[]; isLoading: boolean }) {
   if (isLoading || data.length === 0) {
-    return (
-      <View style={styles.feedList}>
-        <SkeletonCard />
-        <SkeletonCard />
-      </View>
-    );
+    return <View style={styles.feedList}><SkeletonCard /><SkeletonCard /></View>;
   }
   return (
     <View style={styles.feedList}>
@@ -241,6 +197,7 @@ function EventsFeed({ data, isLoading }: { data: any[]; isLoading: boolean }) {
             meta={startDate}
             actionLabel="Reserve"
             gradientIndex={i}
+            rating={item.averageRating ?? item.rating}
             onPress={() => router.push(`/events/${item.id}`)}
             onAction={() => router.push(`/events/${item.id}`)}
           />
@@ -253,12 +210,7 @@ function EventsFeed({ data, isLoading }: { data: any[]; isLoading: boolean }) {
 // ── Stays feed ─────────────────────────────────────────────────────────
 function StaysFeed({ data, isLoading }: { data: any[]; isLoading: boolean }) {
   if (isLoading || data.length === 0) {
-    return (
-      <View style={styles.feedList}>
-        <SkeletonCard />
-        <SkeletonCard />
-      </View>
-    );
+    return <View style={styles.feedList}><SkeletonCard /><SkeletonCard /></View>;
   }
   return (
     <View style={styles.feedList}>
@@ -273,6 +225,7 @@ function StaysFeed({ data, isLoading }: { data: any[]; isLoading: boolean }) {
           meta={`Up to ${item.maxGuests ?? '—'} guests`}
           actionLabel="Book"
           gradientIndex={i}
+          rating={item.averageRating ?? item.rating}
           onPress={() => router.push(`/stays/${item.id}`)}
           onAction={() => router.push(`/stays/${item.id}`)}
         />
@@ -284,12 +237,7 @@ function StaysFeed({ data, isLoading }: { data: any[]; isLoading: boolean }) {
 // ── Studio feed ────────────────────────────────────────────────────────
 function StudioFeed({ data, isLoading }: { data: any[]; isLoading: boolean }) {
   if (isLoading || data.length === 0) {
-    return (
-      <View style={styles.feedList}>
-        <SkeletonCard />
-        <SkeletonCard />
-      </View>
-    );
+    return <View style={styles.feedList}><SkeletonCard /><SkeletonCard /></View>;
   }
   return (
     <View style={styles.feedList}>
@@ -304,8 +252,9 @@ function StudioFeed({ data, isLoading }: { data: any[]; isLoading: boolean }) {
           meta={item.type ?? 'Recording'}
           actionLabel="Book Studio"
           gradientIndex={i}
-          onPress={() => {}}
-          onAction={() => {}}
+          rating={item.averageRating ?? item.rating}
+          onPress={() => router.push({ pathname: '/ai-chat', params: { prompt: `Book ${item.name ?? 'this studio space'} for me` } } as any)}
+          onAction={() => router.push({ pathname: '/ai-chat', params: { prompt: `Book ${item.name ?? 'this studio space'} for me` } } as any)}
         />
       ))}
     </View>
@@ -315,12 +264,7 @@ function StudioFeed({ data, isLoading }: { data: any[]; isLoading: boolean }) {
 // ── Market feed ────────────────────────────────────────────────────────
 function MarketFeed({ data, isLoading }: { data: any[]; isLoading: boolean }) {
   if (isLoading || data.length === 0) {
-    return (
-      <View style={styles.feedList}>
-        <SkeletonCard />
-        <SkeletonCard />
-      </View>
-    );
+    return <View style={styles.feedList}><SkeletonCard /><SkeletonCard /></View>;
   }
   return (
     <View style={styles.feedList}>
@@ -335,8 +279,9 @@ function MarketFeed({ data, isLoading }: { data: any[]; isLoading: boolean }) {
           meta={item.category ?? 'General'}
           actionLabel="Buy"
           gradientIndex={i}
-          onPress={() => {}}
-          onAction={() => {}}
+          rating={item.averageRating ?? item.rating}
+          onPress={() => router.push({ pathname: '/ai-chat', params: { prompt: `I want to buy ${item.name ?? 'this product'}` } } as any)}
+          onAction={() => router.push({ pathname: '/ai-chat', params: { prompt: `I want to buy ${item.name ?? 'this product'}` } } as any)}
         />
       ))}
     </View>
@@ -372,7 +317,6 @@ export default function BookScreen() {
 
   const chips = FILTER_CHIPS[activeTab];
 
-  // Reset active chip when tab changes
   function handleTabChange(tab: ActiveTab) {
     setActiveTab(tab);
     setActiveChip(0);
@@ -380,11 +324,7 @@ export default function BookScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-        stickyHeaderIndices={[]}
-      >
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {/* ── Header ── */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
@@ -411,9 +351,7 @@ export default function BookScreen() {
                   onPress={() => handleTabChange(tab)}
                   activeOpacity={0.8}
                 >
-                  <Text style={[styles.switcherTabText, isActive && styles.switcherTabTextActive]}>
-                    {tab}
-                  </Text>
+                  <Text style={[styles.switcherTabText, isActive && styles.switcherTabTextActive]}>{tab}</Text>
                 </TouchableOpacity>
               );
             })}
@@ -421,21 +359,11 @@ export default function BookScreen() {
         </View>
 
         {/* ── Filter chips ── */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chipsContent}
-          style={styles.chipsScroll}
-        >
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsContent} style={styles.chipsScroll}>
           {chips.map((chip, i) => {
             const isFirst = i === activeChip;
             return (
-              <TouchableOpacity
-                key={chip}
-                style={[styles.chip, isFirst && styles.chipActive]}
-                onPress={() => setActiveChip(i)}
-                activeOpacity={0.75}
-              >
+              <TouchableOpacity key={chip} style={[styles.chip, isFirst && styles.chipActive]} onPress={() => setActiveChip(i)} activeOpacity={0.75}>
                 <Text style={[styles.chipText, isFirst && styles.chipTextActive]}>{chip}</Text>
               </TouchableOpacity>
             );
@@ -443,18 +371,10 @@ export default function BookScreen() {
         </ScrollView>
 
         {/* ── Feed ── */}
-        {activeTab === 'Events' && (
-          <EventsFeed data={events} isLoading={eventsLoading} />
-        )}
-        {activeTab === 'Stays' && (
-          <StaysFeed data={stays} isLoading={staysLoading} />
-        )}
-        {activeTab === 'Studio' && (
-          <StudioFeed data={studios} isLoading={studioLoading} />
-        )}
-        {activeTab === 'Market' && (
-          <MarketFeed data={products} isLoading={marketLoading} />
-        )}
+        {activeTab === 'Events' && <EventsFeed data={events} isLoading={eventsLoading} />}
+        {activeTab === 'Stays' && <StaysFeed data={stays} isLoading={staysLoading} />}
+        {activeTab === 'Studio' && <StudioFeed data={studios} isLoading={studioLoading} />}
+        {activeTab === 'Market' && <MarketFeed data={products} isLoading={marketLoading} />}
       </ScrollView>
     </SafeAreaView>
   );
@@ -462,310 +382,82 @@ export default function BookScreen() {
 
 // ── Styles ─────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: SURFACE_MID,
-  },
-  scrollContent: {
-    paddingBottom: 120,
-  },
+  container: { flex: 1, backgroundColor: SURFACE_MID },
+  scrollContent: { paddingBottom: 120 },
 
   // Header
   header: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    paddingHorizontal: SPACE_4,
-    paddingTop: SPACE_4,
-    marginBottom: 12,
+    flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
+    paddingHorizontal: SPACE_4, paddingTop: SPACE_4, marginBottom: 12,
   },
-  headerLeft: {
-    flex: 1,
-  },
-  kicker: {
-    fontFamily: FONT_MONO,
-    fontSize: 10,
-    color: GOLD,
-    letterSpacing: 1.8,
-    textTransform: 'uppercase',
-    marginBottom: 4,
-  },
-  displayRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'baseline',
-  },
-  displayTitle: {
-    fontFamily: FONT_DISPLAY,
-    fontSize: 34,
-    fontWeight: '400',
-    color: INK,
-    lineHeight: 40,
-  },
-  displayTitleItalic: {
-    fontFamily: FONT_DISPLAY,
-    fontSize: 34,
-    fontWeight: '400',
-    fontStyle: 'italic',
-    color: GOLD,
-    lineHeight: 40,
-  },
+  headerLeft: { flex: 1 },
+  kicker: { fontFamily: FONT_MONO, fontSize: 10, color: GOLD, letterSpacing: 1.8, textTransform: 'uppercase', marginBottom: 4 },
+  displayRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline' },
+  displayTitle: { fontFamily: FONT_DISPLAY, fontSize: 34, fontWeight: '400', color: INK, lineHeight: 40 },
+  displayTitleItalic: { fontFamily: FONT_DISPLAY, fontSize: 34, fontWeight: '400', fontStyle: 'italic', color: GOLD, lineHeight: 40 },
   filterBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: RADIUS_SM,
-    backgroundColor: SURFACE_RAISED,
-    borderWidth: 1,
-    borderColor: BORDER,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 6,
+    width: 40, height: 40, borderRadius: RADIUS_SM,
+    backgroundColor: SURFACE_RAISED, borderWidth: 1, borderColor: BORDER,
+    alignItems: 'center', justifyContent: 'center', marginTop: 6,
   },
 
   // Category switcher
-  switcherWrap: {
-    marginHorizontal: SPACE_4,
-    marginTop: 14,
-  },
-  switcher: {
-    flexDirection: 'row',
-    backgroundColor: SURFACE_RAISED,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: RADIUS_MD,
-    padding: 4,
-  },
-  switcherTab: {
-    flex: 1,
-    height: 38,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-  },
-  switcherTabActive: {
-    backgroundColor: GOLD,
-    shadowColor: GOLD,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  switcherTabText: {
-    fontFamily: FONT_UI,
-    fontSize: 13,
-    fontWeight: '600',
-    color: INK_MID,
-  },
-  switcherTabTextActive: {
-    color: '#050E0E',
-    fontWeight: '700',
-  },
+  switcherWrap: { marginHorizontal: SPACE_4, marginTop: 14 },
+  switcher: { flexDirection: 'row', backgroundColor: SURFACE_RAISED, borderWidth: 1, borderColor: BORDER, borderRadius: RADIUS_MD, padding: 4 },
+  switcherTab: { flex: 1, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
+  switcherTabActive: { backgroundColor: GOLD, shadowColor: GOLD, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.35, shadowRadius: 8, elevation: 4 },
+  switcherTabText: { fontFamily: FONT_UI, fontSize: 13, fontWeight: '600', color: INK_MID },
+  switcherTabTextActive: { color: '#050E0E', fontWeight: '700' },
 
   // Filter chips
-  chipsScroll: {
-    marginTop: 14,
-  },
-  chipsContent: {
-    paddingHorizontal: SPACE_5,
-    gap: 8,
-  },
-  chip: {
-    height: 32,
-    paddingHorizontal: 14,
-    borderRadius: RADIUS_PILL,
-    borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: 'transparent',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  chipActive: {
-    backgroundColor: GOLD_DIM,
-    borderColor: GOLD_LINE,
-  },
-  chipText: {
-    fontFamily: FONT_UI,
-    fontSize: 12,
-    fontWeight: '500',
-    color: INK_MID,
-  },
-  chipTextActive: {
-    color: GOLD,
-    fontWeight: '600',
-  },
+  chipsScroll: { marginTop: 14 },
+  chipsContent: { paddingHorizontal: SPACE_5, gap: 8 },
+  chip: { height: 32, paddingHorizontal: 14, borderRadius: RADIUS_PILL, borderWidth: 1, borderColor: BORDER, backgroundColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
+  chipActive: { backgroundColor: GOLD_DIM, borderColor: GOLD_LINE },
+  chipText: { fontFamily: FONT_UI, fontSize: 12, fontWeight: '500', color: INK_MID },
+  chipTextActive: { color: GOLD, fontWeight: '600' },
 
   // Feed list
-  feedList: {
-    paddingHorizontal: SPACE_5,
-    paddingTop: 14,
-    gap: 14,
-  },
+  feedList: { paddingHorizontal: SPACE_5, paddingTop: 14, gap: 14 },
 
   // Feed card
-  card: {
-    backgroundColor: SURFACE_RAISED,
-    borderRadius: RADIUS_LG,
-    borderWidth: 1,
-    borderColor: BORDER,
-    overflow: 'hidden',
-  },
-  cardHero: {
-    height: 180,
-    width: '100%',
-    position: 'relative',
-  },
-  heroTagWrap: {
-    position: 'absolute',
-    top: 10,
-    left: 10,
-  },
-  heroHeartWrap: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-  },
+  card: { backgroundColor: SURFACE_RAISED, borderRadius: RADIUS_LG, borderWidth: 1, borderColor: BORDER, overflow: 'hidden' },
+  cardHero: { height: 180, width: '100%', position: 'relative' },
+  heroTagWrap: { position: 'absolute', top: 10, left: 10 },
+  heroHeartWrap: { position: 'absolute', top: 10, right: 10 },
   heroStarWrap: {
-    position: 'absolute',
-    bottom: 10,
-    left: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(5,14,14,0.55)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: RADIUS_PILL,
+    position: 'absolute', bottom: 10, left: 10,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: 'rgba(5,14,14,0.55)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: RADIUS_PILL,
   },
-  heroRating: {
-    fontFamily: FONT_MONO,
-    fontSize: 11,
-    color: GOLD,
-    fontWeight: '600',
-  },
+  heroRating: { fontFamily: FONT_MONO, fontSize: 11, color: GOLD, fontWeight: '600' },
   heartBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: 'rgba(5,14,14,0.55)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: 'rgba(5,14,14,0.55)', alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
   },
 
   // Card body
-  cardBody: {
-    paddingVertical: 14,
-    paddingHorizontal: SPACE_4,
-    gap: 6,
-  },
-  cardTitle: {
-    fontFamily: FONT_UI,
-    fontSize: 16,
-    fontWeight: '700',
-    color: INK,
-    lineHeight: 22,
-  },
-  locationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  locationText: {
-    fontFamily: FONT_UI,
-    fontSize: 11.5,
-    color: INK_MID,
-    flex: 1,
-  },
-  priceRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 4,
-    marginTop: 2,
-  },
-  priceText: {
-    fontFamily: FONT_MONO,
-    fontSize: 15,
-    fontWeight: '600',
-    color: GOLD,
-  },
-  priceLabelText: {
-    fontFamily: FONT_UI,
-    fontSize: 11.5,
-    color: INK_MID,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: BORDER,
-    marginTop: 6,
-    marginBottom: 2,
-  },
-  cardFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  metaText: {
-    fontFamily: FONT_UI,
-    fontSize: 11.5,
-    color: INK_MID,
-    flex: 1,
-  },
-  actionBtn: {
-    height: 36,
-    paddingHorizontal: 16,
-    borderRadius: 10,
-    backgroundColor: GOLD,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionBtnText: {
-    fontFamily: FONT_UI,
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#050E0E',
-  },
+  cardBody: { paddingVertical: 14, paddingHorizontal: SPACE_4, gap: 6 },
+  cardTitle: { fontFamily: FONT_UI, fontSize: 16, fontWeight: '700', color: INK, lineHeight: 22 },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  locationText: { fontFamily: FONT_UI, fontSize: 11.5, color: INK_MID, flex: 1 },
+  priceRow: { flexDirection: 'row', alignItems: 'baseline', gap: 4, marginTop: 2 },
+  priceText: { fontFamily: FONT_MONO, fontSize: 15, fontWeight: '600', color: GOLD },
+  priceLabelText: { fontFamily: FONT_UI, fontSize: 11.5, color: INK_MID },
+  divider: { height: 1, backgroundColor: BORDER, marginTop: 6, marginBottom: 2 },
+  cardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  metaText: { fontFamily: FONT_UI, fontSize: 11.5, color: INK_MID, flex: 1 },
+  actionBtn: { height: 36, paddingHorizontal: 16, borderRadius: 10, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center' },
+  actionBtnText: { fontFamily: FONT_UI, fontSize: 13, fontWeight: '700', color: '#050E0E' },
 
   // Tag chip
-  tagChip: {
-    height: 22,
-    paddingHorizontal: 8,
-    borderRadius: RADIUS_PILL,
-    backgroundColor: GOLD_DIM,
-    borderWidth: 1,
-    borderColor: GOLD_LINE,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tagChipText: {
-    fontFamily: FONT_MONO,
-    fontSize: 9.5,
-    color: GOLD,
-    fontWeight: '600',
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-  },
+  tagChip: { height: 22, paddingHorizontal: 8, borderRadius: RADIUS_PILL, backgroundColor: GOLD_DIM, borderWidth: 1, borderColor: GOLD_LINE, alignItems: 'center', justifyContent: 'center' },
+  tagChipText: { fontFamily: FONT_MONO, fontSize: 9.5, color: GOLD, fontWeight: '600', letterSpacing: 0.4, textTransform: 'uppercase' },
 
   // Skeleton
-  skeletonCard: {
-    backgroundColor: SURFACE_RAISED,
-    borderRadius: RADIUS_LG,
-    borderWidth: 1,
-    borderColor: BORDER,
-    overflow: 'hidden',
-  },
-  skeletonHero: {
-    height: 180,
-    backgroundColor: '#1B3636',
-  },
-  skeletonBody: {
-    padding: SPACE_4,
-  },
-  skeletonLine: {
-    height: 13,
-    borderRadius: 6,
-    backgroundColor: '#1B3636',
-  },
+  skeletonCard: { backgroundColor: SURFACE_RAISED, borderRadius: RADIUS_LG, borderWidth: 1, borderColor: BORDER, overflow: 'hidden' },
+  skeletonHero: { height: 180, backgroundColor: '#1B3636' },
+  skeletonBody: { padding: SPACE_4 },
+  skeletonLine: { height: 13, borderRadius: 6, backgroundColor: '#1B3636' },
 });

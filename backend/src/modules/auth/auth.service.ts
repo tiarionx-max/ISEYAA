@@ -17,6 +17,7 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { OtpSendDto } from './dto/otp-send.dto';
 import { OtpVerifyDto } from './dto/otp-verify.dto';
+import { PhoneAuthDto } from './dto/phone-auth.dto';
 import { UserRole, REGISTERABLE_ROLES } from '../../common/enums/user-role.enum';
 
 const OTP_TTL = 300; // 5 minutes
@@ -173,6 +174,63 @@ export class AuthService {
     });
 
     return { message: 'OTP verified successfully' };
+  }
+
+  async phoneAuth(dto: PhoneAuthDto, ip?: string, ua?: string) {
+    const lockKey = `otp_lock:${dto.phone}`;
+    const isLocked = await this.redis.exists(lockKey);
+    if (isLocked) throw new ForbiddenException('Too many OTP attempts. Try again in 15 minutes');
+
+    const stored = await this.redis.get(`otp:${dto.phone}`);
+    if (!stored) throw new BadRequestException('OTP expired or not found. Request a new code.');
+
+    const [storedOtp, attemptsStr] = stored.split(':');
+    const attempts = parseInt(attemptsStr, 10);
+
+    if (attempts + 1 >= OTP_MAX_ATTEMPTS && dto.otp !== storedOtp) {
+      await this.redis.del(`otp:${dto.phone}`);
+      await this.redis.set(lockKey, '1', OTP_LOCK_TTL);
+      throw new ForbiddenException('Too many invalid attempts. Try again in 15 minutes');
+    }
+
+    if (dto.otp !== storedOtp) {
+      await this.redis.set(`otp:${dto.phone}`, `${storedOtp}:${attempts + 1}`, OTP_TTL);
+      throw new BadRequestException(`Invalid OTP. ${OTP_MAX_ATTEMPTS - attempts - 1} attempt(s) remaining`);
+    }
+
+    await this.redis.del(`otp:${dto.phone}`);
+
+    let user = await this.prisma.user.findFirst({ where: { phone: dto.phone, deletedAt: null }, select: USER_SELECT });
+    let isNewUser = false;
+
+    if (!user) {
+      isNewUser = true;
+      const suffix = dto.phone.slice(-4);
+      const created = await this.prisma.user.create({
+        data: {
+          phone: dto.phone,
+          email: `${dto.phone.replace('+', '')}@iseyaa.local`,
+          firstName: 'User',
+          lastName: suffix,
+          passwordHash: await bcrypt.hash(uuidv4(), 12),
+          role: UserRole.CITIZEN,
+          registeredRoles: [UserRole.CITIZEN],
+          status: 'ACTIVE',
+          ndpaConsent: true,
+          ndpaConsentAt: new Date(),
+          wallet: { create: { balance: 0 } },
+        },
+        select: USER_SELECT,
+      });
+      user = created;
+      await this.audit(user.id, 'USER_REGISTERED', 'User', user.id, ip, ua);
+    } else {
+      await this.prisma.user.update({ where: { id: user.id }, data: { status: 'ACTIVE' } });
+      await this.audit(user.id, 'LOGIN_SUCCESS', 'User', user.id, ip, ua);
+    }
+
+    const tokens = await this.generateTokens(user.id, user.role as UserRole);
+    return { user, isNewUser, ...tokens };
   }
 
   async refreshTokens(refreshToken: string) {
