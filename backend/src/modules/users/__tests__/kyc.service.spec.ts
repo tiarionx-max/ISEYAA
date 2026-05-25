@@ -411,6 +411,8 @@ describe('KycService', () => {
       mockPrisma.user.findUnique.mockResolvedValue({
         id: USER_ID,
         kycLivenessVerifiedAt: null,
+        kycBvnVerifiedAt: new Date(),
+        kycNinVerifiedAt: new Date(),
       });
       mockPrisma.user.update.mockResolvedValue({});
 
@@ -430,6 +432,8 @@ describe('KycService', () => {
       mockPrisma.user.findUnique.mockResolvedValue({
         id: USER_ID,
         kycLivenessVerifiedAt: null,
+        kycBvnVerifiedAt: new Date(),
+        kycNinVerifiedAt: new Date(),
       });
       mockPrisma.user.update.mockResolvedValue({});
 
@@ -450,6 +454,8 @@ describe('KycService', () => {
       mockPrisma.user.findUnique.mockResolvedValue({
         id: USER_ID,
         kycLivenessVerifiedAt: null,
+        kycBvnVerifiedAt: new Date(),
+        kycNinVerifiedAt: new Date(),
       });
       mockPrisma.user.update.mockResolvedValue({});
 

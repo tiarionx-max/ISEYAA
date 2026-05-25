@@ -101,6 +101,7 @@ const mockPrisma = {
     findUnique: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
+    updateMany: jest.fn(),
     count: jest.fn(),
     aggregate: jest.fn(),
     findMany: jest.fn(),
@@ -536,7 +537,9 @@ describe('TransportService', () => {
       mockPrisma.trip.findFirst.mockResolvedValue({ ...mockTrip, status: 'SEARCHING', driverId: null });
       mockPrisma.driver.findFirst.mockResolvedValue(mockDriver);
       mockScheduler.doesExist.mockReturnValue(true);
-      mockPrisma.trip.update.mockResolvedValue({ ...mockTrip, status: 'MATCHED', matchedAt: new Date() });
+      mockPrisma.trip.updateMany.mockResolvedValue({ count: 1 });
+      mockPrisma.trip.findFirst.mockResolvedValueOnce({ ...mockTrip, status: 'SEARCHING', driverId: null })
+                                .mockResolvedValueOnce({ ...mockTrip, status: 'MATCHED', matchedAt: new Date() });
       mockPrisma.$transaction.mockResolvedValue([]);
 
       await service.acceptTrip(TRIP_ID, USER_ID);
@@ -623,37 +626,55 @@ describe('TransportService', () => {
   // ── completeTrip ───────────────────────────────────────────────────────────
 
   describe('completeTrip', () => {
-    it('calls walletService.creditWallet with driver fare * 0.85 and ISY-DRV- reference', async () => {
+    it('credits driver wallet 85% and marks trip COMPLETED via atomic transaction', async () => {
       mockPrisma.trip.findFirst.mockResolvedValue({ ...mockTrip, status: 'IN_PROGRESS' });
       mockPrisma.driver.findFirst.mockResolvedValue(mockDriver);
-      mockPrisma.wallet.findFirst.mockResolvedValue({ id: WALLET_ID, userId: USER_ID });
+      mockPrisma.wallet.findFirst.mockResolvedValue({ id: WALLET_ID, userId: USER_ID, balance: 0 });
       mockPrisma.platformConfig.findUnique.mockResolvedValue(
         mockPlatformConfig('transport_platform_fee_pct', 15),
       );
-      mockPrisma.$transaction.mockResolvedValue([]);
-      mockPrisma.trip.update.mockResolvedValue({
-        ...mockTrip,
-        status: 'COMPLETED',
-        completedAt: new Date(),
-        driverEarnings: 1500 * 0.85,
-        platformFee: 1500 * 0.15,
+      const mockTripUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
+      const mockWalletFindUnique = jest.fn().mockResolvedValue({ id: WALLET_ID, balance: 0 });
+      const mockWalletUpdate = jest.fn().mockResolvedValue({});
+      const mockTripEventCreate = jest.fn().mockResolvedValue({});
+      const mockTransactionCreate = jest.fn().mockResolvedValue({});
+      mockPrisma.$transaction.mockImplementation(async (fn) => {
+        const tx = {
+          trip: { updateMany: mockTripUpdateMany },
+          tripEvent: { create: mockTripEventCreate },
+          wallet: { findUnique: mockWalletFindUnique, update: mockWalletUpdate },
+          transaction: { create: mockTransactionCreate },
+          $executeRaw: jest.fn().mockResolvedValue(1),
+        };
+        return fn(tx);
       });
 
       await service.completeTrip(TRIP_ID, USER_ID);
 
-      expect(mockWallet.creditWallet).toHaveBeenCalledWith(
-        WALLET_ID,
-        1500 * 0.85,
-        expect.stringMatching(/^ISY-DRV-/),
-        expect.stringContaining('Trip earnings'),
-        'transport',
-        'INTERNAL',
+      expect(mockTripUpdateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ status: 'IN_PROGRESS' }) }),
+      );
+      // Driver earns 85% of fare=1500 = 1275
+      expect(mockWalletUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ balance: 1275 }) }),
       );
     });
 
-    it('throws BadRequestException when trip.status !== IN_PROGRESS', async () => {
-      mockPrisma.trip.findFirst.mockResolvedValue({ ...mockTrip, status: 'MATCHED' });
+    it('throws BadRequestException when trip is already completed (count=0 from updateMany)', async () => {
+      mockPrisma.trip.findFirst.mockResolvedValue({ ...mockTrip, status: 'IN_PROGRESS', driverId: mockDriver.id });
       mockPrisma.driver.findFirst.mockResolvedValue(mockDriver);
+      mockPrisma.wallet.findFirst.mockResolvedValue({ id: WALLET_ID, userId: USER_ID, balance: 0 });
+      mockPrisma.platformConfig.findUnique.mockResolvedValue(mockPlatformConfig('transport_platform_fee_pct', 15));
+      mockPrisma.$transaction.mockImplementation(async (fn) => {
+        const tx = {
+          trip: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+          tripEvent: { create: jest.fn() },
+          wallet: { findUnique: jest.fn(), update: jest.fn() },
+          transaction: { create: jest.fn() },
+          $executeRaw: jest.fn().mockResolvedValue(1),
+        };
+        return fn(tx);
+      });
 
       await expect(service.completeTrip(TRIP_ID, USER_ID)).rejects.toThrow(BadRequestException);
     });

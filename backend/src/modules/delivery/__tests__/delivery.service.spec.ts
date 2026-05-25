@@ -73,6 +73,14 @@ const mockPlatformConfig = (key: string, value: number) => ({
 
 // ── Mock objects ───────────────────────────────────────────────────────────────
 
+const mockTx = {
+  deliveryOrder: { update: jest.fn().mockResolvedValue({}) },
+  deliveryEvent: { create: jest.fn().mockResolvedValue({}) },
+  wallet: { findUnique: jest.fn(), update: jest.fn().mockResolvedValue({}) },
+  transaction: { create: jest.fn().mockResolvedValue({}) },
+  $executeRaw: jest.fn().mockResolvedValue(1),
+};
+
 const mockPrisma = {
   deliveryRider: {
     findFirst: jest.fn(),
@@ -94,6 +102,9 @@ const mockPrisma = {
   wallet: {
     findFirst: jest.fn(),
     findUnique: jest.fn(),
+  },
+  transaction: {
+    create: jest.fn(),
   },
   platformConfig: {
     findUnique: jest.fn(),
@@ -145,6 +156,11 @@ describe('DeliveryService', () => {
     const mockEmit = jest.fn();
     const mockTo = jest.fn().mockReturnValue({ emit: mockEmit });
     mockGateway.server.to = mockTo;
+    // Wire $transaction as interactive callback so completeDelivery tx works
+    mockPrisma.$transaction.mockImplementation(async (fn: any) => {
+      if (typeof fn === 'function') return fn(mockTx);
+      return fn;
+    });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -252,7 +268,10 @@ describe('DeliveryService', () => {
   describe('verifyOtp', () => {
     it('matches redis.get("delivery:otp:{orderId}") and updates deliveryOrder.otpVerifiedAt', async () => {
       const storedOtp = '123456';
-      mockRedis.get.mockResolvedValue(storedOtp);
+      // First call is the attempts key (return null = 0 attempts), second is the OTP
+      mockRedis.get
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(storedOtp);
       mockPrisma.deliveryOrder.findUnique.mockResolvedValue({
         ...mockOrder,
         status: 'COLLECTING',
@@ -321,7 +340,7 @@ describe('DeliveryService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('calls s3Service.upload("delivery-proof/...", buffer, "image/jpeg") and creditWallet with ISY-RDR- prefix and INTERNAL gateway', async () => {
+    it('calls s3Service.upload("delivery-proof/...", buffer, "image/jpeg") and credits wallet with ISY-RDR- reference and INTERNAL gateway inside transaction', async () => {
       const base64Photo = Buffer.from('fake-jpeg-data').toString('base64');
       mockPrisma.deliveryOrder.findUnique.mockResolvedValue({
         ...mockOrder,
@@ -331,17 +350,10 @@ describe('DeliveryService', () => {
       });
       mockPrisma.deliveryRider.findFirst.mockResolvedValue(mockRider);
       mockPrisma.wallet.findFirst.mockResolvedValue({ id: WALLET_ID, userId: USER_ID });
+      mockTx.wallet.findUnique.mockResolvedValue({ id: WALLET_ID, balance: 0 });
       mockPrisma.platformConfig.findUnique.mockResolvedValue(
         mockPlatformConfig('delivery_platform_fee_pct', 20),
       );
-      mockPrisma.$transaction.mockResolvedValue([]);
-      mockPrisma.deliveryOrder.update.mockResolvedValue({
-        ...mockOrder,
-        status: 'DELIVERED',
-        completedAt: new Date(),
-        riderEarnings: 640,
-        platformFee: 160,
-      });
 
       await service.completeDelivery(ORDER_ID, USER_ID, {
         proofPhotoBase64: base64Photo,
@@ -352,19 +364,20 @@ describe('DeliveryService', () => {
         expect.any(Buffer),
         'image/jpeg',
       );
-      expect(mockWallet.creditWallet).toHaveBeenCalledWith(
-        WALLET_ID,
-        expect.any(Number),
-        expect.stringMatching(/^ISY-RDR-/),
-        expect.stringContaining('Delivery'),
-        'delivery',
-        'INTERNAL',
+      expect(mockTx.transaction.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            gateway: 'INTERNAL',
+            reference: expect.stringMatching(/^ISY-RDR-/),
+            metadata: expect.objectContaining({ module: 'delivery' }),
+          }),
+        }),
       );
     });
 
     it('computes riderEarnings = fee × (1 - delivery_platform_fee_pct / 100) from platformConfig', async () => {
       const fee = 1000;
-      const feePct = 20; // delivery_platform_fee_pct = 20
+      const feePct = 20;
       const expectedEarnings = fee * (1 - feePct / 100); // 800
 
       const base64Photo = Buffer.from('fake-jpeg-data').toString('base64');
@@ -376,17 +389,10 @@ describe('DeliveryService', () => {
       });
       mockPrisma.deliveryRider.findFirst.mockResolvedValue(mockRider);
       mockPrisma.wallet.findFirst.mockResolvedValue({ id: WALLET_ID, userId: USER_ID });
+      mockTx.wallet.findUnique.mockResolvedValue({ id: WALLET_ID, balance: 0 });
       mockPrisma.platformConfig.findUnique.mockResolvedValue(
         mockPlatformConfig('delivery_platform_fee_pct', feePct),
       );
-      mockPrisma.$transaction.mockResolvedValue([]);
-      mockPrisma.deliveryOrder.update.mockResolvedValue({
-        ...mockOrder,
-        status: 'DELIVERED',
-        completedAt: new Date(),
-        riderEarnings: expectedEarnings,
-        platformFee: fee - expectedEarnings,
-      });
 
       await service.completeDelivery(ORDER_ID, USER_ID, {
         proofPhotoBase64: base64Photo,
@@ -395,13 +401,13 @@ describe('DeliveryService', () => {
       expect(mockPrisma.platformConfig.findUnique).toHaveBeenCalledWith(
         expect.objectContaining({ where: { key: 'delivery_platform_fee_pct' } }),
       );
-      expect(mockWallet.creditWallet).toHaveBeenCalledWith(
-        WALLET_ID,
-        expectedEarnings,
-        expect.stringMatching(/^ISY-RDR-/),
-        expect.any(String),
-        'delivery',
-        'INTERNAL',
+      expect(mockTx.transaction.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            amount: expectedEarnings,
+            gateway: 'INTERNAL',
+          }),
+        }),
       );
     });
   });

@@ -23,6 +23,9 @@
     "paths": {
       "@iseyaa/shared": [
         "../shared/src/index.ts"
+      ],
+      "@iseyaa/proto": [
+        "../packages/proto/generated/index.ts"
       ]
     }
   },

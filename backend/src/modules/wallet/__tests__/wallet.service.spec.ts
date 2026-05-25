@@ -3,6 +3,7 @@ import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { WalletService } from '../wallet.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { PaystackService } from '../../../common/services/paystack.service';
+import { RedisService } from '../../../redis/redis.service';
 
 const USER_ID = 'user-001';
 const WALLET_ID = 'wallet-001';
@@ -53,7 +54,18 @@ const mockPrisma = {
   $transaction: jest.fn(),
 };
 
+// mockTx delegates to the outer mockPrisma so per-test mocks are respected
+const mockTx = {
+  wallet: {
+    findUnique: jest.fn().mockImplementation((...args) => mockPrisma.wallet.findUnique(...args)),
+    update: jest.fn().mockResolvedValue({}),
+  },
+  transaction: { create: jest.fn().mockImplementation((...args) => mockPrisma.transaction.create(...args)) },
+  $executeRaw: jest.fn().mockResolvedValue(1),
+};
+
 const mockPaystack = { initiatePayment: jest.fn() };
+const mockRedis = { setNx: jest.fn().mockResolvedValue(true), del: jest.fn().mockResolvedValue(1) };
 
 describe('WalletService', () => {
   let service: WalletService;
@@ -62,11 +74,17 @@ describe('WalletService', () => {
     jest.clearAllMocks();
     // Default: PlatformConfig returns seeded KYC tier limits
     mockPrisma.platformConfig.findMany.mockResolvedValue(PLATFORM_CONFIG_TIERS);
+    // Default: interactive $transaction calls callback with mockTx
+    mockPrisma.$transaction.mockImplementation(async (fn) => {
+      if (typeof fn === 'function') return fn(mockTx);
+      return fn;
+    });
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         WalletService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: PaystackService, useValue: mockPaystack },
+        { provide: RedisService, useValue: mockRedis },
       ],
     }).compile();
     service = module.get<WalletService>(WalletService);
@@ -219,9 +237,6 @@ describe('WalletService', () => {
   describe('creditWallet', () => {
     it('credits wallet and creates transaction record', async () => {
       mockPrisma.wallet.findUnique.mockResolvedValue(mockWallet);
-      mockPrisma.wallet.update.mockResolvedValue({});
-      mockPrisma.transaction.create.mockResolvedValue({});
-      mockPrisma.$transaction.mockResolvedValue([{}, {}]);
 
       await service.creditWallet(WALLET_ID, 5000, 'ISY-FUND-REF', 'Wallet topup');
 
@@ -235,13 +250,10 @@ describe('WalletService', () => {
 
     it('uses PAYSTACK gateway by default when no gateway passed', async () => {
       mockPrisma.wallet.findUnique.mockResolvedValue(mockWallet);
-      mockPrisma.wallet.update.mockResolvedValue({});
-      mockPrisma.transaction.create.mockResolvedValue({});
-      mockPrisma.$transaction.mockResolvedValue([{}, {}]);
 
       await service.creditWallet(WALLET_ID, 5000, 'ISY-FUND-REF', 'Wallet topup', 'wallet');
 
-      expect(mockPrisma.transaction.create).toHaveBeenCalledWith(
+      expect(mockTx.transaction.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ gateway: 'PAYSTACK' }),
         }),
@@ -250,13 +262,10 @@ describe('WalletService', () => {
 
     it('overrides gateway when INTERNAL is passed', async () => {
       mockPrisma.wallet.findUnique.mockResolvedValue(mockWallet);
-      mockPrisma.wallet.update.mockResolvedValue({});
-      mockPrisma.transaction.create.mockResolvedValue({});
-      mockPrisma.$transaction.mockResolvedValue([{}, {}]);
 
       await service.creditWallet(WALLET_ID, 1000, 'ISY-DRV-REF', 'Trip earnings', 'transport', 'INTERNAL');
 
-      expect(mockPrisma.transaction.create).toHaveBeenCalledWith(
+      expect(mockTx.transaction.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ gateway: 'INTERNAL' }),
         }),

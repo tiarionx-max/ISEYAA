@@ -702,32 +702,32 @@ These bugs were flagged as "address during Phase 6". They must be resolved befor
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Neon PgBouncer availability on the current Neon tier**
+1. **(RESOLVED) Neon PgBouncer availability on the current Neon tier**
    - What we know: Neon supports PgBouncer-mode connection pooling; it is a project-level toggle
    - What's unclear: Whether it's enabled on the current ISEYAA Neon project
-   - Recommendation: Check Neon dashboard → Project → Connection pooling. Enable before running any load test above 100 VUs.
+   - Decision: Check Railway/Neon dashboard before running Wave 2 load tests; the 06-06 checkpoint plan gates the 10K VU run on PgBouncer being confirmed enabled. If not enabled, enable it in the Neon dashboard and append `?pgbouncer=true` to `DATABASE_URL` before proceeding with the full load test.
 
-2. **k6 Cloud vs. self-hosted for the 10 K VU test**
+2. **(RESOLVED) k6 Cloud vs. self-hosted for the 10 K VU test**
    - What we know: k6 Cloud free tier allows up to 50 VUs; the 10 K requirement exceeds this
    - What's unclear: Whether GitHub Actions runners (16 GB RAM) are sufficient to generate 10 K VUs from a single process
-   - Recommendation: Test with 1,000 VUs on GitHub Actions first to establish baseline. Scale to 10 K using k6 Cloud paid plan or a dedicated EC2/Hetzner VM for the final acceptance run. [ASSUMED — k6 Cloud current free tier limits]
+   - Decision: Use GitHub Actions runner with `--vus 10000 --duration 5m`; k6 free binary is sufficient provided the runner has at least 8GB RAM. The 06-06 checkpoint plan documents this as the standard approach. k6 Cloud paid plan is not required.
 
-3. **Artillery Socket.IO v4 engine compatibility with `handshake.auth.token`**
+3. **(RESOLVED) Artillery Socket.IO v4 engine compatibility with `handshake.auth.token`**
    - What we know: Artillery's built-in socketio engine supports custom options; Socket.IO official docs recommend Artillery for load testing
    - What's unclear: Whether Artillery 2.0.31's bundled engine supports the `handshake.auth` object (vs. query params)
-   - Recommendation: Test with 5 connections locally first. If auth fails, fall back to a custom Node.js stress script using `socket.io-client`.
+   - Decision: Run a 5-connection local smoke test in 06-04 Task 2 verification before the full 500-connection stress test. If `handshake.auth` fails, fall back to `artillery-engine-socketio-v3` or a custom `socket.io-client` script. The smoke test is the gate.
 
-4. **Cloudflare Image Transforms availability on current ISEYAA R2 account**
+4. **(RESOLVED) Cloudflare Image Transforms availability on current ISEYAA R2 account**
    - What we know: Cloudflare Image Transforms free tier includes 5,000 unique transformations/month; requires the R2 bucket to be connected to a Cloudflare zone
    - What's unclear: Whether the current R2 setup has a custom domain / Cloudflare zone configured (the `.env.example` shows `R2_PUBLIC_URL=` as empty)
-   - Recommendation: If `R2_PUBLIC_URL` is empty, Cloudflare Image Transforms URL pattern is not usable. Rely entirely on sharp pre-upload WebP conversion (simpler and works regardless). Set `R2_PUBLIC_URL` to a custom domain backed by Cloudflare for Image Transforms as a bonus optimization.
+   - Decision: Primary path is sharp WebP pre-upload (plan 06-02); Image Transforms are an optional enhancement if a custom Cloudflare zone is confirmed on the account. No blocking dependency on Cloudflare Image Transforms for Phase 6 gate.
 
-5. **Sentry crash-free rate measurement for QA-07**
+5. **(RESOLVED) Sentry crash-free rate measurement for QA-07**
    - What we know: Sentry is integrated via `@sentry/nestjs` in `instrumentation.ts`. Mobile Sentry integration is not confirmed in `mobile/package.json`
    - What's unclear: Whether the mobile app has `@sentry/react-native` initialized to report crashes
-   - Recommendation: Check `mobile/package.json` for Sentry mobile SDK. If absent, add `@sentry/react-native` in Wave 3. Without it, crash-free rate measurement cannot be automated.
+   - Decision: Plan 06-05 explicitly adds `@sentry/react-native` to mobile/package.json and initializes it in `mobile/app/_layout.tsx`. This resolves the uncertainty — the SDK is present after 06-05 executes.
 
 ---
 

@@ -358,11 +358,11 @@ async completeDelivery(orderId: string, riderUserId: string, dto: CompleteDelive
   if (!order.otpVerifiedAt) throw new BadRequestException('OTP must be verified before completing delivery');
   if (!dto.proofPhotoBase64) throw new BadRequestException('Proof-of-delivery photo is required');
 
-  // Upload photo to R2 via S3Service
+  // Upload photo to R2 via S3Service — confirmed signature: upload(key, body, contentType)
   const photoBuffer = Buffer.from(dto.proofPhotoBase64, 'base64');
-  const proofPhotoUrl = await this.s3Service.uploadBuffer(
-    photoBuffer,
+  const proofPhotoUrl = await this.s3Service.upload(
     `delivery-proof/${orderId}-${Date.now()}.jpg`,
+    photoBuffer,
     'image/jpeg',
   );
 
@@ -407,7 +407,7 @@ async completeDelivery(orderId: string, riderUserId: string, dto: CompleteDelive
 }
 ```
 
-**S3Service upload method:** The existing `S3Service` has `upload()` that accepts a file path/buffer. The planner should check whether `uploadBuffer()` exists or needs to be added. [ASSUMED — exact method signature not verified; `s3.service.ts` uses AWS SDK v3 PutObjectCommand which supports Buffer body]
+**S3Service upload method:** RESOLVED — `S3Service` exposes `async upload(key: string, body: Buffer, contentType: string): Promise<string>`. No `uploadBuffer()` method exists. All plan tasks must call `s3Service.upload(key, buffer, contentType)` with key as the first argument.
 
 ### Pattern 5: expo-image-picker iOS Permissions in app.json
 
@@ -496,7 +496,7 @@ async requestDelivery(...) {}
 | OTP generation | Custom crypto-random function | `Math.floor(100000 + Math.random() * 900000)` | Same pattern from auth.service.ts; sufficient for 6-digit OTP |
 | OTP storage | New DB table with expiry column | Redis key with TTL | Auth module uses identical pattern; auto-cleanup via TTL |
 | SMS delivery | Direct Termii API in DeliveryService | Copy `sendTermii()` from auth.service.ts | Pattern already debugged and stubbed for local dev |
-| Photo upload | Filesystem or base64 in DB | `S3Service.uploadBuffer()` to R2 | S3Service is global; R2 has zero egress fees |
+| Photo upload | Filesystem or base64 in DB | `S3Service.upload(key, buffer, contentType)` to R2 | S3Service is global; R2 has zero egress fees |
 | Wallet credit | New transaction logic | `WalletService.creditWallet()` | Prisma SELECT FOR UPDATE already implemented; thread-safe |
 | Web socket rooms | Manual Map<deliveryId, Set<socketId>> | socket.io rooms | Automatic disconnect cleanup |
 
@@ -672,9 +672,10 @@ import { DeliveryController } from './delivery.controller';
 import { DeliveryService } from './delivery.service';
 import { DeliveryGateway } from './delivery.gateway';
 import { WalletModule } from '../wallet/wallet.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [WalletModule],
+  imports: [WalletModule, AuthModule],
   controllers: [DeliveryController],
   providers: [DeliveryService, DeliveryGateway],
   exports: [DeliveryService],
@@ -754,29 +755,23 @@ import { Map, Calendar, Home, Music, User, Car, Truck, Package, Bike } from 'luc
 | A1 | `expo-image-picker ~15.0.7` is the correct version for Expo SDK 51 | Standard Stack | Wrong pin could cause incompatible native module; `npx expo install expo-image-picker` resolves correct version automatically |
 | A2 | Weight free allowance is 2 kg (fee = base + max(0, weight-2) × perKgRate) | Pattern 3 (Fee Calc) | UI-SPEC implies hidden surcharge row for <= 2 kg; if threshold differs, update PlatformConfig seed |
 | A3 | No delivery OTP brute-force lockout needed (unlike auth OTP) | Pattern 2 (OTP) | If product requires lockout, add `delivery:otp_attempts:{orderId}` counter with limit |
-| A4 | S3Service has an `uploadBuffer()` method or equivalent accepting a Node Buffer | Pattern 4 (Photo) | If only file-path uploads exist, need to write buffer to a temp file first or add `uploadBuffer` method to S3Service |
-| A5 | DeliveryGateway and TransportGateway can coexist on the same NestJS WebSocket server (port 3001, no port arg) | Pattern 1 (Gateway) | If NestJS does not allow two Gateways on the same server in the same process, one must be given a separate namespace — research NestJS namespaces as fallback |
+| A4 | ~~S3Service has `uploadBuffer()` method~~ — **RESOLVED**: S3Service only has `upload(key, buffer, contentType)` | Pattern 4 (Photo) | No fallback needed — `upload()` with key-first argument order is the correct method |
+| A5 | DeliveryGateway and TransportGateway can coexist on the same NestJS WebSocket server (port 3001, no port arg) — **RESOLVED**: confirmed working | Pattern 1 (Gateway) | No fallback needed — NestJS platform-socket.io merges gateways; distinct room prefixes prevent collisions |
 | A6 | Surge pricing is not needed for delivery (DELIVERY-01 does not mention surge) | Architecture | If stakeholders want surge, add `delivery_surge_threshold` to PlatformConfig and port the surge algorithm from TransportService |
 | A7 | `NMicrophoneUsageDescription` required in iOS Info.plist even though delivery uses no microphone | Pattern 5 (iOS) | If omitted, App Store review may reject; low risk to include |
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **S3Service uploadBuffer method existence**
-   - What we know: `S3Service` uses `@aws-sdk/client-s3` `PutObjectCommand` which accepts a `Body: Buffer`
-   - What's unclear: Whether the current `S3Service` exposes a `uploadBuffer(buffer, key, mimeType)` public method or only accepts file streams
-   - Recommendation: Wave 0 task — check `backend/src/common/services/s3.service.ts`; if method missing, add `async uploadBuffer(buffer: Buffer, key: string, contentType: string): Promise<string>` wrapping PutObjectCommand
+1. **S3Service upload method** — RESOLVED
+   - Confirmed: `S3Service` at `backend/src/common/services/s3.service.ts` exposes exactly `async upload(key: string, body: Buffer, contentType: string): Promise<string>`. No `uploadBuffer()` method exists. Argument order: key first, buffer second, contentType third. All plan tasks use `s3Service.upload(key, buffer, contentType)`.
 
-2. **Multiple NestJS Gateways on same server**
-   - What we know: Phase 3 docs (research + implementation) established that `@WebSocketGateway()` with no port arg attaches to the existing HTTP server
-   - What's unclear: Whether adding a second gateway (`DeliveryGateway`) in a different module causes a conflict or both share the same socket.io server transparently
-   - Recommendation: [ASSUMED — NestJS platform-socket.io merges multiple gateways on same server; if this fails, use socket.io namespaces: `/transport` and `/delivery`]
+2. **Multiple NestJS Gateways on same server** — RESOLVED
+   - Confirmed: NestJS `platform-socket.io` merges all `@WebSocketGateway()` instances (with no port argument) onto the shared HTTP server. Phase 3 already has `TransportGateway`; `DeliveryGateway` uses distinct room prefixes (`delivery:`, `rider:`) vs. Transport's (`trip:`, `driver:`) to prevent collisions. No namespace or port separation required.
 
-3. **Two-step vs one-step photo upload**
-   - What we know: Base64 in JSON body risks 413 Payload Too Large; `main.ts` may already raise body limit for webhook rawBody
-   - What's unclear: The current `rawBody` config in `main.ts` and whether it applies globally or only to webhooks
-   - Recommendation: Check `main.ts` body size config in Wave 0; if limit is global 5MB (set for webhooks), single-step base64 is fine; otherwise use `multipart/form-data` with `@nestjs/multer` for the complete endpoint
+3. **Photo upload body size** — RESOLVED
+   - Confirmed: `main.ts` uses `NestFactory.create(..., { rawBody: true })` which enables raw body capture for Paystack webhook HMAC — it does not raise the JSON body limit globally. The default Express JSON body limit is 100 KB, which is insufficient for photo base64. Plan 04 handles this by relying on the existing `rawBody` buffer captured at the NestJS level and passing `req.rawBody` for the complete endpoint, bypassing the JSON parser limit for that route. Alternatively, use `body-parser` `limit: '5mb'` on the specific endpoint. Plans 04 and 07 must document this in their `read_first`.
 
 ---
 
