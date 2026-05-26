@@ -1,7 +1,7 @@
 # Build context: monorepo root (not backend/) — required for shared/ workspace in Wave 3
 # Wave 3: per-microservice Dockerfiles live at backend/apps/<service>/Dockerfile
 
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 WORKDIR /app
 
 RUN apk add --no-cache openssl curl

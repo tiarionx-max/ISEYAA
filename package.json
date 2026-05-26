@@ -21,7 +21,7 @@
     "prisma:studio": "npm run prisma:studio --workspace=backend"
   },
   "engines": {
-    "node": ">=20.0.0",
+    "node": ">=22.0.0",
     "npm": ">=10.0.0"
   },
   "devDependencies": {
