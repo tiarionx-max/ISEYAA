@@ -28,5 +28,19 @@ fi
 echo "Running Prisma migrations..."
 npx prisma migrate deploy
 
+# Seed reference data on first deploy — skips if LGAs already exist
+LGA_COUNT=$(node -e "
+const { PrismaClient } = require('@prisma/client');
+const p = new PrismaClient();
+p.lGA.count().then(n => { console.log(n); p.\$disconnect(); }).catch(() => { console.log(0); p.\$disconnect(); });
+" 2>/dev/null || echo "0")
+
+if [ "$LGA_COUNT" = "0" ]; then
+  echo "Database is empty — running seed..."
+  node dist/prisma/seed.js || npx ts-node prisma/seed.ts || echo "WARN: seed failed, continuing startup"
+else
+  echo "Database already seeded (${LGA_COUNT} LGAs) — skipping seed"
+fi
+
 echo "Starting ISEYAA backend..."
 exec node --require ./dist/src/instrumentation.js ./dist/src/main.js

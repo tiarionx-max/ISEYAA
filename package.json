@@ -3,7 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "description": "ISEYAA — Ogun State Digital Super-Platform",
-  "workspaces": ["backend", "web", "mobile", "shared", "packages/proto"],
+  "workspaces": [
+    "backend",
+    "web",
+    "mobile",
+    "shared",
+    "packages/proto"
+  ],
   "scripts": {
     "dev:backend": "npm run start:dev --workspace=backend",
     "dev:web": "npm run dev --workspace=web",
@@ -14,10 +20,14 @@
     "prisma:generate": "npm run prisma:generate --workspace=backend",
     "prisma:studio": "npm run prisma:studio --workspace=backend"
   },
-  "engines": { "node": ">=20.0.0", "npm": ">=10.0.0" },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
   "devDependencies": {
     "expo": "~51.0.0",
     "expo-router": "~3.5.0",
+    "prisma": "^7.8.0",
     "rxjs": "^7.8.1"
   },
   "overrides": {
