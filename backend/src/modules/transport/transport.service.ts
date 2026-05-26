@@ -14,6 +14,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 import { WalletService } from '../wallet/wallet.service';
 import { TransportGateway } from './transport.gateway';
+import { TripStatus, VehicleType } from '@prisma/client';
 import { CreateDriverDto } from './dto/create-driver.dto';
 import { CreateVehicleDto } from './dto/create-vehicle.dto';
 import { ApproveDriverDto } from './dto/approve-driver.dto';
@@ -245,36 +246,44 @@ export class TransportService {
   }
 
   async getSurgeMultiplier(lat: number, lng: number, vehicleType?: string): Promise<number> {
-    const [thresholdCfg, radiusCfg] = await Promise.all([
-      this.prisma.platformConfig.findUnique({ where: { key: 'transport_surge_threshold' } }),
-      this.prisma.platformConfig.findUnique({ where: { key: 'transport_match_radius_km' } }),
-    ]);
+    try {
+      const [thresholdCfg, radiusCfg] = await Promise.all([
+        this.prisma.platformConfig.findUnique({ where: { key: 'transport_surge_threshold' } }),
+        this.prisma.platformConfig.findUnique({ where: { key: 'transport_match_radius_km' } }),
+      ]);
 
-    const threshold = thresholdCfg ? Number(thresholdCfg.value) : 1.5;
-    const radiusKm = radiusCfg ? Number(radiusCfg.value) : 5;
+      const threshold = thresholdCfg ? Number(thresholdCfg.value) : 1.5;
+      const radiusKm = radiusCfg ? Number(radiusCfg.value) : 5;
 
-    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
+      const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
 
-    const [nearbyDrivers, demand] = await Promise.all([
-      this.redis.geosearch('drivers:online', lng, lat, radiusKm),
-      // H-12: filter demand by vehicleType so MINIBUS demand doesn't inflate BIKE fares
-      this.prisma.trip.count({
-        where: {
-          status: { in: ['SEARCHING', 'MATCHED'] as any },
-          requestedAt: { gte: fiveMinAgo },
-          ...(vehicleType && { vehicleType: vehicleType as any }),
-        },
-      }),
-    ]);
+      const parsedVehicleType = vehicleType && Object.values(VehicleType).includes(vehicleType as VehicleType)
+        ? (vehicleType as VehicleType)
+        : undefined;
 
-    const supply = nearbyDrivers.length;
+      const [nearbyDrivers, demand] = await Promise.all([
+        this.redis.geosearch('drivers:online', lng, lat, radiusKm),
+        this.prisma.trip.count({
+          where: {
+            status: { in: [TripStatus.SEARCHING, TripStatus.MATCHED] },
+            requestedAt: { gte: fiveMinAgo },
+            ...(parsedVehicleType && { vehicleType: parsedVehicleType }),
+          },
+        }),
+      ]);
 
-    if (supply === 0) return 2.0;
+      const supply = nearbyDrivers.length;
 
-    const ratio = demand / supply;
-    if (ratio <= threshold) return 1.0;
+      if (supply === 0) return 2.0;
 
-    return Math.min(Math.round((ratio / threshold) * 10) / 10, 2.0);
+      const ratio = demand / supply;
+      if (ratio <= threshold) return 1.0;
+
+      return Math.min(Math.round((ratio / threshold) * 10) / 10, 2.0);
+    } catch (err) {
+      this.logger.warn(`getSurgeMultiplier failed, defaulting to 1.0: ${(err as Error).message}`);
+      return 1.0;
+    }
   }
 
   // ── requestRide / matchTimeout ────────────────────────────────────────────

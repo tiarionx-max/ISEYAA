@@ -1,0 +1,736 @@
+{
+  "info": {
+    "name": "ISEYAA Super Platform API",
+    "description": "Complete API collection for ISEYAA — Ogun State Government Super-Platform.\n\n**Setup:**\n1. Set `baseUrl` variable to `https://iseyaabackend-production.up.railway.app/api/v1`\n2. Run **Auth → Send OTP** then **Auth → Phone Auth** — tokens are saved automatically\n3. All authenticated requests use `{{accessToken}}` automatically",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://iseyaabackend-production.up.railway.app/api/v1", "type": "string" },
+    { "key": "accessToken", "value": "", "type": "string" },
+    { "key": "refreshToken", "value": "", "type": "string" },
+    { "key": "testPhone", "value": "+2348012345678", "type": "string" },
+    { "key": "testOtp", "value": "123456", "type": "string" },
+    { "key": "userId", "value": "", "type": "string" },
+    { "key": "eventId", "value": "", "type": "string" },
+    { "key": "propertyId", "value": "", "type": "string" },
+    { "key": "tripId", "value": "", "type": "string" },
+    { "key": "orderId", "value": "", "type": "string" },
+    { "key": "lgaId", "value": "", "type": "string" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+  },
+  "item": [
+
+    {
+      "name": "🔐 Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST", "auth": { "type": "noauth" },
+            "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth","register"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"test@example.com\",\n  \"phone\": \"{{testPhone}}\",\n  \"password\": \"Password123!\",\n  \"firstName\": \"Test\",\n  \"lastName\": \"User\",\n  \"ndpaConsent\": true\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["const d = pm.response.json();", "if (d.accessToken) {", "  pm.collectionVariables.set('accessToken', d.accessToken);", "  pm.collectionVariables.set('refreshToken', d.refreshToken);", "  pm.collectionVariables.set('userId', d.user?.id ?? '');", "}"] } }]
+        },
+        {
+          "name": "Login (email/phone + password)",
+          "request": {
+            "method": "POST", "auth": { "type": "noauth" },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth","login"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"identifier\": \"{{testPhone}}\",\n  \"password\": \"Password123!\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["const d = pm.response.json();", "if (d.accessToken) {", "  pm.collectionVariables.set('accessToken', d.accessToken);", "  pm.collectionVariables.set('refreshToken', d.refreshToken);", "  pm.collectionVariables.set('userId', d.user?.id ?? '');", "}"] } }]
+        },
+        {
+          "name": "OTP — Send",
+          "request": {
+            "method": "POST", "auth": { "type": "noauth" },
+            "url": { "raw": "{{baseUrl}}/auth/otp/send", "host": ["{{baseUrl}}"], "path": ["auth","otp","send"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"phone\": \"{{testPhone}}\"\n}" }
+          }
+        },
+        {
+          "name": "OTP — Phone Auth (verify + auto login/register)",
+          "request": {
+            "method": "POST", "auth": { "type": "noauth" },
+            "url": { "raw": "{{baseUrl}}/auth/phone-auth", "host": ["{{baseUrl}}"], "path": ["auth","phone-auth"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"phone\": \"{{testPhone}}\",\n  \"otp\": \"{{testOtp}}\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["const d = pm.response.json();", "if (d.accessToken) {", "  pm.collectionVariables.set('accessToken', d.accessToken);", "  pm.collectionVariables.set('refreshToken', d.refreshToken);", "  pm.collectionVariables.set('userId', d.user?.id ?? '');", "  console.log('✅ Tokens saved. isNewUser:', d.isNewUser);", "}"] } }]
+        },
+        {
+          "name": "OTP — Verify only",
+          "request": {
+            "method": "POST", "auth": { "type": "noauth" },
+            "url": { "raw": "{{baseUrl}}/auth/otp/verify", "host": ["{{baseUrl}}"], "path": ["auth","otp","verify"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"phone\": \"{{testPhone}}\",\n  \"otp\": \"{{testOtp}}\"\n}" }
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST", "auth": { "type": "noauth" },
+            "url": { "raw": "{{baseUrl}}/auth/refresh", "host": ["{{baseUrl}}"], "path": ["auth","refresh"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["const d = pm.response.json();", "if (d.accessToken) {", "  pm.collectionVariables.set('accessToken', d.accessToken);", "  pm.collectionVariables.set('refreshToken', d.refreshToken);", "}"] } }]
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/auth/logout", "host": ["{{baseUrl}}"], "path": ["auth","logout"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}" }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "👤 Users",
+      "item": [
+        {
+          "name": "Get My Profile",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/users/me", "host": ["{{baseUrl}}"], "path": ["users","me"] }
+          }
+        },
+        {
+          "name": "Update My Profile",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{baseUrl}}/users/me", "host": ["{{baseUrl}}"], "path": ["users","me"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"firstName\": \"Damilola\",\n  \"lastName\": \"Fajorin\",\n  \"avatarUrl\": \"\",\n  \"lgaId\": \"{{lgaId}}\"\n}" }
+          }
+        },
+        {
+          "name": "Get My Bookmarks",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/users/me/bookmarks", "host": ["{{baseUrl}}"], "path": ["users","me","bookmarks"] }
+          }
+        },
+        {
+          "name": "Switch Role",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{baseUrl}}/users/me/role", "host": ["{{baseUrl}}"], "path": ["users","me","role"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"role\": \"DRIVER\"\n}" }
+          }
+        },
+        {
+          "name": "KYC — Submit BVN",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/users/kyc/bvn", "host": ["{{baseUrl}}"], "path": ["users","kyc","bvn"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"bvn\": \"12345678901\"\n}" }
+          }
+        },
+        {
+          "name": "KYC — Submit NIN",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/users/kyc/nin", "host": ["{{baseUrl}}"], "path": ["users","kyc","nin"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"nin\": \"12345678901\"\n}" }
+          }
+        },
+        {
+          "name": "Get User by ID",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/users/{{userId}}", "host": ["{{baseUrl}}"], "path": ["users","{{userId}}"] }
+          }
+        },
+        {
+          "name": "Delete My Data (NDPA erasure)",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/users/me/data", "host": ["{{baseUrl}}"], "path": ["users","me","data"] }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "💰 Wallet",
+      "item": [
+        {
+          "name": "Get Balance",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/wallet/balance", "host": ["{{baseUrl}}"], "path": ["wallet","balance"] }
+          }
+        },
+        {
+          "name": "Get Transactions",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/wallet/transactions?page=1&limit=20", "host": ["{{baseUrl}}"], "path": ["wallet","transactions"], "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "20" }] }
+          }
+        },
+        {
+          "name": "Top Up — Initiate Paystack",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/wallet/topup", "host": ["{{baseUrl}}"], "path": ["wallet","topup"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"amount\": 5000,\n  \"email\": \"test@example.com\"\n}" }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🎉 Events",
+      "item": [
+        {
+          "name": "List Events",
+          "request": {
+            "method": "GET", "auth": { "type": "noauth" },
+            "url": { "raw": "{{baseUrl}}/events?page=1&limit=10", "host": ["{{baseUrl}}"], "path": ["events"], "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "10" }] }
+          }
+        },
+        {
+          "name": "Get Event by ID",
+          "request": {
+            "method": "GET", "auth": { "type": "noauth" },
+            "url": { "raw": "{{baseUrl}}/events/{{eventId}}", "host": ["{{baseUrl}}"], "path": ["events","{{eventId}}"] }
+          }
+        },
+        {
+          "name": "Create Event",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/events", "host": ["{{baseUrl}}"], "path": ["events"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"Lisabi Festival 2026\",\n  \"description\": \"Annual cultural festival in Egba land.\",\n  \"lgaId\": \"{{lgaId}}\",\n  \"venue\": \"Ake Palace Grounds\",\n  \"address\": \"Ake, Abeokuta\",\n  \"startDate\": \"2026-08-15T10:00:00Z\",\n  \"endDate\": \"2026-08-15T22:00:00Z\",\n  \"ticketPrice\": 2500\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["const d = pm.response.json();", "if (d.id || d.data?.id) pm.collectionVariables.set('eventId', d.id ?? d.data?.id);"] } }]
+        },
+        {
+          "name": "Purchase Ticket",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/events/{{eventId}}/purchase", "host": ["{{baseUrl}}"], "path": ["events","{{eventId}}","purchase"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"quantity\": 1,\n  \"email\": \"test@example.com\"\n}" }
+          }
+        },
+        {
+          "name": "Get Event Analytics",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/events/{{eventId}}/analytics", "host": ["{{baseUrl}}"], "path": ["events","{{eventId}}","analytics"] }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🏠 Stays",
+      "item": [
+        {
+          "name": "List Properties",
+          "request": {
+            "method": "GET", "auth": { "type": "noauth" },
+            "url": { "raw": "{{baseUrl}}/stays/properties?page=1&limit=10", "host": ["{{baseUrl}}"], "path": ["stays","properties"], "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "10" }] }
+          }
+        },
+        {
+          "name": "Get Property by ID",
+          "request": {
+            "method": "GET", "auth": { "type": "noauth" },
+            "url": { "raw": "{{baseUrl}}/stays/properties/{{propertyId}}", "host": ["{{baseUrl}}"], "path": ["stays","properties","{{propertyId}}"] }
+          }
+        },
+        {
+          "name": "Create Property (Host)",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/stays/properties", "host": ["{{baseUrl}}"], "path": ["stays","properties"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"lgaId\": \"{{lgaId}}\",\n  \"name\": \"Olumo Heritage Lodge\",\n  \"description\": \"Cozy lodge near Olumo Rock.\",\n  \"type\": \"GUESTHOUSE\",\n  \"address\": \"12 Olumo Road, Abeokuta\",\n  \"latitude\": 7.157,\n  \"longitude\": 3.345,\n  \"pricePerNight\": 15000,\n  \"maxGuests\": 4,\n  \"amenities\": [\"WiFi\", \"AC\", \"Parking\"]\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["const d = pm.response.json();", "if (d.id || d.data?.id) pm.collectionVariables.set('propertyId', d.id ?? d.data?.id);"] } }]
+        },
+        {
+          "name": "Book Property",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/stays/bookings", "host": ["{{baseUrl}}"], "path": ["stays","bookings"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"propertyId\": \"{{propertyId}}\",\n  \"checkIn\": \"2026-06-10\",\n  \"checkOut\": \"2026-06-12\",\n  \"guests\": 2\n}" }
+          }
+        },
+        {
+          "name": "Check Availability",
+          "request": {
+            "method": "GET", "auth": { "type": "noauth" },
+            "url": { "raw": "{{baseUrl}}/stays/properties/{{propertyId}}/availability?checkIn=2026-06-10&checkOut=2026-06-12", "host": ["{{baseUrl}}"], "path": ["stays","properties","{{propertyId}}","availability"], "query": [{ "key": "checkIn", "value": "2026-06-10" }, { "key": "checkOut", "value": "2026-06-12" }] }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🗺️ Tourism & LGAs",
+      "item": [
+        {
+          "name": "List All LGAs",
+          "request": {
+            "method": "GET", "auth": { "type": "noauth" },
+            "url": { "raw": "{{baseUrl}}/lgas", "host": ["{{baseUrl}}"], "path": ["lgas"] }
+          }
+        },
+        {
+          "name": "Get LGA by Slug",
+          "request": {
+            "method": "GET", "auth": { "type": "noauth" },
+            "url": { "raw": "{{baseUrl}}/lgas/abeokuta-south", "host": ["{{baseUrl}}"], "path": ["lgas","abeokuta-south"] }
+          }
+        },
+        {
+          "name": "List Attractions by LGA",
+          "request": {
+            "method": "GET", "auth": { "type": "noauth" },
+            "url": { "raw": "{{baseUrl}}/lgas/abeokuta-south/attractions", "host": ["{{baseUrl}}"], "path": ["lgas","abeokuta-south","attractions"] }
+          }
+        },
+        {
+          "name": "List All Attractions",
+          "request": {
+            "method": "GET", "auth": { "type": "noauth" },
+            "url": { "raw": "{{baseUrl}}/tourism/attractions?page=1&limit=10", "host": ["{{baseUrl}}"], "path": ["tourism","attractions"], "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "10" }] }
+          }
+        },
+        {
+          "name": "Get Attraction by ID",
+          "request": {
+            "method": "GET", "auth": { "type": "noauth" },
+            "url": { "raw": "{{baseUrl}}/tourism/attractions/:id", "host": ["{{baseUrl}}"], "path": ["tourism","attractions",":id"], "variable": [{ "key": "id", "value": "" }] }
+          }
+        },
+        {
+          "name": "Bookmark Attraction",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/tourism/attractions/:id/bookmark", "host": ["{{baseUrl}}"], "path": ["tourism","attractions",":id","bookmark"], "variable": [{ "key": "id", "value": "" }] }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🚗 Transport",
+      "item": [
+        {
+          "name": "Get Fare Estimate",
+          "request": {
+            "method": "GET", "auth": { "type": "noauth" },
+            "url": { "raw": "{{baseUrl}}/transport/fare-estimate?pickupLat=7.157&pickupLng=3.345&dropoffLat=7.200&dropoffLng=3.380", "host": ["{{baseUrl}}"], "path": ["transport","fare-estimate"], "query": [{ "key": "pickupLat", "value": "7.157" }, { "key": "pickupLng", "value": "3.345" }, { "key": "dropoffLat", "value": "7.200" }, { "key": "dropoffLng", "value": "3.380" }] }
+          }
+        },
+        {
+          "name": "Register as Driver",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/transport/drivers", "host": ["{{baseUrl}}"], "path": ["transport","drivers"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"licenceNumber\": \"OG12345678\",\n  \"licenceExpiry\": \"2028-01-01\"\n}" }
+          }
+        },
+        {
+          "name": "Add Vehicle",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/transport/drivers/:driverId/vehicles", "host": ["{{baseUrl}}"], "path": ["transport","drivers",":driverId","vehicles"], "variable": [{ "key": "driverId", "value": "" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"type\": \"CAR\",\n  \"make\": \"Toyota\",\n  \"model\": \"Corolla\",\n  \"year\": 2020,\n  \"plateNumber\": \"OG 123 ABC\",\n  \"colour\": \"White\"\n}" }
+          }
+        },
+        {
+          "name": "Go Online",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/transport/go-online", "host": ["{{baseUrl}}"], "path": ["transport","go-online"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"lat\": 7.157,\n  \"lng\": 3.345\n}" }
+          }
+        },
+        {
+          "name": "Go Offline",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/transport/go-offline", "host": ["{{baseUrl}}"], "path": ["transport","go-offline"] },
+            "body": { "mode": "raw", "raw": "{}" }
+          }
+        },
+        {
+          "name": "Driver Earnings",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/transport/drivers/earnings", "host": ["{{baseUrl}}"], "path": ["transport","drivers","earnings"] }
+          }
+        },
+        {
+          "name": "Request Ride",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/transport/trips", "host": ["{{baseUrl}}"], "path": ["transport","trips"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"pickupLat\": 7.157,\n  \"pickupLng\": 3.345,\n  \"pickupAddress\": \"Olumo Rock, Abeokuta\",\n  \"dropoffLat\": 7.200,\n  \"dropoffLng\": 3.380,\n  \"dropoffAddress\": \"Centenary City, Abeokuta\",\n  \"vehicleType\": \"CAR\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["const d = pm.response.json();", "if (d.id || d.data?.id) pm.collectionVariables.set('tripId', d.id ?? d.data?.id);"] } }]
+        },
+        {
+          "name": "Accept Trip",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{baseUrl}}/transport/trips/{{tripId}}/accept", "host": ["{{baseUrl}}"], "path": ["transport","trips","{{tripId}}","accept"] }
+          }
+        },
+        {
+          "name": "Arrived at Pickup",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{baseUrl}}/transport/trips/{{tripId}}/arrive", "host": ["{{baseUrl}}"], "path": ["transport","trips","{{tripId}}","arrive"] }
+          }
+        },
+        {
+          "name": "Start Trip",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{baseUrl}}/transport/trips/{{tripId}}/start", "host": ["{{baseUrl}}"], "path": ["transport","trips","{{tripId}}","start"] }
+          }
+        },
+        {
+          "name": "Complete Trip",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{baseUrl}}/transport/trips/{{tripId}}/complete", "host": ["{{baseUrl}}"], "path": ["transport","trips","{{tripId}}","complete"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"driverRating\": 5\n}" }
+          }
+        },
+        {
+          "name": "Cancel Trip",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{baseUrl}}/transport/trips/{{tripId}}/cancel", "host": ["{{baseUrl}}"], "path": ["transport","trips","{{tripId}}","cancel"] }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "📦 Delivery",
+      "item": [
+        {
+          "name": "Get Fee Estimate",
+          "request": {
+            "method": "GET", "auth": { "type": "noauth" },
+            "url": { "raw": "{{baseUrl}}/delivery/fee-estimate?pickupLat=7.157&pickupLng=3.345&dropoffLat=7.200&dropoffLng=3.380&weightKg=2", "host": ["{{baseUrl}}"], "path": ["delivery","fee-estimate"], "query": [{ "key": "pickupLat", "value": "7.157" }, { "key": "pickupLng", "value": "3.345" }, { "key": "dropoffLat", "value": "7.200" }, { "key": "dropoffLng", "value": "3.380" }, { "key": "weightKg", "value": "2" }] }
+          }
+        },
+        {
+          "name": "Register as Rider",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/delivery/riders", "host": ["{{baseUrl}}"], "path": ["delivery","riders"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"metadata\": {}\n}" }
+          }
+        },
+        {
+          "name": "Go Online (Rider)",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/delivery/go-online", "host": ["{{baseUrl}}"], "path": ["delivery","go-online"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"lat\": 7.157,\n  \"lng\": 3.345\n}" }
+          }
+        },
+        {
+          "name": "Place Delivery Order",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/delivery/orders", "host": ["{{baseUrl}}"], "path": ["delivery","orders"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"pickupLat\": 7.157,\n  \"pickupLng\": 3.345,\n  \"pickupAddress\": \"12 Olumo Road, Abeokuta\",\n  \"dropoffLat\": 7.200,\n  \"dropoffLng\": 3.380,\n  \"dropoffAddress\": \"20 Centenary Way, Abeokuta\",\n  \"itemDescription\": \"Documents in envelope\",\n  \"weightKg\": 0.5,\n  \"recipientPhone\": \"+2348087654321\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["const d = pm.response.json();", "if (d.id || d.data?.id) pm.collectionVariables.set('orderId', d.id ?? d.data?.id);"] } }]
+        },
+        {
+          "name": "Accept Delivery Order",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{baseUrl}}/delivery/orders/{{orderId}}/accept", "host": ["{{baseUrl}}"], "path": ["delivery","orders","{{orderId}}","accept"] }
+          }
+        },
+        {
+          "name": "Collect Package",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{baseUrl}}/delivery/orders/{{orderId}}/collect", "host": ["{{baseUrl}}"], "path": ["delivery","orders","{{orderId}}","collect"] }
+          }
+        },
+        {
+          "name": "Verify Delivery OTP",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/delivery/orders/{{orderId}}/verify-otp", "host": ["{{baseUrl}}"], "path": ["delivery","orders","{{orderId}}","verify-otp"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"otp\": \"1234\"\n}" }
+          }
+        },
+        {
+          "name": "Complete Delivery",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{baseUrl}}/delivery/orders/{{orderId}}/complete", "host": ["{{baseUrl}}"], "path": ["delivery","orders","{{orderId}}","complete"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"senderRating\": 5\n}" }
+          }
+        },
+        {
+          "name": "Cancel Delivery",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{baseUrl}}/delivery/orders/{{orderId}}/cancel", "host": ["{{baseUrl}}"], "path": ["delivery","orders","{{orderId}}","cancel"] }
+          }
+        },
+        {
+          "name": "Rider Earnings",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/delivery/riders/earnings", "host": ["{{baseUrl}}"], "path": ["delivery","riders","earnings"] }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🛒 Marketplace",
+      "item": [
+        {
+          "name": "Register as Vendor",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/marketplace/vendors", "host": ["{{baseUrl}}"], "path": ["marketplace","vendors"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"lgaId\": \"{{lgaId}}\",\n  \"businessName\": \"Adire World\",\n  \"description\": \"Premium Adire fabric and clothing from Abeokuta.\"\n}" }
+          }
+        },
+        {
+          "name": "List Products",
+          "request": {
+            "method": "GET", "auth": { "type": "noauth" },
+            "url": { "raw": "{{baseUrl}}/marketplace/products?page=1&limit=10", "host": ["{{baseUrl}}"], "path": ["marketplace","products"], "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "10" }] }
+          }
+        },
+        {
+          "name": "Get Product by ID",
+          "request": {
+            "method": "GET", "auth": { "type": "noauth" },
+            "url": { "raw": "{{baseUrl}}/marketplace/products/:id", "host": ["{{baseUrl}}"], "path": ["marketplace","products",":id"], "variable": [{ "key": "id", "value": "" }] }
+          }
+        },
+        {
+          "name": "Create Product",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/marketplace/products", "host": ["{{baseUrl}}"], "path": ["marketplace","products"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Adire Wrap Dress\",\n  \"description\": \"Hand-dyed indigo fabric dress, Abeokuta style.\",\n  \"price\": 12500,\n  \"stock\": 10\n}" }
+          }
+        },
+        {
+          "name": "Place Order",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/marketplace/orders", "host": ["{{baseUrl}}"], "path": ["marketplace","orders"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"items\": [\n    { \"productId\": \"PRODUCT_ID_HERE\", \"quantity\": 1 }\n  ],\n  \"email\": \"test@example.com\"\n}" }
+          }
+        },
+        {
+          "name": "Update Order Status (Vendor)",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{baseUrl}}/marketplace/orders/:id/status", "host": ["{{baseUrl}}"], "path": ["marketplace","orders",":id","status"], "variable": [{ "key": "id", "value": "" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"SHIPPED\"\n}" }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🎙️ Studio",
+      "item": [
+        {
+          "name": "List Available Slots",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/studio/slots", "host": ["{{baseUrl}}"], "path": ["studio","slots"] }
+          }
+        },
+        {
+          "name": "Book Studio Slot",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/studio/bookings", "host": ["{{baseUrl}}"], "path": ["studio","bookings"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"slotId\": \"SLOT_ID_HERE\",\n  \"startTime\": \"2026-06-15T09:00:00Z\",\n  \"durationHours\": 3,\n  \"email\": \"test@example.com\"\n}" }
+          }
+        },
+        {
+          "name": "Studio Content Feed",
+          "request": {
+            "method": "GET", "auth": { "type": "noauth" },
+            "url": { "raw": "{{baseUrl}}/studio/feed", "host": ["{{baseUrl}}"], "path": ["studio","feed"] }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🤖 AI Concierge",
+      "item": [
+        {
+          "name": "Chat with Concierge",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/ai/chat", "host": ["{{baseUrl}}"], "path": ["ai","chat"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"messages\": [\n    { \"role\": \"user\", \"content\": \"What are the best things to do in Abeokuta?\" }\n  ]\n}" }
+          }
+        },
+        {
+          "name": "Generate Itinerary",
+          "request": {
+            "method": "POST", "auth": { "type": "noauth" },
+            "url": { "raw": "{{baseUrl}}/ai/itinerary", "host": ["{{baseUrl}}"], "path": ["ai","itinerary"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"durationDays\": 3,\n  \"startLgaSlug\": \"abeokuta-south\",\n  \"interests\": [\"culture\", \"food\", \"nature\"],\n  \"budgetNgn\": 50000,\n  \"partySize\": 2\n}" }
+          }
+        },
+        {
+          "name": "Get Recommendations",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/ai/recommend", "host": ["{{baseUrl}}"], "path": ["ai","recommend"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"query\": \"I want a quiet place to stay near Olumo Rock under ₦20,000 per night\"\n}" }
+          }
+        },
+        {
+          "name": "Ask LGA Intel",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/ai/lga-intel", "host": ["{{baseUrl}}"], "path": ["ai","lga-intel"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"lgaId\": \"{{lgaId}}\",\n  \"question\": \"What are the top tourist attractions?\"\n}" }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🔔 Notifications",
+      "item": [
+        {
+          "name": "Register FCM Token",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/notifications/register-token", "host": ["{{baseUrl}}"], "path": ["notifications","register-token"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"token\": \"FCM_DEVICE_TOKEN_HERE\"\n}" }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🛡️ Admin",
+      "item": [
+        {
+          "name": "Dashboard KPIs",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/admin/dashboard", "host": ["{{baseUrl}}"], "path": ["admin","dashboard"] }
+          }
+        },
+        {
+          "name": "Revenue Analytics",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/admin/revenue", "host": ["{{baseUrl}}"], "path": ["admin","revenue"] }
+          }
+        },
+        {
+          "name": "List Users",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/admin/users?page=1&limit=20", "host": ["{{baseUrl}}"], "path": ["admin","users"], "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "20" }] }
+          }
+        },
+        {
+          "name": "Update User Status",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{baseUrl}}/admin/users/{{userId}}/status", "host": ["{{baseUrl}}"], "path": ["admin","users","{{userId}}","status"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"SUSPENDED\"\n}" }
+          }
+        },
+        {
+          "name": "List Vendors (Pending Approval)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/admin/vendors?status=PENDING", "host": ["{{baseUrl}}"], "path": ["admin","vendors"], "query": [{ "key": "status", "value": "PENDING" }] }
+          }
+        },
+        {
+          "name": "Approve Vendor",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{baseUrl}}/admin/vendors/:id/approve", "host": ["{{baseUrl}}"], "path": ["admin","vendors",":id","approve"], "variable": [{ "key": "id", "value": "" }] }
+          }
+        },
+        {
+          "name": "Get Platform Config",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/admin/config", "host": ["{{baseUrl}}"], "path": ["admin","config"] }
+          }
+        },
+        {
+          "name": "Update Config Value",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{baseUrl}}/admin/config/:key", "host": ["{{baseUrl}}"], "path": ["admin","config",":key"], "variable": [{ "key": "key", "value": "platformFeePercent" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"value\": \"5\"\n}" }
+          }
+        }
+      ]
+    }
+
+  ]
+}
