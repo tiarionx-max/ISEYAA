@@ -211,6 +211,14 @@ export class TransportService {
 
   // ── getFareEstimate / getSurgeMultiplier ──────────────────────────────────
 
+  // Nigerian market defaults per vehicle class — overridden by platformConfig rows
+  private readonly FARE_DEFAULTS: Record<string, { base: number; perKm: number }> = {
+    bike:     { base: 200, perKm: 50  },
+    tricycle: { base: 350, perKm: 80  },
+    car:      { base: 500, perKm: 120 },
+    minibus:  { base: 700, perKm: 150 },
+  };
+
   async getFareEstimate(query: {
     vehicleType: string;
     pickupLat: number;
@@ -219,14 +227,15 @@ export class TransportService {
     dropoffLng: number;
   }): Promise<FareEstimate> {
     const typeKey = query.vehicleType.toLowerCase();
+    const defaults = this.FARE_DEFAULTS[typeKey] ?? { base: 500, perKm: 120 };
 
     const [baseFareCfg, perKmCfg] = await Promise.all([
       this.prisma.platformConfig.findUnique({ where: { key: `transport_base_fare_${typeKey}` } }),
       this.prisma.platformConfig.findUnique({ where: { key: `transport_per_km_${typeKey}` } }),
     ]);
 
-    const baseFare = baseFareCfg ? Number(baseFareCfg.value) : 500;
-    const perKmFare = perKmCfg ? Number(perKmCfg.value) : 120;
+    const baseFare = baseFareCfg ? Number(baseFareCfg.value) : defaults.base;
+    const perKmFare = perKmCfg ? Number(perKmCfg.value) : defaults.perKm;
 
     const distanceKm = Math.round(
       this.haversineDistanceKm(
