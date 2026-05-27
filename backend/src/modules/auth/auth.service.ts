@@ -286,15 +286,21 @@ export class AuthService {
   }
 
   private async sendTermii(phone: string, otp: string) {
-    const apiKey = this.config.get<string>('TERMII_API_KEY');
-    if (!apiKey) {
-      this.logger.warn(`[TERMII STUB] OTP ${otp} for ${phone} — set TERMII_API_KEY to send live SMS`);
+    const twilioSid = this.config.get<string>('TWILIO_ACCOUNT_SID');
+    const twilioToken = this.config.get<string>('TWILIO_AUTH_TOKEN');
+    const twilioFrom = this.config.get<string>('TWILIO_FROM_NUMBER');
+
+    if (twilioSid && twilioToken && twilioFrom) {
+      await this.sendTwilio(phone, otp, twilioSid, twilioToken, twilioFrom);
       return;
     }
 
-    // Use dnd channel with N-Alert sender — works immediately without sender ID approval
-    // and reaches DND-registered Nigerian numbers. Switch to 'generic' + custom sender
-    // once TERMII_SENDER_ID is approved in the Termii dashboard.
+    const termiiKey = this.config.get<string>('TERMII_API_KEY');
+    if (!termiiKey) {
+      this.logger.warn(`[SMS STUB] OTP ${otp} for ${phone} — configure TWILIO_* or TERMII_API_KEY to send live SMS`);
+      return;
+    }
+
     const senderId = this.config.get('TERMII_SENDER_ID', '');
     const channel = senderId ? 'generic' : 'dnd';
     const from = senderId || 'N-Alert';
@@ -309,7 +315,7 @@ export class AuthService {
           sms: `Your ISEYAA verification code is ${otp}. Valid for 5 minutes. Do not share.`,
           type: 'plain',
           channel,
-          api_key: apiKey,
+          api_key: termiiKey,
         }),
       });
       if (!response.ok) {
@@ -317,6 +323,34 @@ export class AuthService {
       }
     } catch (err) {
       this.logger.error('Termii request failed', err);
+    }
+  }
+
+  private async sendTwilio(phone: string, otp: string, sid: string, token: string, from: string) {
+    try {
+      const body = new URLSearchParams({
+        To: phone,
+        From: from,
+        Body: `Your ISEYAA verification code is ${otp}. Valid for 5 minutes. Do not share.`,
+      });
+      const response = await fetch(
+        `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            Authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString('base64')}`,
+          },
+          body: body.toString(),
+        },
+      );
+      if (!response.ok) {
+        this.logger.error(`Twilio error: ${response.status} ${await response.text()}`);
+      } else {
+        this.logger.log(`SMS sent via Twilio to ${phone}`);
+      }
+    } catch (err) {
+      this.logger.error('Twilio request failed', err);
     }
   }
 
