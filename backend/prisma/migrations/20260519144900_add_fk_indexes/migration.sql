@@ -28,5 +28,4 @@ CREATE INDEX IF NOT EXISTS "audit_logs_userId_idx" ON "audit_logs"("userId");
 -- AddIndex: AuditLog.createdAt
 CREATE INDEX IF NOT EXISTS "audit_logs_createdAt_idx" ON "audit_logs"("createdAt");
 
--- AddIndex: Trip.riderId
-CREATE INDEX IF NOT EXISTS "trips_riderId_idx" ON "trips"("riderId");
+-- trips_riderId_idx created in 20260525000000_add_transport_delivery_tables
