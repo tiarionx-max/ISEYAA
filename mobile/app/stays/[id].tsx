@@ -95,7 +95,7 @@ export default function StayDetailScreen() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['property', id],
-    queryFn: () => fetcher(`/stays/properties/${id}`),
+    queryFn: () => fetcher(`/properties/${id}`),
     enabled: !!id,
   });
 
@@ -103,7 +103,7 @@ export default function StayDetailScreen() {
 
   const bookMutation = useMutation({
     mutationFn: (payload: { checkIn: string; checkOut: string }) =>
-      api.post('/stays/bookings', { propertyId: id, ...payload }),
+      api.post(`/properties/${id}/bookings`, { propertyId: id, ...payload }),
     onSuccess: () => Alert.alert('Booking Confirmed!', 'Check your profile for booking details.'),
     onError: (e: any) => Alert.alert('Booking Failed', e?.response?.data?.message ?? 'Please try again.'),
   });

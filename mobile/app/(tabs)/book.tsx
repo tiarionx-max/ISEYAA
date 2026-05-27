@@ -299,15 +299,15 @@ export default function BookScreen() {
   });
   const { data: staysData, isLoading: staysLoading } = useQuery({
     queryKey: ['stays'],
-    queryFn: () => fetcher('/stays?limit=10'),
+    queryFn: () => fetcher('/properties?limit=10'),
   });
   const { data: studioData, isLoading: studioLoading } = useQuery({
     queryKey: ['studio-slots'],
-    queryFn: () => fetcher('/studio/spaces?limit=10'),
+    queryFn: () => fetcher('/studio/feed?limit=10'),
   });
   const { data: marketData, isLoading: marketLoading } = useQuery({
     queryKey: ['marketplace'],
-    queryFn: () => fetcher('/marketplace/products?limit=10'),
+    queryFn: () => fetcher('/products?limit=10'),
   });
 
   const events: any[] = eventsData?.data ?? [];

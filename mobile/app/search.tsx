@@ -136,10 +136,10 @@ export default function SearchScreen() {
     queryFn: async () => {
       const q = encodeURIComponent(debouncedQuery);
       if (scope === 'events') return fetcher(`/events?search=${q}&limit=8`);
-      if (scope === 'stays') return fetcher(`/stays?search=${q}&limit=8`);
-      if (scope === 'places') return fetcher(`/tourism/attractions?search=${q}&limit=8`);
+      if (scope === 'stays') return fetcher(`/properties?search=${q}&limit=8`);
+      if (scope === 'places') return fetcher(`/attractions?search=${q}&limit=8`);
       const [atts, evts] = await Promise.allSettled([
-        fetcher(`/tourism/attractions?search=${q}&limit=4`),
+        fetcher(`/attractions?search=${q}&limit=4`),
         fetcher(`/events?search=${q}&limit=4`),
       ]);
       const items = [

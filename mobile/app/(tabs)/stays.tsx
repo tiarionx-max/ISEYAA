@@ -28,7 +28,7 @@ const HERO_PALETTES: [string, string][] = [
 export default function StaysScreen() {
   const { data, isLoading } = useQuery({
     queryKey: ['properties-mobile'],
-    queryFn: () => fetcher('/stays/properties?limit=30'),
+    queryFn: () => fetcher('/properties?limit=30'),
   });
 
   const properties = data?.data ?? [];
