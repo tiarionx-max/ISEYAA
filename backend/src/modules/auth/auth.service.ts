@@ -292,16 +292,23 @@ export class AuthService {
       return;
     }
 
+    // Use dnd channel with N-Alert sender — works immediately without sender ID approval
+    // and reaches DND-registered Nigerian numbers. Switch to 'generic' + custom sender
+    // once TERMII_SENDER_ID is approved in the Termii dashboard.
+    const senderId = this.config.get('TERMII_SENDER_ID', '');
+    const channel = senderId ? 'generic' : 'dnd';
+    const from = senderId || 'N-Alert';
+
     try {
       const response = await fetch('https://v3.api.termii.com/api/sms/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           to: phone,
-          from: this.config.get('TERMII_SENDER_ID', 'ISEYAA'),
+          from,
           sms: `Your ISEYAA verification code is ${otp}. Valid for 5 minutes. Do not share.`,
           type: 'plain',
-          channel: 'generic',
+          channel,
           api_key: apiKey,
         }),
       });
