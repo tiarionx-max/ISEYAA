@@ -84,6 +84,14 @@ export class ProductsController {
 export class OrdersController {
   constructor(private readonly marketplaceService: MarketplaceService) {}
 
+  @Get('mine')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List the current user’s orders with items and product data' })
+  findMyOrders(@CurrentUser() user: any) {
+    return this.marketplaceService.findMyOrders(user.userId);
+  }
+
   @Post()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()

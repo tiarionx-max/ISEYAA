@@ -98,6 +98,14 @@ export class StaysController {
 export class BookingsController {
   constructor(private readonly staysService: StaysService) {}
 
+  @Get('mine')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List the current user’s bookings with property details' })
+  findMyBookings(@CurrentUser() user: any) {
+    return this.staysService.findMyBookings(user.userId);
+  }
+
   @Post(':id/review')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()

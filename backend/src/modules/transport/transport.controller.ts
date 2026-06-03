@@ -51,6 +51,14 @@ export class TransportController {
 
   // ── Driver Profile ────────────────────────────────────────────────────────
 
+  @Get('drivers/me')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get the current user’s driver profile (null if not registered)' })
+  getMyDriverProfile(@CurrentUser() user: any) {
+    return this.transportService.getMyDriverProfile(user.userId);
+  }
+
   @Post('drivers')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.DRIVER)

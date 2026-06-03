@@ -71,7 +71,7 @@ export default function EventDetailScreen() {
   const event = data?.data ?? data;
 
   const purchaseMutation = useMutation({
-    mutationFn: () => api.post(`/events/${id}/tickets/purchase`, { quantity: 1 }),
+    mutationFn: () => api.post(`/events/${id}/purchase`, { quantity: 1 }),
     onSuccess: () => Alert.alert('Ticket Purchased!', 'Your QR code is waiting in your profile.'),
     onError: (e: any) => Alert.alert('Purchase Failed', e?.response?.data?.message ?? 'Please try again.'),
   });

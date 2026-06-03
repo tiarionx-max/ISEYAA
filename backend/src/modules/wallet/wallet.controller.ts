@@ -4,6 +4,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { WalletService } from './wallet.service';
+import { TransferDto } from './dto/transfer.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
@@ -44,5 +45,11 @@ export class WalletController {
   @ApiOperation({ summary: 'Initiate wallet topup via Paystack (CBN daily limits enforced)' })
   topup(@CurrentUser() user: any, @Body() body: { amount: number; email: string }) {
     return this.walletService.initiateTopup(user.userId, body);
+  }
+
+  @Post('transfer')
+  @ApiOperation({ summary: 'Transfer wallet balance to another user by phone number' })
+  transfer(@CurrentUser() user: any, @Body() dto: TransferDto) {
+    return this.walletService.transfer(user.userId, dto);
   }
 }

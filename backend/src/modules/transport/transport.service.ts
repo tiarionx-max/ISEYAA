@@ -105,6 +105,15 @@ export class TransportService {
     }
   }
 
+  // ── getMyDriverProfile ────────────────────────────────────────────────────
+
+  async getMyDriverProfile(userId: string) {
+    return this.prisma.driver.findFirst({
+      where: { userId, deletedAt: null },
+      include: { vehicles: true },
+    });
+  }
+
   // ── createDriver ──────────────────────────────────────────────────────────
 
   async createDriver(userId: string, dto: CreateDriverDto) {

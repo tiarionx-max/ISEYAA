@@ -18,6 +18,7 @@ import { RiderGoOnlineDto } from './dto/rider-go-online.dto';
 import { RequestDeliveryDto } from './dto/request-delivery.dto';
 import { CompleteDeliveryDto } from './dto/complete-delivery.dto';
 import { VerifyDeliveryOtpDto } from './dto/verify-delivery-otp.dto';
+import { RateDeliveryDto } from './dto/rate-delivery.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -50,6 +51,14 @@ export class DeliveryController {
   }
 
   // ── Rider Profile ─────────────────────────────────────────────────────────
+
+  @Get('riders/me')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get the current user’s delivery-rider profile (null if not registered)' })
+  getMyRiderProfile(@CurrentUser() user: any) {
+    return this.deliveryService.getMyRiderProfile(user.userId);
+  }
 
   @Post('riders')
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -175,6 +184,19 @@ export class DeliveryController {
     @Body() dto: CompleteDeliveryDto,
   ) {
     return this.deliveryService.completeDelivery(id, user.userId, dto);
+  }
+
+  @Patch('orders/:id/rate')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Sender rates a delivery (1–5 stars)' })
+  rateDelivery(
+    @Param('id') id: string,
+    @CurrentUser() user: any,
+    @Body() dto: RateDeliveryDto,
+  ) {
+    return this.deliveryService.rateDelivery(id, user.userId, dto);
   }
 
   @Patch('orders/:id/cancel')

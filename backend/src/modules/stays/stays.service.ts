@@ -153,6 +153,14 @@ export class StaysService implements OnModuleInit {
     });
   }
 
+  async findMyBookings(userId: string) {
+    return this.prisma.booking.findMany({
+      where: { userId, deletedAt: null },
+      include: { property: { include: { lga: { select: { name: true, slug: true } } } } },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   async createBooking(userId: string, propertyId: string, dto: CreateBookingDto) {
     const property = await this.prisma.property.findFirst({
       where: { id: propertyId, deletedAt: null, isActive: true },

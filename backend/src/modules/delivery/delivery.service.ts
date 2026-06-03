@@ -23,6 +23,7 @@ import { RiderGoOnlineDto } from './dto/rider-go-online.dto';
 import { RequestDeliveryDto } from './dto/request-delivery.dto';
 import { CompleteDeliveryDto } from './dto/complete-delivery.dto';
 import { VerifyDeliveryOtpDto } from './dto/verify-delivery-otp.dto';
+import { RateDeliveryDto } from './dto/rate-delivery.dto';
 
 // ── Redis key constants ───────────────────────────────────────────────────────
 
@@ -120,6 +121,14 @@ export class DeliveryService {
     if (this.schedulerRegistry.doesExist('timeout', DELIVERY_MATCH_TIMEOUT(orderId))) {
       this.schedulerRegistry.deleteTimeout(DELIVERY_MATCH_TIMEOUT(orderId));
     }
+  }
+
+  // ── getMyRiderProfile ─────────────────────────────────────────────────────
+
+  async getMyRiderProfile(userId: string) {
+    return this.prisma.deliveryRider.findFirst({
+      where: { userId, deletedAt: null },
+    });
   }
 
   // ── createDeliveryRider ───────────────────────────────────────────────────
@@ -599,6 +608,21 @@ export class DeliveryService {
 
     const updatedOrder = await this.prisma.deliveryOrder.findFirst({ where: { id: orderId } });
     return updatedOrder;
+  }
+
+  // ── rateDelivery ──────────────────────────────────────────────────────────
+
+  async rateDelivery(orderId: string, userId: string, dto: RateDeliveryDto) {
+    const order = await this.prisma.deliveryOrder.findUnique({ where: { id: orderId } });
+    if (!order) throw new NotFoundException('Delivery order not found');
+    if (order.senderId !== userId) {
+      throw new ForbiddenException('Only the sender can rate this delivery');
+    }
+
+    return this.prisma.deliveryOrder.update({
+      where: { id: orderId },
+      data: { senderRating: dto.rating },
+    });
   }
 
   // ── getRiderEarnings ──────────────────────────────────────────────────────

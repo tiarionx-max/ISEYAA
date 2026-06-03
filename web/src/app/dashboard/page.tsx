@@ -234,7 +234,7 @@ function TicketsTab() {
 }
 
 function BookingsTab() {
-  const { data } = useQuery({ queryKey: ['my-bookings'], queryFn: () => fetcher('/stays/bookings/mine') });
+  const { data } = useQuery({ queryKey: ['my-bookings'], queryFn: () => fetcher('/bookings/mine') });
   const bookings = data ?? [];
 
   return (

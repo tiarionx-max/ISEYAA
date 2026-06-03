@@ -224,7 +224,7 @@ export default function WalletScreen() {
 
   const { data: txData, isLoading: txLoading } = useQuery<LedgerResponse>({
     queryKey: ['transactions'],
-    queryFn: () => fetcher('/wallet/ledger?limit=20'),
+    queryFn: () => fetcher('/wallet/transactions?limit=20'),
   });
 
   const tier = walletData?.kyc_tier ?? 0;

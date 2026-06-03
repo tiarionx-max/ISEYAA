@@ -44,6 +44,14 @@ export class EventsController {
     return this.eventsService.findAll({ lgaId, featured: featured === 'true', page, limit });
   }
 
+  @Get('tickets/mine')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List tickets owned by the current user' })
+  findMyTickets(@CurrentUser() user: any) {
+    return this.eventsService.findMyTickets(user.userId);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get event by ID' })
   findOne(@Param('id') id: string) {

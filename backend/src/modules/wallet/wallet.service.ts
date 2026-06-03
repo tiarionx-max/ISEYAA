@@ -9,6 +9,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 import { PaystackService } from '../../common/services/paystack.service';
+import { TransferDto } from './dto/transfer.dto';
 
 // Defensive fallback for phone-only tier — used only when PlatformConfig rows are absent.
 // Will be replaced by a seeded PlatformConfig row in Phase 6 per RESEARCH Open Question.
@@ -243,6 +244,112 @@ export class WalletService {
       // Release the lock regardless of success or failure
       await this.redis.del(idempKey);
     }
+  }
+
+  // ── transfer ───────────────────────────────────────────────────────────────
+
+  async transfer(senderUserId: string, dto: TransferDto) {
+    const senderWallet = await this.prisma.wallet.findUnique({ where: { userId: senderUserId } });
+    if (!senderWallet) throw new NotFoundException('Sender wallet not found');
+
+    const recipientUser = await this.prisma.user.findFirst({
+      where: { phone: dto.recipientPhone, deletedAt: null },
+      select: { id: true, firstName: true },
+    });
+    if (!recipientUser) throw new NotFoundException('Recipient not found');
+    if (recipientUser.id === senderUserId) {
+      throw new BadRequestException('Cannot transfer to yourself');
+    }
+
+    const recipientWallet = await this.prisma.wallet.findUnique({
+      where: { userId: recipientUser.id },
+    });
+    if (!recipientWallet) throw new NotFoundException('Recipient wallet not found');
+
+    const reference = `ISY-TRF-${uuidv4().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
+    const amount = Number(dto.amount);
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      // SELECT FOR UPDATE on sender wallet to prevent concurrent debits
+      await tx.$executeRaw`SELECT id FROM wallets WHERE id = ${senderWallet.id} FOR UPDATE`;
+      const lockedSender = await tx.wallet.findUnique({ where: { id: senderWallet.id } });
+      if (!lockedSender) throw new NotFoundException('Sender wallet not found');
+
+      const senderBalanceBefore = Number(lockedSender.balance);
+      if (senderBalanceBefore < amount) {
+        throw new BadRequestException('Insufficient wallet balance');
+      }
+      const senderBalanceAfter = senderBalanceBefore - amount;
+
+      // SELECT FOR UPDATE on recipient wallet to prevent concurrent credits
+      await tx.$executeRaw`SELECT id FROM wallets WHERE id = ${recipientWallet.id} FOR UPDATE`;
+      const lockedRecipient = await tx.wallet.findUnique({ where: { id: recipientWallet.id } });
+      if (!lockedRecipient) throw new NotFoundException('Recipient wallet not found');
+
+      const recipientBalanceBefore = Number(lockedRecipient.balance);
+      const recipientBalanceAfter = recipientBalanceBefore + amount;
+
+      await tx.wallet.update({
+        where: { id: senderWallet.id },
+        data: { balance: senderBalanceAfter },
+      });
+      await tx.wallet.update({
+        where: { id: recipientWallet.id },
+        data: { balance: recipientBalanceAfter },
+      });
+
+      await tx.transaction.create({
+        data: {
+          walletId: senderWallet.id,
+          type: 'TRANSFER',
+          status: 'SUCCESS',
+          amount,
+          currency: 'NGN',
+          reference: `${reference}-OUT`,
+          gateway: 'INTERNAL',
+          description: dto.narration ?? `Transfer to ${dto.recipientPhone}`,
+          balanceBefore: senderBalanceBefore,
+          balanceAfter: senderBalanceAfter,
+          metadata: {
+            module: 'wallet',
+            direction: 'out',
+            transferRef: reference,
+            recipientUserId: recipientUser.id,
+            recipientPhone: dto.recipientPhone,
+          },
+        },
+      });
+
+      await tx.transaction.create({
+        data: {
+          walletId: recipientWallet.id,
+          type: 'TRANSFER',
+          status: 'SUCCESS',
+          amount,
+          currency: 'NGN',
+          reference: `${reference}-IN`,
+          gateway: 'INTERNAL',
+          description: dto.narration ?? `Transfer from wallet`,
+          balanceBefore: recipientBalanceBefore,
+          balanceAfter: recipientBalanceAfter,
+          metadata: {
+            module: 'wallet',
+            direction: 'in',
+            transferRef: reference,
+            senderUserId: senderUserId,
+          },
+        },
+      });
+
+      return { newBalance: senderBalanceAfter };
+    });
+
+    return {
+      reference,
+      amount,
+      recipientPhone: dto.recipientPhone,
+      newBalance: result.newBalance,
+    };
   }
 
   // ── creditWallet ───────────────────────────────────────────────────────────

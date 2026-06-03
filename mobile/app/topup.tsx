@@ -10,9 +10,9 @@ import {
   Alert,
 } from 'react-native';
 import { router } from 'expo-router';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type LucideIcon, CreditCard, Smartphone, MapPin, Shield } from 'lucide-react-native';
-import { api } from '../lib/api';
+import { api, fetcher } from '../lib/api';
 import {
   SURFACE_DEEP,
   SURFACE_MID,
@@ -60,10 +60,20 @@ export default function TopUpScreen() {
 
   const numericAmount = parseInt(selectedAmount.replace(/,/g, ''), 10);
 
+  const { data: me } = useQuery<{ email?: string }>({
+    queryKey: ['me'],
+    queryFn: () => fetcher('/users/me'),
+  });
+  const userEmail = me?.email ?? '';
+
   const topupMutation = useMutation({
-    mutationFn: () =>
-      api.post('/wallet/topup/initiate', { amount: numericAmount, paymentMethod: selectedMethod })
-        .then((r) => r.data),
+    mutationFn: () => {
+      if (!userEmail) {
+        return Promise.reject(new Error('Email not available. Please try again in a moment.'));
+      }
+      return api.post('/wallet/topup', { amount: numericAmount, email: userEmail })
+        .then((r) => r.data);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['wallet'] });
       Alert.alert(
@@ -73,7 +83,7 @@ export default function TopUpScreen() {
       );
     },
     onError: (err: any) => {
-      Alert.alert('Failed', err.response?.data?.message ?? 'Could not initiate top-up. Please try again.');
+      Alert.alert('Failed', err.response?.data?.message ?? err?.message ?? 'Could not initiate top-up. Please try again.');
     },
   });
 

@@ -25,7 +25,7 @@ export default function EventDetailPage() {
 
   const purchase = useMutation({
     mutationFn: () =>
-      api.post(`/events/${id}/tickets`, {
+      api.post(`/events/${id}/purchase`, {
         quantity,
         email: session?.user?.email,
       }).then((r) => r.data),

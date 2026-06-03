@@ -12,6 +12,12 @@ export class NotificationsService {
     private config: ConfigService,
   ) {}
 
+  // TODO: persistence not yet wired — no Notification model in the Prisma schema.
+  // Returning an empty array so the mobile screen has a stable route.
+  async listForUser(_userId: string): Promise<any[]> {
+    return [];
+  }
+
   async registerToken(userId: string, token: string) {
     await this.prisma.user.update({
       where: { id: userId },

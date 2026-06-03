@@ -353,19 +353,21 @@ export default function AdminPage() {
             <h3 className="text-xs font-bold text-white/30 uppercase tracking-widest mb-3 px-1">Management</h3>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
-                { label: 'Users',     icon: Users,    color: 'bg-forest/20 border-forest/20 text-forest-light', href: '/admin/users' },
-                { label: 'Vendors',   icon: Store,    color: 'bg-amber-900/20 border-amber-700/15 text-amber-400', href: '/admin/vendors' },
-                { label: 'Revenue',   icon: BarChart3, color: 'bg-indigo-900/20 border-indigo-700/15 text-indigo-300', href: '/admin/revenue' },
-                { label: 'Settings',  icon: Settings, color: 'bg-purple-900/20 border-purple-700/15 text-purple-300', href: '/admin/config' },
-              ].map(({ label, icon: Icon, color, href }) => (
-                <a key={label} href={href}
-                  className="flex items-center gap-3 p-4 glass rounded-2xl border border-white/6 hover:border-white/12 hover:bg-white/3 transition-all group">
+                { label: 'Users',    icon: Users,     color: 'bg-forest/20 border-forest/20 text-forest-light' },
+                { label: 'Vendors',  icon: Store,     color: 'bg-amber-900/20 border-amber-700/15 text-amber-400' },
+                { label: 'Revenue',  icon: BarChart3, color: 'bg-indigo-900/20 border-indigo-700/15 text-indigo-300' },
+                { label: 'Settings', icon: Settings,  color: 'bg-purple-900/20 border-purple-700/15 text-purple-300' },
+              ].map(({ label, icon: Icon, color }) => (
+                <div key={label}
+                  className="flex items-center gap-3 p-4 glass rounded-2xl border border-white/6 opacity-60 cursor-not-allowed">
                   <div className={`w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 ${color}`}>
                     <Icon size={16} />
                   </div>
-                  <span className="text-white/70 font-semibold text-sm group-hover:text-white transition-colors">{label}</span>
-                  <ChevronRight size={14} className="text-white/15 ml-auto group-hover:text-white/35 transition-colors" />
-                </a>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white/70 font-semibold text-sm">{label}</p>
+                    <p className="text-white/30 text-[10px] uppercase tracking-wider">Coming soon</p>
+                  </div>
+                </div>
               ))}
             </div>
           </motion.div>

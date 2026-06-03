@@ -143,6 +143,16 @@ export class MarketplaceService implements OnModuleInit {
 
   // ── Orders ─────────────────────────────────────────────────────────────────
 
+  async findMyOrders(userId: string) {
+    return this.prisma.order.findMany({
+      where: { userId, deletedAt: null },
+      include: {
+        orderItems: { include: { product: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   async createOrder(userId: string, dto: CreateOrderDto) {
     if (!dto.items?.length) throw new BadRequestException('Order must have at least one item');
 

@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Req } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { NotificationsService } from './notifications.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -9,6 +9,12 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 @Controller('notifications')
 export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
+
+  @Get()
+  @ApiOperation({ summary: 'List notifications for the current user' })
+  list(@Req() req: any) {
+    return this.notificationsService.listForUser(req.user.userId);
+  }
 
   @Post('register-token')
   @ApiOperation({ summary: 'Register FCM device token for push notifications' })
