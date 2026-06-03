@@ -1,4 +1,4 @@
-# ISEYAA — Ogun State Digital Super-Platform
+# Iṣẹ́yáá — Ogun State Digital Super-Platform
 
 > The unified digital platform for all 20 LGAs of Ogun State. Tourism, events, stays, marketplace, studio booking, wallet, and government services in a single system.
 

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "ISEYAA",
+    "name": "Iṣẹ́yáá",
     "slug": "iseyaa",
     "version": "1.0.0",
     "jsEngine": "hermes",
@@ -17,9 +17,9 @@
       "bundleIdentifier": "ng.gov.ogun.iseyaa",
       "buildNumber": "1",
       "infoPlist": {
-        "NSPhotoLibraryUsageDescription": "ISEYAA needs access to your photos to upload proof of delivery.",
-        "NSCameraUsageDescription": "ISEYAA needs camera access to capture proof of delivery.",
-        "NSMicrophoneUsageDescription": "ISEYAA needs microphone access for video (not used, required by SDK).",
+        "NSPhotoLibraryUsageDescription": "Iṣẹ́yáá needs access to your photos to upload proof of delivery.",
+        "NSCameraUsageDescription": "Iṣẹ́yáá needs camera access to capture proof of delivery.",
+        "NSMicrophoneUsageDescription": "Iṣẹ́yáá needs microphone access for video (not used, required by SDK).",
         "ITSAppUsesNonExemptEncryption": false
       },
       "privacyManifests": {
@@ -61,8 +61,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "ISEYAA needs access to your photos to upload proof of delivery.",
-          "cameraPermission": "ISEYAA needs camera access to capture proof of delivery."
+          "photosPermission": "Iṣẹ́yáá needs access to your photos to upload proof of delivery.",
+          "cameraPermission": "Iṣẹ́yáá needs camera access to capture proof of delivery."
         }
       ],
       [

@@ -5,14 +5,17 @@ import {
   TouchableOpacity,
   StyleSheet,
   Animated,
+  TextInput,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useState, useRef, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useQuery } from '@tanstack/react-query';
-import { fetcher } from '../../lib/api';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { fetcher, api } from '../../lib/api';
 import { router } from 'expo-router';
-import { Filter, MapPin, Heart, Star } from 'lucide-react-native';
+import { Filter, MapPin, Heart, Star, ShoppingBag, Sparkles, Check, ArrowRight } from 'lucide-react-native';
 import {
   SURFACE_DEEP,
   SURFACE_MID,
@@ -261,29 +264,140 @@ function StudioFeed({ data, isLoading }: { data: any[]; isLoading: boolean }) {
   );
 }
 
-// ── Market feed ────────────────────────────────────────────────────────
-function MarketFeed({ data, isLoading }: { data: any[]; isLoading: boolean }) {
-  if (isLoading || data.length === 0) {
-    return <View style={styles.feedList}><SkeletonCard /><SkeletonCard /></View>;
+// ── Market waitlist ─────────────────────────────────────────────────────
+function MarketWaitlist() {
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [joined, setJoined] = useState(false);
+  const [position, setPosition] = useState<number | null>(null);
+
+  const join = useMutation({
+    mutationFn: (payload: { email?: string; phone?: string; fullName?: string }) =>
+      api.post('/waitlist', { source: 'marketplace_mobile', ...payload }).then((r) => r.data),
+    onSuccess: (data: any) => {
+      setJoined(true);
+      setPosition(data?.position ?? null);
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.message ?? 'Could not join waitlist. Please try again.';
+      Alert.alert('Something went wrong', Array.isArray(msg) ? msg[0] : msg);
+    },
+  });
+
+  function submit() {
+    if (!email && !phone) {
+      Alert.alert('Almost there', 'Enter your email or phone number.');
+      return;
+    }
+    join.mutate({
+      email: email.trim() || undefined,
+      phone: phone.trim() || undefined,
+      fullName: fullName.trim() || undefined,
+    });
   }
+
+  if (joined) {
+    return (
+      <View style={styles.waitlistRoot}>
+        <View style={styles.waitlistConfirmCard}>
+          <View style={styles.waitlistCheckCircle}>
+            <Check size={26} color={GOLD} strokeWidth={2.5} />
+          </View>
+          <Text style={styles.waitlistConfirmTitle}>You're in.</Text>
+          {position !== null && (
+            <Text style={styles.waitlistPosition}>
+              You're #<Text style={{ color: GOLD, fontWeight: '700' }}>{position}</Text> on the list.
+            </Text>
+          )}
+          <Text style={styles.waitlistConfirmSub}>
+            We'll text or email you the moment the marketplace opens.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
-    <View style={styles.feedList}>
-      {data.map((item: any, i: number) => (
-        <FeedCard
-          key={item.id ?? i}
-          tag="Market"
-          title={item.name ?? 'Product'}
-          location={item.vendor?.businessName ?? item.category ?? 'Ogun State'}
-          price={`₦${Number(item.price ?? 0).toLocaleString()}`}
-          priceLabel=""
-          meta={item.category ?? 'General'}
-          actionLabel="Buy"
-          gradientIndex={i}
-          rating={item.averageRating ?? item.rating}
-          onPress={() => router.push({ pathname: '/ai-chat', params: { prompt: `I want to buy ${item.name ?? 'this product'}` } } as any)}
-          onAction={() => router.push({ pathname: '/ai-chat', params: { prompt: `I want to buy ${item.name ?? 'this product'}` } } as any)}
+    <View style={styles.waitlistRoot}>
+      <View style={styles.waitlistHeroCard}>
+        <View style={styles.waitlistKickerRow}>
+          <Sparkles size={13} color={GOLD} />
+          <Text style={styles.waitlistKicker}>COMING SOON</Text>
+        </View>
+        <Text style={styles.waitlistTitle}>Marketplace</Text>
+        <Text style={styles.waitlistTitleItalic}>opens soon.</Text>
+        <Text style={styles.waitlistDesc}>
+          Authentic Adire, handmade goods, and local produce from Ogun State vendors. Join the waitlist for early access — no spam.
+        </Text>
+
+        <View style={styles.waitlistBullets}>
+          {[
+            'Verified Ogun State sellers only',
+            'Wallet-native checkout with escrow protection',
+            'Early signups get priority access',
+          ].map((line, i) => (
+            <View key={i} style={styles.waitlistBulletRow}>
+              <View style={styles.waitlistBulletDot}>
+                <Check size={9} color={GOLD} strokeWidth={3} />
+              </View>
+              <Text style={styles.waitlistBulletText}>{line}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.waitlistFormCard}>
+        <Text style={styles.waitlistFormHeading}>Reserve your spot</Text>
+
+        <TextInput
+          style={styles.waitlistInput}
+          placeholder="Full name (optional)"
+          placeholderTextColor={INK_MID}
+          value={fullName}
+          onChangeText={setFullName}
+          autoCapitalize="words"
         />
-      ))}
+
+        <TextInput
+          style={styles.waitlistInput}
+          placeholder="you@example.com"
+          placeholderTextColor={INK_MID}
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+        />
+
+        <TextInput
+          style={styles.waitlistInput}
+          placeholder="+234 801 234 5678 (optional)"
+          placeholderTextColor={INK_MID}
+          value={phone}
+          onChangeText={setPhone}
+          keyboardType="phone-pad"
+        />
+
+        <TouchableOpacity
+          style={[styles.waitlistCta, join.isPending && { opacity: 0.6 }]}
+          onPress={submit}
+          activeOpacity={0.85}
+          disabled={join.isPending}
+        >
+          {join.isPending ? (
+            <ActivityIndicator color="#050E0E" />
+          ) : (
+            <>
+              <Text style={styles.waitlistCtaText}>Reserve my spot</Text>
+              <ArrowRight size={16} color="#050E0E" strokeWidth={2.5} />
+            </>
+          )}
+        </TouchableOpacity>
+
+        <Text style={styles.waitlistFinePrint}>
+          We'll only message you about the marketplace launch.
+        </Text>
+      </View>
     </View>
   );
 }
@@ -305,15 +419,10 @@ export default function BookScreen() {
     queryKey: ['studio-slots'],
     queryFn: () => fetcher('/studio/feed?limit=10'),
   });
-  const { data: marketData, isLoading: marketLoading } = useQuery({
-    queryKey: ['marketplace'],
-    queryFn: () => fetcher('/products?limit=10'),
-  });
 
   const events: any[] = eventsData?.data ?? [];
   const stays: any[] = staysData?.data ?? [];
   const studios: any[] = (studioData?.data ?? studioData) ?? [];
-  const products: any[] = marketData?.data ?? [];
 
   const chips = FILTER_CHIPS[activeTab];
 
@@ -358,23 +467,25 @@ export default function BookScreen() {
           </View>
         </View>
 
-        {/* ── Filter chips ── */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsContent} style={styles.chipsScroll}>
-          {chips.map((chip, i) => {
-            const isFirst = i === activeChip;
-            return (
-              <TouchableOpacity key={chip} style={[styles.chip, isFirst && styles.chipActive]} onPress={() => setActiveChip(i)} activeOpacity={0.75}>
-                <Text style={[styles.chipText, isFirst && styles.chipTextActive]}>{chip}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+        {/* ── Filter chips (hidden on Market waitlist) ── */}
+        {activeTab !== 'Market' && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsContent} style={styles.chipsScroll}>
+            {chips.map((chip, i) => {
+              const isFirst = i === activeChip;
+              return (
+                <TouchableOpacity key={chip} style={[styles.chip, isFirst && styles.chipActive]} onPress={() => setActiveChip(i)} activeOpacity={0.75}>
+                  <Text style={[styles.chipText, isFirst && styles.chipTextActive]}>{chip}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
 
         {/* ── Feed ── */}
         {activeTab === 'Events' && <EventsFeed data={events} isLoading={eventsLoading} />}
         {activeTab === 'Stays' && <StaysFeed data={stays} isLoading={staysLoading} />}
         {activeTab === 'Studio' && <StudioFeed data={studios} isLoading={studioLoading} />}
-        {activeTab === 'Market' && <MarketFeed data={products} isLoading={marketLoading} />}
+        {activeTab === 'Market' && <MarketWaitlist />}
       </ScrollView>
     </SafeAreaView>
   );
@@ -460,4 +571,152 @@ const styles = StyleSheet.create({
   skeletonHero: { height: 180, backgroundColor: '#1B3636' },
   skeletonBody: { padding: SPACE_4 },
   skeletonLine: { height: 13, borderRadius: 6, backgroundColor: '#1B3636' },
+
+  // ── Waitlist ────────────────────────────────────────────────────────
+  waitlistRoot: {
+    paddingHorizontal: SPACE_4,
+    paddingTop: 12,
+    gap: 14,
+  },
+  waitlistHeroCard: {
+    backgroundColor: SURFACE_RAISED,
+    borderRadius: RADIUS_LG,
+    borderWidth: 1,
+    borderColor: BORDER,
+    padding: 22,
+  },
+  waitlistKickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  waitlistKicker: {
+    fontFamily: FONT_MONO,
+    fontSize: 10,
+    color: GOLD,
+    fontWeight: '700',
+    letterSpacing: 1.8,
+  },
+  waitlistTitle: {
+    fontFamily: FONT_DISPLAY,
+    fontSize: 30,
+    color: INK,
+    lineHeight: 36,
+    fontWeight: '400',
+  },
+  waitlistTitleItalic: {
+    fontFamily: FONT_DISPLAY,
+    fontSize: 30,
+    fontStyle: 'italic',
+    color: GOLD,
+    lineHeight: 36,
+    marginBottom: 14,
+  },
+  waitlistDesc: {
+    fontSize: 13.5,
+    color: INK_MID,
+    lineHeight: 20,
+    marginBottom: 18,
+  },
+  waitlistBullets: { gap: 10 },
+  waitlistBulletRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  waitlistBulletDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: GOLD_DIM,
+    borderWidth: 1,
+    borderColor: GOLD_LINE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  waitlistBulletText: { flex: 1, fontSize: 13, color: INK_MID, lineHeight: 19 },
+
+  waitlistFormCard: {
+    backgroundColor: SURFACE_RAISED,
+    borderRadius: RADIUS_LG,
+    borderWidth: 1,
+    borderColor: BORDER,
+    padding: 20,
+    gap: 12,
+  },
+  waitlistFormHeading: {
+    fontFamily: FONT_DISPLAY,
+    fontSize: 20,
+    color: INK,
+    marginBottom: 4,
+  },
+  waitlistInput: {
+    height: 46,
+    borderRadius: RADIUS_SM,
+    backgroundColor: SURFACE_MID,
+    borderWidth: 1,
+    borderColor: BORDER,
+    paddingHorizontal: 14,
+    color: INK,
+    fontSize: 14,
+  },
+  waitlistCta: {
+    height: 50,
+    borderRadius: RADIUS_MD,
+    backgroundColor: GOLD,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  waitlistCtaText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#050E0E',
+    letterSpacing: 0.2,
+  },
+  waitlistFinePrint: {
+    fontSize: 11,
+    color: INK_MID,
+    textAlign: 'center',
+    marginTop: 2,
+  },
+
+  // Confirmation state
+  waitlistConfirmCard: {
+    backgroundColor: SURFACE_RAISED,
+    borderRadius: RADIUS_LG,
+    borderWidth: 1,
+    borderColor: GOLD_LINE,
+    padding: 32,
+    alignItems: 'center',
+  },
+  waitlistCheckCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: GOLD_DIM,
+    borderWidth: 1.5,
+    borderColor: GOLD_LINE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 18,
+  },
+  waitlistConfirmTitle: {
+    fontFamily: FONT_DISPLAY,
+    fontSize: 26,
+    color: INK,
+    marginBottom: 6,
+  },
+  waitlistPosition: {
+    fontSize: 14,
+    color: INK_MID,
+    marginBottom: 8,
+  },
+  waitlistConfirmSub: {
+    fontSize: 13,
+    color: INK_MID,
+    textAlign: 'center',
+    lineHeight: 19,
+    maxWidth: 280,
+  },
 });

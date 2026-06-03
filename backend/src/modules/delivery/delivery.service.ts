@@ -322,7 +322,7 @@ export class DeliveryService {
         body: JSON.stringify({
           to: phone,
           from: this.config.get('TERMII_SENDER_ID', 'ISEYAA'),
-          sms: `Your ISEYAA delivery code is ${otp}. Share with the rider to complete delivery.`,
+          sms: `Your Iṣẹ́yáá delivery code is ${otp}. Share with the rider to complete delivery.`,
           type: 'plain',
           channel: 'generic',
           api_key: apiKey,

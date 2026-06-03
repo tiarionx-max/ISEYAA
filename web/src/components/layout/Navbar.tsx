@@ -49,7 +49,7 @@ export function Navbar() {
           <div className="w-8 h-8 rounded-lg bg-forest flex items-center justify-center shadow-[0_0_12px_rgba(26,107,60,0.5)]">
             <span className="text-gold font-black text-sm">IS</span>
           </div>
-          <span className="text-gradient-gold text-xl font-black tracking-tight">ISEYAA</span>
+          <span className="text-gradient-gold text-xl font-black tracking-tight">Iṣẹ́yáá</span>
           <span className="hidden sm:inline text-white/30 text-xs font-medium">· Ogun State</span>
         </Link>
 

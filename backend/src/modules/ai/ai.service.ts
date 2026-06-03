@@ -96,7 +96,7 @@ export class AiService {
   // ── System prompt ──────────────────────────────────────────────────────────
 
   private buildSystemPrompt(personalisedContext: string, lgaId?: string | null): string {
-    const base = `You are ISEYAA Assistant — the AI companion of Ogun State's digital super-platform.
+    const base = `You are Iṣẹ́yáá Assistant — the AI companion of Ogun State's digital super-platform.
 You help citizens discover tourism attractions, book events and stays, navigate government services,
 and understand opportunities across Ogun State's 20 LGAs.
 Be concise, helpful, and culturally aware. Respond in the user's language (English or Yoruba).`;
@@ -433,7 +433,7 @@ Be concise, helpful, and culturally aware. Respond in the user's language (Engli
         .filter(Boolean)
         .join('\n');
 
-      const prompt = `You are ISEYAA Travel Planner — the intelligent itinerary engine for Ogun State, Nigeria's premier digital platform.
+      const prompt = `You are Iṣẹ́yáá Travel Planner — the intelligent itinerary engine for Ogun State, Nigeria's premier digital platform.
 
 TRIP REQUEST:
 - Duration: ${dto.durationDays} day(s)

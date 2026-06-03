@@ -54,7 +54,7 @@ export class SendgridService {
         </table>
         <p>Present this QR code at the entrance:</p>
         <img src="${qrImageUrl}" alt="QR Code" style="width:200px;height:200px;display:block;" />
-        <p style="color:#666;font-size:12px;margin-top:24px;">Powered by ISEYAA — Ogun State Digital Platform</p>
+        <p style="color:#666;font-size:12px;margin-top:24px;">Powered by Iṣẹ́yáá — Ogun State Digital Platform</p>
       </div>
     `;
 
@@ -95,7 +95,7 @@ export class SendgridService {
         </table>
         <h3>Preparation Checklist</h3>
         <ul>${checklistHtml}</ul>
-        <p style="color:#666;font-size:12px;margin-top:24px;">Powered by ISEYAA Creative Studio — Ogun State</p>
+        <p style="color:#666;font-size:12px;margin-top:24px;">Powered by Iṣẹ́yáá Creative Studio — Ogun State</p>
       </div>
     `;
 
@@ -127,7 +127,7 @@ export class SendgridService {
           <tr><td style="padding:8px;"><strong>Guests</strong></td><td style="padding:8px;">${guests}</td></tr>
           <tr><td style="padding:8px;"><strong>Total</strong></td><td style="padding:8px;">&#8358;${totalPrice.toLocaleString()}</td></tr>
         </table>
-        <p style="color:#666;font-size:12px;margin-top:24px;">Powered by ISEYAA — Ogun State Digital Platform</p>
+        <p style="color:#666;font-size:12px;margin-top:24px;">Powered by Iṣẹ́yáá — Ogun State Digital Platform</p>
       </div>
     `;
 

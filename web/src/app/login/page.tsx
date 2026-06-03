@@ -57,7 +57,7 @@ export default function LoginPage() {
             <div className="w-12 h-12 rounded-2xl bg-forest flex items-center justify-center mb-2" style={{ boxShadow: '0 0 30px rgba(26,107,60,0.5)' }}>
               <span className="text-gold font-black text-base">IS</span>
             </div>
-            <span className="text-gradient-gold text-3xl font-black tracking-tight">ISEYAA</span>
+            <span className="text-gradient-gold text-3xl font-black tracking-tight">Iṣẹ́yáá</span>
           </Link>
           <p className="text-white/40 text-sm mt-2">Sign in to your account</p>
         </div>
@@ -134,7 +134,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-white/20 text-[11px] mt-6">
-          © 2026 ISEYAA · Ogun State Digital Platform · NDPA Compliant
+          © 2026 Iṣẹ́yáá · Ogun State Digital Platform · NDPA Compliant
         </p>
       </motion.div>
     </div>

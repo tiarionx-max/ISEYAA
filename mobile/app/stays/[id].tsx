@@ -197,7 +197,7 @@ export default function StayDetailScreen() {
               <TouchableOpacity
                 style={s.glassBtn}
                 activeOpacity={0.8}
-                onPress={() => Share.share({ title: property?.name ?? 'Stay', message: `Check out ${property?.name ?? 'this stay'} on Iseyaa!` })}
+                onPress={() => Share.share({ title: property?.name ?? 'Stay', message: `Check out ${property?.name ?? 'this stay'} on Iṣẹ́yáá!` })}
               >
                 <Share2 size={18} color={INK} strokeWidth={2} />
               </TouchableOpacity>

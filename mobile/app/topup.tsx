@@ -192,7 +192,7 @@ export default function TopUpScreen() {
             </TouchableOpacity>
             <View style={styles.ctaSub}>
               <Shield size={11} color={INK_FAINT} />
-              <Text style={styles.ctaSubText}>Secured by Iseyaa · CBN-licensed</Text>
+              <Text style={styles.ctaSubText}>Secured by Iṣẹ́yáá · CBN-licensed</Text>
             </View>
           </View>
         </ScrollView>

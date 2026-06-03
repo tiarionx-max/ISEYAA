@@ -168,7 +168,7 @@ export default function HomePage() {
               transition={{ duration: 0.65, delay: 0.1, ease: [0.25, 0.46, 0.45, 0.94] }}
               className="text-[clamp(52px,8vw,96px)] font-black leading-[0.92] tracking-tight mb-6"
             >
-              <span className="text-gradient-gold block">ISEYAA</span>
+              <span className="text-gradient-gold block">Iṣẹ́yáá</span>
               <span className="text-gradient-white block mt-1 text-[clamp(24px,3.5vw,42px)] font-extrabold tracking-normal">
                 Everything Ogun State.<br className="hidden sm:block" /> One Platform.
               </span>
@@ -285,7 +285,7 @@ export default function HomePage() {
                 <span className="text-gradient-gold">Fully Connected.</span>
               </h2>
               <p className="text-white/45 text-base leading-relaxed mb-8">
-                From Imeko Afon in the northwest to Ogun Waterside in the southeast — every local government area is live on ISEYAA. Discover attractions, book stays, and find events near you.
+                From Imeko Afon in the northwest to Ogun Waterside in the southeast — every local government area is live on Iṣẹ́yáá. Discover attractions, book stays, and find events near you.
               </p>
 
               <div className="flex flex-col gap-3">
@@ -333,7 +333,7 @@ export default function HomePage() {
             viewport={{ once: true }}
             className="text-center mb-16"
           >
-            <p className="text-gold text-xs font-bold uppercase tracking-[0.2em] mb-3">Why ISEYAA</p>
+            <p className="text-gold text-xs font-bold uppercase tracking-[0.2em] mb-3">Why Iṣẹ́yáá</p>
             <h2 className="text-4xl md:text-5xl font-black text-white">
               Built Different.<br />
               <span className="text-gradient-forest">Built for Nigeria.</span>
@@ -444,7 +444,7 @@ export default function HomePage() {
                 <div className="w-8 h-8 rounded-xl bg-forest flex items-center justify-center shadow-forest-glow">
                   <span className="text-gold font-black text-xs">IS</span>
                 </div>
-                <span className="text-gradient-gold text-lg font-black">ISEYAA</span>
+                <span className="text-gradient-gold text-lg font-black">Iṣẹ́yáá</span>
               </div>
               <p className="text-white/30 text-xs leading-relaxed max-w-[180px]">
                 Ogun State&apos;s unified digital super-platform. Operated by LJ Entertainment.
@@ -468,7 +468,7 @@ export default function HomePage() {
             ))}
           </div>
           <div className="border-t border-white/5 pt-8 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <p className="text-white/20 text-xs">© 2026 ISEYAA · Operated by LJ Entertainment · Endorsed by Ogun State Government</p>
+            <p className="text-white/20 text-xs">© 2026 Iṣẹ́yáá · Operated by LJ Entertainment · Endorsed by Ogun State Government</p>
             <p className="text-white/20 text-xs">NDPA Compliant · CBN Licensed Wallet · Paystack Partner</p>
           </div>
         </div>

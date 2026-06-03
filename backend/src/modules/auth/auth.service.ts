@@ -312,7 +312,7 @@ export class AuthService {
         body: JSON.stringify({
           to: phone,
           from,
-          sms: `Your ISEYAA verification code is ${otp}. Valid for 5 minutes. Do not share.`,
+          sms: `Your Iṣẹ́yáá verification code is ${otp}. Valid for 5 minutes. Do not share.`,
           type: 'plain',
           channel,
           api_key: termiiKey,
@@ -331,7 +331,7 @@ export class AuthService {
       const body = new URLSearchParams({
         To: phone,
         From: from,
-        Body: `Your ISEYAA verification code is ${otp}. Valid for 5 minutes. Do not share.`,
+        Body: `Your Iṣẹ́yáá verification code is ${otp}. Valid for 5 minutes. Do not share.`,
       });
       const response = await fetch(
         `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`,

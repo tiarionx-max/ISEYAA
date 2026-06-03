@@ -150,7 +150,7 @@ function RideCard() {
           <Car size={18} color={GOLD} />
         </View>
         <View style={styles.rideInfo}>
-          <Text style={styles.rideName}>Iseyaa Comfort</Text>
+          <Text style={styles.rideName}>Iṣẹ́yáá Comfort</Text>
           <Text style={styles.rideMeta}>14 min · 4.2 km</Text>
         </View>
         <Text style={styles.ridePrice}>₦2,450</Text>
@@ -226,7 +226,7 @@ export default function ConciergeScreen() {
             <Text style={styles.bubbleGreeting}>{`${getYorubaTimeGreeting()}${firstName ? `, ${firstName}` : ''}.`}</Text>
             <Text style={styles.bubbleBody}>
               {"I'm "}
-              <Text style={styles.boldText}>Iseyaa</Text>
+              <Text style={styles.boldText}>Iṣẹ́yáá</Text>
               {", your guide to Ogun State. Ask me about attractions, events, rides, food — or let me plan your whole day."}
             </Text>
           </View>

@@ -196,7 +196,7 @@ export default function AdminPage() {
                         {role === 'SUPER_ADMIN' ? 'Super Admin' : 'LGA Admin'}
                       </span>
                     </div>
-                    <p className="text-white/35 text-xs">ISEYAA Operations Command Centre</p>
+                    <p className="text-white/35 text-xs">Iṣẹ́yáá Operations Command Centre</p>
                   </div>
                 </div>
               </motion.div>

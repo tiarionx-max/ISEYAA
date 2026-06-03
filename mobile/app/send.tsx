@@ -279,7 +279,7 @@ export default function SendScreen() {
               <CreditCard size={17} color={CREAM} />
             </LinearGradient>
             <View style={styles.fundingContent}>
-              <Text style={styles.fundingTitle}>Iseyaa Wallet</Text>
+              <Text style={styles.fundingTitle}>Iṣẹ́yáá Wallet</Text>
               <Text style={styles.fundingSub}>
                 Balance:{' '}
                 <Text style={styles.fundingBalance}>₦{formatBalance(balance)}</Text>

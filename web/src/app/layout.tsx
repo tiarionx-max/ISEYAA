@@ -11,11 +11,11 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: 'ISEYAA — Ogun State Digital Super-Platform',
+  title: 'Iṣẹ́yáá — Ogun State Digital Super-Platform',
   description: 'Everything Ogun State. One platform for 7 million citizens across all 20 LGAs.',
   keywords: 'Ogun State, tourism, events, stays, marketplace, studio, wallet, Nigeria, government, LGA',
   openGraph: {
-    title: 'ISEYAA — Ogun State Digital Super-Platform',
+    title: 'Iṣẹ́yáá — Ogun State Digital Super-Platform',
     description: 'Everything Ogun State. One platform for 7 million citizens.',
     locale: 'en_NG',
     type: 'website',

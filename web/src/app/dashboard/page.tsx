@@ -48,7 +48,7 @@ function WalletCard({ balance }: { balance: any }) {
             <div className="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center">
               <span className="text-gold font-black text-xs">IS</span>
             </div>
-            <span className="text-white/70 text-xs font-semibold tracking-wider uppercase">ISEYAA Wallet</span>
+            <span className="text-white/70 text-xs font-semibold tracking-wider uppercase">Iṣẹ́yáá Wallet</span>
           </div>
           <span className="flex items-center gap-1.5 text-[10px] font-semibold bg-white/10 border border-white/20 text-white/80 px-2.5 py-1 rounded-full">
             <ShieldCheck size={10} className="text-gold" /> KYC Tier {tier}
@@ -359,7 +359,7 @@ export default function DashboardPage() {
                     <span className="text-[10px] font-bold bg-gold/20 text-gold border border-gold/25 px-2 py-0.5 rounded-full">ADMIN</span>
                   )}
                 </div>
-                <p className="text-white/40 text-sm">Your ISEYAA personal dashboard</p>
+                <p className="text-white/40 text-sm">Your Iṣẹ́yáá personal dashboard</p>
               </div>
               {isAdmin && (
                 <Link href="/admin" className="ml-auto hidden sm:flex items-center gap-1.5 px-4 py-2 glass border border-white/10 text-white/60 hover:text-white hover:border-gold/30 text-sm font-medium rounded-xl transition-all">

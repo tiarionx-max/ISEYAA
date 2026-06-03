@@ -161,7 +161,7 @@ export default function EventDetailScreen() {
               <TouchableOpacity
                 style={s.glassBtn}
                 activeOpacity={0.8}
-                onPress={() => Share.share({ title: event?.title ?? 'Event', message: `Check out ${event?.title ?? 'this event'} on Iseyaa!` })}
+                onPress={() => Share.share({ title: event?.title ?? 'Event', message: `Check out ${event?.title ?? 'this event'} on Iṣẹ́yáá!` })}
               >
                 <Share2 size={18} color={INK} strokeWidth={2} />
               </TouchableOpacity>

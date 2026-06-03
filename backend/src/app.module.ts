@@ -23,6 +23,7 @@ import { AiModule } from './modules/ai/ai.module';
 import { TransportModule } from './modules/transport/transport.module';
 import { DeliveryModule } from './modules/delivery/delivery.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
+import { WaitlistModule } from './modules/waitlist/waitlist.module';
 import { SearchModule } from './search/search.module';
 import { HealthModule } from './health/health.module';
 import { KafkaModule } from './kafka/kafka.module';
@@ -125,6 +126,7 @@ import { KafkaModule } from './kafka/kafka.module';
     NotificationsModule,
     AiModule,
     WebhooksModule,
+    WaitlistModule,
     SearchModule,
     HealthModule,
     KafkaModule,

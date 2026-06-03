@@ -14,7 +14,7 @@ export class AiController {
   @Post('chat')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Chat with ISEYAA AI concierge (multi-turn, streaming SSE, tool use)' })
+  @ApiOperation({ summary: 'Chat with Iṣẹ́yáá AI concierge (multi-turn, streaming SSE, tool use)' })
   async chat(
     @Req() req: any,
     @Body() dto: ChatDto,

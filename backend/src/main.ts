@@ -44,7 +44,7 @@ async function bootstrap() {
 
   if (process.env.NODE_ENV !== 'production') {
     const swaggerConfig = new DocumentBuilder()
-      .setTitle('ISEYAA API')
+      .setTitle('Iṣẹ́yáá API')
       .setDescription('Ogun State Digital Super-Platform — REST API')
       .setVersion('1.0')
       .addBearerAuth()

@@ -37,7 +37,7 @@ export default function RiderDashboardScreen() {
             <ChevronLeft size={20} color={INK} strokeWidth={2} />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
-            <Text style={styles.headerKicker}>ISEYAA RIDES</Text>
+            <Text style={styles.headerKicker}>Iṣẹ́yáá RIDES</Text>
             <Text style={styles.headerTitle}>My Rides</Text>
           </View>
         </View>

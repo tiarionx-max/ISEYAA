@@ -295,12 +295,12 @@ export class MarketplaceService implements OnModuleInit {
         <p>Your order status has changed to <strong>${status}</strong>.</p>
         <p><strong>Items:</strong> ${itemSummary}</p>
         <p><strong>Total:</strong> ₦${Number(order.totalAmount).toLocaleString()}</p>
-        <p style="color:#666;font-size:12px;margin-top:24px;">Powered by ISEYAA — Ogun State Digital Platform</p>
+        <p style="color:#666;font-size:12px;margin-top:24px;">Powered by Iṣẹ́yáá — Ogun State Digital Platform</p>
       </div>
     `;
 
     if (order.user.email) {
-      await this.sendgrid.sendEmail(order.user.email, `Order ${status} — ISEYAA`, html);
+      await this.sendgrid.sendEmail(order.user.email, `Order ${status} — Iṣẹ́yáá`, html);
     }
 
     if (order.vendorId) {
@@ -315,7 +315,7 @@ export class MarketplaceService implements OnModuleInit {
         });
         if (vendorOwner?.email) {
           const vendorHtml = html.replace(`Hello ${order.user.firstName}`, `Hello ${vendorOwner.firstName}`);
-          await this.sendgrid.sendEmail(vendorOwner.email, `Order ${status} — ISEYAA`, vendorHtml);
+          await this.sendgrid.sendEmail(vendorOwner.email, `Order ${status} — Iṣẹ́yáá`, vendorHtml);
         }
       }
     }

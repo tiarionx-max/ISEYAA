@@ -584,7 +584,7 @@ export default function ProfileScreen() {
           >
             <Text style={styles.signOutText}>Sign out</Text>
           </Pressable>
-          <Text style={styles.versionText}>ISEYAA · v1.0.0 (Build 1)</Text>
+          <Text style={styles.versionText}>Iṣẹ́yáá · v1.0.0 (Build 1)</Text>
         </View>
 
       </ScrollView>

@@ -153,7 +153,7 @@ export default function OnboardingScreen() {
       {/* ── Wordmark block ───────────────────────────────────────────────── */}
       <View style={styles.wordmarkBlock} pointerEvents="none">
         <Text style={styles.wordmarkKicker}>OGUN STATE</Text>
-        <Text style={styles.wordmarkTitle}>Iseyaa</Text>
+        <Text style={styles.wordmarkTitle}>Iṣẹ́yáá</Text>
         <Text style={styles.wordmarkPronunciation}>/ee · shay · ah/</Text>
       </View>
 

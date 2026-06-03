@@ -166,7 +166,7 @@ function TypingIndicator() {
   return (
     <View
       style={styles.aiBubbleContainer}
-      accessibilityLabel="ISEYAA is typing"
+      accessibilityLabel="Iṣẹ́yáá is typing"
       accessibilityRole="progressbar"
     >
       <View style={[styles.typingBubble]}>

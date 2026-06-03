@@ -795,3 +795,18 @@ model DeliveryEvent {
 
   @@map("delivery_events")
 }
+
+model WaitlistEntry {
+  id        String   @id @default(uuid())
+  email     String?
+  phone     String?
+  fullName  String?
+  source    String   // 'marketplace_web' | 'marketplace_mobile' | future channels
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@unique([source, email])
+  @@unique([source, phone])
+  @@index([source, createdAt])
+  @@map("waitlist_entries")
+}
