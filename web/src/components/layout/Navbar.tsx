@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -46,10 +47,15 @@ export function Navbar() {
 
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2.5 shrink-0">
-          <div className="w-8 h-8 rounded-lg bg-forest flex items-center justify-center shadow-[0_0_12px_rgba(26,107,60,0.5)]">
-            <span className="text-gold font-black text-sm">IS</span>
-          </div>
-          <span className="text-gradient-gold text-xl font-black tracking-tight">Iṣẹ́yáá</span>
+          <Image
+            src="/logo-icon.png"
+            alt="Iṣẹ́yáá"
+            width={36}
+            height={36}
+            priority
+            className="w-9 h-9 rounded-lg shadow-[0_0_12px_rgba(26,107,60,0.4)]"
+          />
+          <span className="text-white text-xl font-black tracking-tight">Iṣẹ́yáá</span>
           <span className="hidden sm:inline text-white/30 text-xs font-medium">· Ogun State</span>
         </Link>
 

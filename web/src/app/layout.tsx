@@ -14,11 +14,22 @@ export const metadata: Metadata = {
   title: 'Iṣẹ́yáá — Ogun State Digital Super-Platform',
   description: 'Everything Ogun State. One platform for 7 million citizens across all 20 LGAs.',
   keywords: 'Ogun State, tourism, events, stays, marketplace, studio, wallet, Nigeria, government, LGA',
+  icons: {
+    icon: '/favicon.png',
+    apple: '/favicon.png',
+  },
   openGraph: {
     title: 'Iṣẹ́yáá — Ogun State Digital Super-Platform',
     description: 'Everything Ogun State. One platform for 7 million citizens.',
     locale: 'en_NG',
     type: 'website',
+    images: [{ url: '/og-image.png', width: 1080, height: 1080, alt: 'Iṣẹ́yáá' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Iṣẹ́yáá — Ogun State Digital Super-Platform',
+    description: 'Everything Ogun State. One platform for 7 million citizens.',
+    images: ['/og-image.png'],
   },
 };
 
