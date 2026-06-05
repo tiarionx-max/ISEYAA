@@ -21,9 +21,7 @@ export class StudioController {
   constructor(private readonly studioService: StudioService) {}
 
   @Get('slots')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Available slots — government priority slots visible to LGA_ADMIN/SUPER_ADMIN only' })
+  @ApiOperation({ summary: 'Available studio slots — public; government priority slots only visible to LGA_ADMIN/SUPER_ADMIN' })
   findSlots(@CurrentUser() user: any) {
     return this.studioService.findSlots(user?.role);
   }

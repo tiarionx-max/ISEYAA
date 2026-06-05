@@ -1337,13 +1337,541 @@ async function main() {
     }
   }
 
-  // ─── 6. Summary ────────────────────────────────────────────────────────
+  // ─── 6. Seed System User (organizer/host for demo events & properties) ──
+  console.log('\n👤 Seeding system demo user...');
+  const bcrypt = await import('bcrypt');
+  const systemUser = await prisma.user.upsert({
+    where: { email: 'system@iseyaa.local' },
+    create: {
+      email: 'system@iseyaa.local',
+      phone: '+2348000000000',
+      firstName: 'Iṣẹ́yáá',
+      lastName: 'Platform',
+      passwordHash: await bcrypt.hash('iseyaa-system-' + Date.now(), 12),
+      role: 'STATE_ADMIN' as any,
+      registeredRoles: ['ORGANISER', 'HOST', 'STATE_ADMIN'] as any,
+      status: 'ACTIVE' as any,
+      ndpaConsent: true,
+      ndpaConsentAt: new Date(),
+    },
+    update: {},
+    select: { id: true },
+  });
+  console.log(`  ✓ System user ready: ${systemUser.id}`);
+
+  // ─── 7. Seed Events (10 across multiple LGAs) ─────────────────────────────
+  console.log('\n🎟️  Seeding events...');
+  const allLgas = await prisma.lGA.findMany({ select: { id: true, name: true, slug: true } });
+  const lgaByName = (n: string) => allLgas.find(l => l.name === n);
+
+  const now = new Date();
+  const daysAhead = (n: number) => new Date(now.getTime() + n * 86400000);
+
+  const EVENTS: Array<{
+    title: string; lgaName: string; venue: string; address: string;
+    description: string; daysFromNow: number; durationDays: number;
+    featured: boolean; imageUrls: string[];
+    ticketTypes: Array<{ name: string; price: number; quantity: number; description?: string }>;
+  }> = [
+    {
+      title: 'Ojude Oba Festival 2026',
+      lgaName: 'Ijebu Ode',
+      venue: 'Awujale\'s Palace Grounds',
+      address: 'Awujale Palace, Ijebu Ode',
+      description: 'The grandest Yoruba cultural festival — horse-riding regberegbe groups, royal homage to the Awujale, and traditional music.',
+      daysFromNow: 14,
+      durationDays: 1,
+      featured: true,
+      imageUrls: ['https://images.unsplash.com/photo-1547036967-23d11aacaee0?w=1200'],
+      ticketTypes: [
+        { name: 'General Admission', price: 5000, quantity: 2000, description: 'Standing area access' },
+        { name: 'VIP', price: 25000, quantity: 200, description: 'Reserved seating + refreshments' },
+      ],
+    },
+    {
+      title: 'Abeokuta Adire Festival',
+      lgaName: 'Abeokuta South',
+      venue: 'Olumo Rock Tourist Complex',
+      address: 'Olumo Rock, Abeokuta South',
+      description: 'A 3-day showcase of Adire indigo textiles — workshops, fashion shows, and live tie-dye demonstrations by master artisans.',
+      daysFromNow: 22,
+      durationDays: 3,
+      featured: true,
+      imageUrls: ['https://images.unsplash.com/photo-1583244532610-2a234e0a30ea?w=1200'],
+      ticketTypes: [
+        { name: 'Day Pass', price: 3000, quantity: 1000 },
+        { name: '3-Day Pass', price: 7500, quantity: 500 },
+        { name: 'Workshop + Festival', price: 15000, quantity: 100 },
+      ],
+    },
+    {
+      title: 'Sagamu Yam Festival',
+      lgaName: 'Shagamu',
+      venue: 'Akarigbo Palace Square',
+      address: 'Akarigbo Palace, Sagamu',
+      description: 'Traditional Remo yam festival featuring the Akarigbo, masquerades, and a procession of new yam offerings.',
+      daysFromNow: 35,
+      durationDays: 2,
+      featured: false,
+      imageUrls: ['https://images.unsplash.com/photo-1530103862676-de8c9debad1d?w=1200'],
+      ticketTypes: [
+        { name: 'Free Entry — Cultural Day', price: 0, quantity: 5000 },
+        { name: 'Royal Banquet Reception', price: 12000, quantity: 150 },
+      ],
+    },
+    {
+      title: 'Ofada Rice & Ayamashe Food Fair',
+      lgaName: 'Obafemi Owode',
+      venue: 'Ofada Town Hall',
+      address: 'Ofada, Obafemi Owode',
+      description: 'Celebrating Ogun\'s most famous dish. Taste 30+ Ofada Rice stalls, with the prize for "Best Ayamashe Sauce."',
+      daysFromNow: 8,
+      durationDays: 1,
+      featured: true,
+      imageUrls: ['https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=1200'],
+      ticketTypes: [
+        { name: 'Taster Pass (10 stalls)', price: 4500, quantity: 800 },
+        { name: 'Full Fair Pass', price: 8000, quantity: 400 },
+      ],
+    },
+    {
+      title: 'Olumo Rock Sunrise Hike',
+      lgaName: 'Abeokuta South',
+      venue: 'Olumo Rock Trailhead',
+      address: 'Ikija St, Abeokuta South',
+      description: 'Guided pre-dawn ascent to watch sunrise over Abeokuta. Refreshments and a certified guide included.',
+      daysFromNow: 5,
+      durationDays: 1,
+      featured: false,
+      imageUrls: ['https://images.unsplash.com/photo-1551632811-561732d1e306?w=1200'],
+      ticketTypes: [
+        { name: 'Hike + Breakfast', price: 6500, quantity: 50 },
+      ],
+    },
+    {
+      title: 'Gateway Music Festival',
+      lgaName: 'Abeokuta North',
+      venue: 'MKO Abiola Stadium',
+      address: 'MKO Abiola Stadium, Abeokuta North',
+      description: 'Ogun\'s biggest annual concert — afrobeats headliners, fuji legends, and emerging Ogun talent across three stages.',
+      daysFromNow: 45,
+      durationDays: 2,
+      featured: true,
+      imageUrls: ['https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=1200'],
+      ticketTypes: [
+        { name: 'Regular', price: 8000, quantity: 8000 },
+        { name: 'VIP Stand', price: 25000, quantity: 1500 },
+        { name: 'VVIP Lounge', price: 75000, quantity: 200, description: 'Private lounge + premium bar' },
+      ],
+    },
+    {
+      title: 'Ake Arts and Book Festival',
+      lgaName: 'Abeokuta South',
+      venue: 'Ake Cultural Centre',
+      address: 'Ake, Abeokuta South',
+      description: 'Africa\'s premier literary festival. Author readings, poetry slams, panels, and book launches across 5 days.',
+      daysFromNow: 60,
+      durationDays: 5,
+      featured: true,
+      imageUrls: ['https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=1200'],
+      ticketTypes: [
+        { name: 'Day Pass', price: 2500, quantity: 600 },
+        { name: 'Full Festival Pass', price: 10000, quantity: 300 },
+        { name: 'Patron Pass + Gala', price: 35000, quantity: 80 },
+      ],
+    },
+    {
+      title: 'Ido-Eya Hunters\' Carnival',
+      lgaName: 'Ifo',
+      venue: 'Ifo Central Field',
+      address: 'Ifo Town, Ifo',
+      description: 'Traditional Egba hunters\' display with dane-gun salutes, hunter dances, and the ceremonial Eya masquerade procession.',
+      daysFromNow: 28,
+      durationDays: 1,
+      featured: false,
+      imageUrls: ['https://images.unsplash.com/photo-1531058020387-3be344556be6?w=1200'],
+      ticketTypes: [
+        { name: 'General Admission', price: 1500, quantity: 3000 },
+      ],
+    },
+    {
+      title: 'Lisabi Day Festival',
+      lgaName: 'Ewekoro',
+      venue: 'Lisabi Forest Park',
+      address: 'Lisabi Forest, Ewekoro',
+      description: 'Annual commemoration of Lisabi, the warrior hero of the Egbas. Wrestling matches, ancestral rites, and an evening drum carnival.',
+      daysFromNow: 50,
+      durationDays: 1,
+      featured: false,
+      imageUrls: ['https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=1200'],
+      ticketTypes: [
+        { name: 'Cultural Day Entry', price: 2000, quantity: 4000 },
+        { name: 'Drum Carnival Night', price: 5500, quantity: 800 },
+      ],
+    },
+    {
+      title: 'Ijebu Coast Surfing Weekend',
+      lgaName: 'Ogun Waterside',
+      venue: 'Ogun Waterside Coastline',
+      address: 'Ogun Waterside, Lekki–Epe Coast',
+      description: 'Two days of intro surf lessons, paddle-board races, and a beach bonfire concert at sundown.',
+      daysFromNow: 18,
+      durationDays: 2,
+      featured: false,
+      imageUrls: ['https://images.unsplash.com/photo-1502680390469-be75c86b636f?w=1200'],
+      ticketTypes: [
+        { name: 'Spectator Pass', price: 3500, quantity: 600 },
+        { name: 'Surf Lesson + Pass', price: 18000, quantity: 80 },
+      ],
+    },
+  ];
+
+  let evCreated = 0;
+  let evSkipped = 0;
+  for (const ev of EVENTS) {
+    const lga = lgaByName(ev.lgaName);
+    if (!lga) { console.warn(`  ⚠ LGA not found: ${ev.lgaName}, skipping ${ev.title}`); continue; }
+    const slug = ev.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const existing = await prisma.event.findUnique({ where: { slug } });
+    if (existing) { evSkipped++; continue; }
+
+    const start = daysAhead(ev.daysFromNow);
+    const end = daysAhead(ev.daysFromNow + ev.durationDays);
+
+    await prisma.event.create({
+      data: {
+        lgaId: lga.id,
+        organizerId: systemUser.id,
+        title: ev.title,
+        slug,
+        description: ev.description,
+        imageUrls: ev.imageUrls,
+        venue: ev.venue,
+        address: ev.address,
+        startDate: start,
+        endDate: end,
+        status: 'PUBLISHED' as any,
+        isFeatured: ev.featured,
+        ticketTypes: {
+          create: ev.ticketTypes.map(t => ({
+            name: t.name,
+            description: t.description,
+            price: t.price,
+            quantity: t.quantity,
+          })),
+        },
+      },
+    });
+    evCreated++;
+  }
+  console.log(`  ✓ Events: created ${evCreated}, skipped ${evSkipped}`);
+
+  // ─── 8. Seed Properties (12 across multiple LGAs + types) ─────────────────
+  console.log('\n🏠 Seeding properties...');
+  const PROPERTIES: Array<{
+    name: string; lgaName: string; type: 'HOTEL' | 'GUESTHOUSE' | 'APARTMENT' | 'VILLA' | 'RESORT';
+    description: string; address: string; pricePerNight: number; maxGuests: number;
+    amenities: string[]; imageUrls: string[];
+  }> = [
+    {
+      name: 'Lafia Hotel Abeokuta',
+      lgaName: 'Abeokuta South',
+      type: 'HOTEL',
+      description: 'Iconic 4-star hotel overlooking the city. Pool, on-site restaurant, conference facilities.',
+      address: 'Onikolobo Rd, Abeokuta South',
+      pricePerNight: 28000,
+      maxGuests: 2,
+      amenities: ['WiFi', 'Pool', 'Restaurant', 'AC', 'Parking', 'Room Service'],
+      imageUrls: ['https://images.unsplash.com/photo-1566073771259-6a8506099945?w=1200'],
+    },
+    {
+      name: 'Olumo View Guesthouse',
+      lgaName: 'Abeokuta South',
+      type: 'GUESTHOUSE',
+      description: 'Cozy guesthouse with panoramic views of Olumo Rock. Local breakfast included.',
+      address: 'Ikija St, Abeokuta South',
+      pricePerNight: 12500,
+      maxGuests: 2,
+      amenities: ['WiFi', 'Breakfast', 'AC', 'Garden'],
+      imageUrls: ['https://images.unsplash.com/photo-1582719508461-905c673771fd?w=1200'],
+    },
+    {
+      name: 'Ake Heritage Villa',
+      lgaName: 'Abeokuta South',
+      type: 'VILLA',
+      description: 'Restored colonial-era villa near the Ake Cultural Centre. 3 bedrooms, full kitchen, private courtyard.',
+      address: 'Ake Quarter, Abeokuta South',
+      pricePerNight: 45000,
+      maxGuests: 6,
+      amenities: ['WiFi', 'Kitchen', 'AC', 'Garden', 'Parking', 'Workspace'],
+      imageUrls: ['https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=1200'],
+    },
+    {
+      name: 'Ijebu Royal Suites',
+      lgaName: 'Ijebu Ode',
+      type: 'HOTEL',
+      description: 'Luxury suites a 5-minute drive from the Awujale Palace. Concierge, gym, rooftop bar.',
+      address: 'Folagbade St, Ijebu Ode',
+      pricePerNight: 38000,
+      maxGuests: 2,
+      amenities: ['WiFi', 'Gym', 'Restaurant', 'AC', 'Bar', 'Concierge'],
+      imageUrls: ['https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?w=1200'],
+    },
+    {
+      name: 'Eco Farm Stay Ijebu',
+      lgaName: 'Ijebu North',
+      type: 'RESORT',
+      description: 'Working farm + retreat in the Ijebu hinterland. Organic meals, nature walks, fish-pond, palm-wine tasting.',
+      address: 'Oru-Ijebu, Ijebu North',
+      pricePerNight: 22000,
+      maxGuests: 4,
+      amenities: ['WiFi', 'Breakfast', 'Garden', 'Workspace', 'AC'],
+      imageUrls: ['https://images.unsplash.com/photo-1518733057094-95b53143d2a7?w=1200'],
+    },
+    {
+      name: 'Sagamu Comfort Inn',
+      lgaName: 'Shagamu',
+      type: 'GUESTHOUSE',
+      description: 'Modern budget-friendly stay close to the Lagos-Ibadan expressway. Family-run.',
+      address: 'Sabo Rd, Sagamu',
+      pricePerNight: 9000,
+      maxGuests: 2,
+      amenities: ['WiFi', 'AC', 'Parking', 'Breakfast'],
+      imageUrls: ['https://images.unsplash.com/photo-1455587734955-081b22074882?w=1200'],
+    },
+    {
+      name: 'Ofada Heritage Lodge',
+      lgaName: 'Obafemi Owode',
+      type: 'GUESTHOUSE',
+      description: 'Rustic lodge in the heart of Ofada country. Ofada rice cooking class on arrival.',
+      address: 'Ofada Town, Obafemi Owode',
+      pricePerNight: 11500,
+      maxGuests: 3,
+      amenities: ['WiFi', 'Breakfast', 'AC', 'Garden', 'Kitchen'],
+      imageUrls: ['https://images.unsplash.com/photo-1499793983690-e29da59ef1c2?w=1200'],
+    },
+    {
+      name: 'Ogun Waterside Beach Resort',
+      lgaName: 'Ogun Waterside',
+      type: 'RESORT',
+      description: 'Beachfront cabanas with private boardwalks. Surf shack, sunset bar, fresh seafood.',
+      address: 'Lekki-Epe Coast, Ogun Waterside',
+      pricePerNight: 52000,
+      maxGuests: 4,
+      amenities: ['WiFi', 'Pool', 'Beach', 'Restaurant', 'Bar', 'AC'],
+      imageUrls: ['https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=1200'],
+    },
+    {
+      name: 'Studio Apt Abeokuta North',
+      lgaName: 'Abeokuta North',
+      type: 'APARTMENT',
+      description: 'Compact serviced apartment near MKO Stadium. Fast WiFi, full kitchen, weekly cleaning.',
+      address: 'Asero Estate, Abeokuta North',
+      pricePerNight: 14000,
+      maxGuests: 2,
+      amenities: ['WiFi', 'Kitchen', 'AC', 'Workspace', 'Laundry'],
+      imageUrls: ['https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=1200'],
+    },
+    {
+      name: 'Ado-Odo Forest Retreat',
+      lgaName: 'Ado-Odo/Ota',
+      type: 'VILLA',
+      description: 'Secluded 4-bed villa surrounded by mango orchards. Outdoor pool and BBQ pit.',
+      address: 'Iju-Ota, Ado-Odo/Ota',
+      pricePerNight: 65000,
+      maxGuests: 8,
+      amenities: ['WiFi', 'Pool', 'Kitchen', 'Garden', 'Parking', 'AC'],
+      imageUrls: ['https://images.unsplash.com/photo-1613490493576-7fde63acd811?w=1200'],
+    },
+    {
+      name: 'Ipokia Riverside Cabins',
+      lgaName: 'Ipokia',
+      type: 'RESORT',
+      description: 'Wooden cabins along the Yewa river. Canoe rides, fishing, hammocks. Off-grid solar power.',
+      address: 'Ihunbo-Ipokia, Ipokia',
+      pricePerNight: 18500,
+      maxGuests: 4,
+      amenities: ['Solar', 'Breakfast', 'River Access', 'Boat Tours', 'Garden'],
+      imageUrls: ['https://images.unsplash.com/photo-1542718610-a1d656d1884c?w=1200'],
+    },
+    {
+      name: 'Ijebu Igbo Lakeside Bungalow',
+      lgaName: 'Ijebu North',
+      type: 'APARTMENT',
+      description: 'Stilted 2-bedroom bungalow over the Ijebu-Igbo lake. Wake to the sound of the herons.',
+      address: 'Ijebu-Igbo, Ijebu North',
+      pricePerNight: 24000,
+      maxGuests: 4,
+      amenities: ['WiFi', 'AC', 'Kitchen', 'Lake View', 'Workspace', 'Parking'],
+      imageUrls: ['https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=1200'],
+    },
+  ];
+
+  let pCreated = 0;
+  let pSkipped = 0;
+  for (const p of PROPERTIES) {
+    const lga = lgaByName(p.lgaName);
+    if (!lga) { console.warn(`  ⚠ LGA not found: ${p.lgaName}, skipping ${p.name}`); continue; }
+    const slug = p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const existing = await prisma.property.findUnique({ where: { slug } });
+    if (existing) { pSkipped++; continue; }
+
+    await prisma.property.create({
+      data: {
+        lgaId: lga.id,
+        hostId: systemUser.id,
+        name: p.name,
+        slug,
+        description: p.description,
+        type: p.type as any,
+        imageUrls: p.imageUrls,
+        address: p.address,
+        pricePerNight: p.pricePerNight,
+        maxGuests: p.maxGuests,
+        amenities: p.amenities,
+        isActive: true,
+      },
+    });
+    pCreated++;
+  }
+  console.log(`  ✓ Properties: created ${pCreated}, skipped ${pSkipped}`);
+
+  // ─── 9. Seed Studio Slots ──────────────────────────────────────────────
+  console.log('\n🎙️  Seeding studio slots...');
+  const STUDIO_SLOTS: Array<{
+    name: string; type: 'RECORDING' | 'PHOTOGRAPHY' | 'VIDEO' | 'PODCAST';
+    description: string; pricePerHour: number; durationMinutes: number; capacity: number;
+    imageUrls: string[]; isGovernmentPriority?: boolean;
+  }> = [
+    {
+      name: 'Abeokuta Music Lab — Studio A',
+      type: 'RECORDING',
+      description: 'Full-band recording studio with Pro Tools rig, Neve mic-pre, drum room and isolation booth. Sound engineer included.',
+      pricePerHour: 18000,
+      durationMinutes: 60,
+      capacity: 6,
+      imageUrls: ['https://images.unsplash.com/photo-1598653222000-6b7b7a552625?w=1200'],
+    },
+    {
+      name: 'Abeokuta Music Lab — Vocal Booth',
+      type: 'RECORDING',
+      description: 'Pristine single-vocal booth tuned for afrobeats and gospel. Includes engineer + 1 hour of mixing.',
+      pricePerHour: 9000,
+      durationMinutes: 60,
+      capacity: 2,
+      imageUrls: ['https://images.unsplash.com/photo-1571974599782-87624638275e?w=1200'],
+    },
+    {
+      name: 'Olumo Photography Studio',
+      type: 'PHOTOGRAPHY',
+      description: 'White cyc + colour backdrops, Profoto strobes, hair-and-makeup corner. Perfect for fashion editorials.',
+      pricePerHour: 12000,
+      durationMinutes: 60,
+      capacity: 8,
+      imageUrls: ['https://images.unsplash.com/photo-1606983340126-99ab4feaa64a?w=1200'],
+    },
+    {
+      name: 'Ake Heritage Backdrop',
+      type: 'PHOTOGRAPHY',
+      description: 'Outdoor + indoor heritage-styled set at the Ake Cultural Centre. Adire textile backdrops and props.',
+      pricePerHour: 8500,
+      durationMinutes: 60,
+      capacity: 6,
+      imageUrls: ['https://images.unsplash.com/photo-1604147706283-d7119b5b822c?w=1200'],
+    },
+    {
+      name: 'Ijebu Ode Podcast Booth',
+      type: 'PODCAST',
+      description: 'Acoustically treated 4-mic podcast room. Shure SM7Bs, Rodecaster Pro, automatic stream feed.',
+      pricePerHour: 6500,
+      durationMinutes: 60,
+      capacity: 4,
+      imageUrls: ['https://images.unsplash.com/photo-1590602847861-f357a9332bbc?w=1200'],
+    },
+    {
+      name: 'Gateway Podcast Lab',
+      type: 'PODCAST',
+      description: 'Two-mic podcast booth in Abeokuta city centre. Best for interviews and solo shows.',
+      pricePerHour: 4500,
+      durationMinutes: 60,
+      capacity: 2,
+      imageUrls: ['https://images.unsplash.com/photo-1581368087028-784fdbb4cae0?w=1200'],
+    },
+    {
+      name: 'Ogun State Film Stage 1',
+      type: 'VIDEO',
+      description: 'Large green-screen sound stage. Includes 4K cameras, dolly track, ARRI lighting kit + grip.',
+      pricePerHour: 35000,
+      durationMinutes: 60,
+      capacity: 20,
+      imageUrls: ['https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?w=1200'],
+      isGovernmentPriority: true,
+    },
+    {
+      name: 'Sagamu Music Cooperative Studio',
+      type: 'RECORDING',
+      description: 'Government-subsidised studio for emerging artists. 4 hour minimum booking, engineer included.',
+      pricePerHour: 5000,
+      durationMinutes: 60,
+      capacity: 8,
+      imageUrls: ['https://images.unsplash.com/photo-1519508234439-4f23643125c1?w=1200'],
+      isGovernmentPriority: true,
+    },
+    {
+      name: 'Music Video Suite — Abeokuta',
+      type: 'VIDEO',
+      description: 'Compact music video set with motorised LED panels, smoke machine, and three colour-graded backdrops.',
+      pricePerHour: 22000,
+      durationMinutes: 60,
+      capacity: 12,
+      imageUrls: ['https://images.unsplash.com/photo-1559762691-89ce7b2b6cef?w=1200'],
+    },
+    {
+      name: 'Ifo Creative Co-Working Studio',
+      type: 'PHOTOGRAPHY',
+      description: 'Affordable shared photography studio with natural light, two backdrops, and basic lighting.',
+      pricePerHour: 3500,
+      durationMinutes: 60,
+      capacity: 4,
+      imageUrls: ['https://images.unsplash.com/photo-1556761175-5973dc0f32e7?w=1200'],
+    },
+  ];
+
+  let sCreated = 0;
+  let sSkipped = 0;
+  for (const s of STUDIO_SLOTS) {
+    const existing = await prisma.studioSlot.findFirst({ where: { name: s.name } });
+    if (existing) { sSkipped++; continue; }
+    await prisma.studioSlot.create({
+      data: {
+        name: s.name,
+        type: s.type as any,
+        description: s.description,
+        imageUrls: s.imageUrls,
+        pricePerHour: s.pricePerHour,
+        durationMinutes: s.durationMinutes,
+        capacity: s.capacity,
+        isActive: true,
+        isGovernmentPriority: s.isGovernmentPriority ?? false,
+      },
+    });
+    sCreated++;
+  }
+  console.log(`  ✓ Studio slots: created ${sCreated}, skipped ${sSkipped}`);
+
+  // ─── 10. Summary ───────────────────────────────────────────────────────
   const lgaCount = await prisma.lGA.count();
   const attractionCount = await prisma.attraction.count();
+  const eventCount = await prisma.event.count();
+  const propertyCount = await prisma.property.count();
+  const studioCount = await prisma.studioSlot.count();
   const platformConfigCount = await prisma.platformConfig.count();
   console.log('\n✅ Seed complete!');
   console.log(`   LGAs: ${lgaCount}`);
   console.log(`   Attractions: ${attractionCount}`);
+  console.log(`   Events: ${eventCount}`);
+  console.log(`   Properties: ${propertyCount}`);
+  console.log(`   Studio slots: ${studioCount}`);
   console.log(`   PlatformConfig rows: ${platformConfigCount}`);
 }
 
