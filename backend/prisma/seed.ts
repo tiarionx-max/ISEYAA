@@ -1397,7 +1397,7 @@ async function main() {
       daysFromNow: 22,
       durationDays: 3,
       featured: true,
-      imageUrls: ['https://images.unsplash.com/photo-1583244532610-2a234e0a30ea?w=1200'],
+      imageUrls: ['https://images.unsplash.com/photo-1488462237308-ecaa28b729d7?w=1200'],
       ticketTypes: [
         { name: 'Day Pass', price: 3000, quantity: 1000 },
         { name: '3-Day Pass', price: 7500, quantity: 500 },
@@ -1795,7 +1795,7 @@ async function main() {
       pricePerHour: 4500,
       durationMinutes: 60,
       capacity: 2,
-      imageUrls: ['https://images.unsplash.com/photo-1581368087028-784fdbb4cae0?w=1200'],
+      imageUrls: ['https://images.unsplash.com/photo-1590602847861-f357a9332bbc?w=1200'],
     },
     {
       name: 'Ogun State Film Stage 1',
@@ -1824,7 +1824,7 @@ async function main() {
       pricePerHour: 22000,
       durationMinutes: 60,
       capacity: 12,
-      imageUrls: ['https://images.unsplash.com/photo-1559762691-89ce7b2b6cef?w=1200'],
+      imageUrls: ['https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?w=1200'],
     },
     {
       name: 'Ifo Creative Co-Working Studio',

@@ -2,11 +2,12 @@
 const nextConfig = {
   reactStrictMode: true,
   images: {
-    domains: ['localhost', 'iseyaa.ng'],
     remotePatterns: [
       { protocol: 'https', hostname: '*.cloudfront.net' },
       { protocol: 'https', hostname: '*.amazonaws.com' },
       { protocol: 'https', hostname: 'images.unsplash.com' },
+      { protocol: 'https', hostname: 'iseyaa.ng' },
+      { protocol: 'http',  hostname: 'localhost' },
     ],
   },
   env: {
