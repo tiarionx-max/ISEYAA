@@ -4,6 +4,7 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ServiceUnavailableException,
   OnModuleInit,
 } from '@nestjs/common';
 import { KafkaService } from '../../kafka/kafka.service';
@@ -126,17 +127,26 @@ export class StudioService implements OnModuleInit {
       });
     });
 
-    const payment = await this.paystack.initiatePayment({
-      email: dto.email,
-      amountKobo: totalPrice * 100,
-      reference: paystackRef,
-      metadata: {
-        type: 'studio_booking',
-        bookingId: booking.id,
-        slotId: dto.slotId,
-        userId,
-      },
-    });
+    let payment;
+    try {
+      payment = await this.paystack.initiatePayment({
+        email: dto.email,
+        amountKobo: totalPrice * 100,
+        reference: paystackRef,
+        metadata: {
+          type: 'studio_booking',
+          bookingId: booking.id,
+          slotId: dto.slotId,
+          userId,
+        },
+      });
+    } catch (err) {
+      // Paystack failed (missing key, network, etc.) — roll back the booking
+      // so the slot isn't held hostage by an orphaned PENDING row.
+      await this.prisma.studioBooking.delete({ where: { id: booking.id } }).catch(() => {});
+      this.logger.error(`Paystack init failed for studio booking ${booking.id}, rolled back`, err);
+      throw new ServiceUnavailableException('Payment gateway is currently unavailable. Please try again shortly.');
+    }
 
     return { booking, payment };
   }

@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   BadRequestException,
   ConflictException,
+  ServiceUnavailableException,
   OnModuleInit,
 } from '@nestjs/common';
 import { KafkaService } from '../../kafka/kafka.service';
@@ -217,17 +218,32 @@ export class MarketplaceService implements OnModuleInit {
       include: { orderItems: { include: { product: { select: { name: true } } } } },
     });
 
-    const payment = await this.paystack.initiatePayment({
-      email: dto.email,
-      amountKobo: total * 100,
-      reference: paystackRef,
-      metadata: {
-        type: 'order_payment',
-        orderId: order.id,
-        userId,
-        vendorId: vendor.id,
-      },
-    });
+    let payment;
+    try {
+      payment = await this.paystack.initiatePayment({
+        email: dto.email,
+        amountKobo: total * 100,
+        reference: paystackRef,
+        metadata: {
+          type: 'order_payment',
+          orderId: order.id,
+          userId,
+          vendorId: vendor.id,
+        },
+      });
+    } catch (err) {
+      // Paystack failed (missing key, network, etc.) — roll back the order
+      // (and its line items, since OrderItem has no cascade) so the PENDING
+      // row doesn't linger and so stock decrement triggers don't fire later.
+      await this.prisma
+        .$transaction([
+          this.prisma.orderItem.deleteMany({ where: { orderId: order.id } }),
+          this.prisma.order.delete({ where: { id: order.id } }),
+        ])
+        .catch(() => {});
+      this.logger.error(`Paystack init failed for order ${order.id}, rolled back`, err);
+      throw new ServiceUnavailableException('Payment gateway is currently unavailable. Please try again shortly.');
+    }
 
     return { order, payment };
   }

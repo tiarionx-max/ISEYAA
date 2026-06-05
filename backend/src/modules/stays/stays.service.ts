@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   BadRequestException,
   ConflictException,
+  ServiceUnavailableException,
   OnModuleInit,
 } from '@nestjs/common';
 import { KafkaService } from '../../kafka/kafka.service';
@@ -213,18 +214,27 @@ export class StaysService implements OnModuleInit {
       });
     });
 
-    const payment = await this.paystack.initiatePayment({
-      email: dto.email,
-      amountKobo: totalPrice * 100,
-      reference: paystackRef,
-      metadata: {
-        type: 'stay_booking',
-        bookingId: booking.id,
-        propertyId,
-        userId,
-        nights,
-      },
-    });
+    let payment;
+    try {
+      payment = await this.paystack.initiatePayment({
+        email: dto.email,
+        amountKobo: totalPrice * 100,
+        reference: paystackRef,
+        metadata: {
+          type: 'stay_booking',
+          bookingId: booking.id,
+          propertyId,
+          userId,
+          nights,
+        },
+      });
+    } catch (err) {
+      // Paystack failed (missing key, network, etc.) — roll back the booking
+      // so the property isn't held hostage by an orphaned PENDING row.
+      await this.prisma.booking.delete({ where: { id: booking.id } }).catch(() => {});
+      this.logger.error(`Paystack init failed for stay booking ${booking.id}, rolled back`, err);
+      throw new ServiceUnavailableException('Payment gateway is currently unavailable. Please try again shortly.');
+    }
 
     return { booking, payment };
   }
