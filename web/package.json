@@ -12,6 +12,8 @@
     "@googlemaps/react-wrapper": "^1.2.0",
     "@hookform/resolvers": "^3.3.4",
     "@iseyaa/shared": "*",
+    "@react-three/drei": "^9.117.3",
+    "@react-three/fiber": "^8.17.10",
     "@tanstack/react-query": "^5.24.1",
     "axios": "^1.6.7",
     "clsx": "^2.1.0",
@@ -29,6 +31,7 @@
     "redux-thunk": "^3.1.0",
     "sonner": "^1.4.3",
     "tailwind-merge": "^2.2.1",
+    "three": "^0.166.1",
     "zod": "^3.22.4",
     "zustand": "^4.5.1"
   },

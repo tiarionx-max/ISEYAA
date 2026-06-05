@@ -7,12 +7,19 @@ import { Navbar } from '@/components/layout/Navbar';
 import { OgunMap } from '@/components/ui/OgunMap';
 import { fetcher } from '@/lib/api';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import {
   Calendar, Home, ShoppingBag, Music,
   ArrowRight, MapPin, Users, Star, Zap,
   Shield, Smartphone, Globe, ChevronDown,
 } from 'lucide-react';
 import { useRef } from 'react';
+
+/* three.js scene — lazy + no SSR (canvas requires window) */
+const HeroLogo3D = dynamic(
+  () => import('@/components/3d/HeroLogo3D').then((m) => m.HeroLogo3D),
+  { ssr: false, loading: () => null },
+);
 
 const SERVICES = [
   {
@@ -169,6 +176,7 @@ export default function HomePage() {
 
         {/* Hero content */}
         <motion.div style={{ y: textY }} className="relative z-10 w-full max-w-7xl mx-auto px-6 lg:px-8 pt-24 pb-36">
+          <div className="grid lg:grid-cols-[1fr_auto] gap-12 items-center">
           <div className="max-w-2xl">
 
             {/* Badge */}
@@ -219,6 +227,22 @@ export default function HomePage() {
                 Create Free Account
               </Link>
             </motion.div>
+          </div>
+
+          {/* 3D logo (right column on desktop, hidden < lg) */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.92 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.9, delay: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }}
+            className="hidden lg:block relative w-[420px] h-[420px] xl:w-[480px] xl:h-[480px]"
+          >
+            {/* Soft glow halo behind the 3D scene */}
+            <div
+              className="absolute inset-0 rounded-full blur-3xl opacity-40"
+              style={{ background: 'radial-gradient(circle, rgba(212,168,67,0.35) 0%, transparent 65%)' }}
+            />
+            <HeroLogo3D className="absolute inset-0" />
+          </motion.div>
           </div>
         </motion.div>
 
