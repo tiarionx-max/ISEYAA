@@ -58,6 +58,31 @@ input, textarea, select {
   color-scheme: dark;
 }
 
+/* Defensive: text inputs default to dark bg + white text in case any
+   utility class fails to resolve. Avoids white-on-white invisible typing. */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="tel"],
+input[type="number"],
+input[type="search"],
+input[type="url"],
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"],
+textarea {
+  color: #ffffff;
+  caret-color: #ffffff;
+}
+input[type="text"]:not([class*="bg-"]),
+input[type="email"]:not([class*="bg-"]),
+input[type="password"]:not([class*="bg-"]),
+input[type="tel"]:not([class*="bg-"]),
+input[type="number"]:not([class*="bg-"]),
+textarea:not([class*="bg-"]) {
+  background-color: rgba(0, 0, 0, 0.35);
+}
+
 /* ── Typography utilities ───────────────────────────────────────────────── */
 .text-gradient-gold {
   background: linear-gradient(135deg, #C8962A 0%, #f0c050 40%, #C8962A 70%, #e6b044 100%);

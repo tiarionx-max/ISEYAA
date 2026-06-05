@@ -108,7 +108,7 @@ export default function RegisterPage() {
                   required
                   autoComplete="given-name"
                   placeholder="Ada"
-                  className="w-full bg-white/6 text-white placeholder-white/25 text-sm rounded-xl px-4 py-3 border border-white/10 focus:outline-none focus:border-forest/60 focus:bg-white/8 transition-all"
+                  className="w-full bg-[rgba(0,0,0,0.35)] text-white placeholder-white/25 text-sm rounded-xl px-4 py-3 border border-white/10 focus:outline-none focus:border-forest/60 focus:bg-[rgba(0,0,0,0.45)] transition-all"
                 />
               </div>
               <div>
@@ -120,7 +120,7 @@ export default function RegisterPage() {
                   required
                   autoComplete="family-name"
                   placeholder="Adeyemi"
-                  className="w-full bg-white/6 text-white placeholder-white/25 text-sm rounded-xl px-4 py-3 border border-white/10 focus:outline-none focus:border-forest/60 focus:bg-white/8 transition-all"
+                  className="w-full bg-[rgba(0,0,0,0.35)] text-white placeholder-white/25 text-sm rounded-xl px-4 py-3 border border-white/10 focus:outline-none focus:border-forest/60 focus:bg-[rgba(0,0,0,0.45)] transition-all"
                 />
               </div>
             </div>
@@ -134,7 +134,7 @@ export default function RegisterPage() {
                 required
                 autoComplete="email"
                 placeholder="you@example.com"
-                className="w-full bg-white/6 text-white placeholder-white/25 text-sm rounded-xl px-4 py-3 border border-white/10 focus:outline-none focus:border-forest/60 focus:bg-white/8 transition-all"
+                className="w-full bg-[rgba(0,0,0,0.35)] text-white placeholder-white/25 text-sm rounded-xl px-4 py-3 border border-white/10 focus:outline-none focus:border-forest/60 focus:bg-[rgba(0,0,0,0.45)] transition-all"
               />
             </div>
 
@@ -147,7 +147,7 @@ export default function RegisterPage() {
                 required
                 autoComplete="tel"
                 placeholder="+2348012345678"
-                className="w-full bg-white/6 text-white placeholder-white/25 text-sm rounded-xl px-4 py-3 border border-white/10 focus:outline-none focus:border-forest/60 focus:bg-white/8 transition-all"
+                className="w-full bg-[rgba(0,0,0,0.35)] text-white placeholder-white/25 text-sm rounded-xl px-4 py-3 border border-white/10 focus:outline-none focus:border-forest/60 focus:bg-[rgba(0,0,0,0.45)] transition-all"
               />
             </div>
 
@@ -162,7 +162,7 @@ export default function RegisterPage() {
                   minLength={8}
                   autoComplete="new-password"
                   placeholder="Minimum 8 characters"
-                  className="w-full bg-white/6 text-white placeholder-white/25 text-sm rounded-xl px-4 py-3 border border-white/10 focus:outline-none focus:border-forest/60 focus:bg-white/8 pr-11 transition-all"
+                  className="w-full bg-[rgba(0,0,0,0.35)] text-white placeholder-white/25 text-sm rounded-xl px-4 py-3 border border-white/10 focus:outline-none focus:border-forest/60 focus:bg-[rgba(0,0,0,0.45)] pr-11 transition-all"
                 />
                 <button
                   type="button"
@@ -179,7 +179,7 @@ export default function RegisterPage() {
                 type="checkbox"
                 checked={ndpaConsent}
                 onChange={(e) => setNdpaConsent(e.target.checked)}
-                className="mt-0.5 w-4 h-4 rounded border-white/20 bg-white/6 text-forest focus:ring-forest/40 focus:ring-offset-0 accent-forest"
+                className="mt-0.5 w-4 h-4 rounded border-white/20 bg-[rgba(0,0,0,0.35)] text-forest focus:ring-forest/40 focus:ring-offset-0 accent-forest"
               />
               <span className="text-[12px] text-white/55 leading-relaxed">
                 I consent to processing of my personal data under the{' '}
