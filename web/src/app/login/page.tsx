@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { LogIn, Eye, EyeOff, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -54,9 +55,14 @@ export default function LoginPage() {
         {/* Logo */}
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex flex-col items-center gap-1">
-            <div className="w-12 h-12 rounded-2xl bg-forest flex items-center justify-center mb-2" style={{ boxShadow: '0 0 30px rgba(26,107,60,0.5)' }}>
-              <span className="text-gold font-black text-base">IS</span>
-            </div>
+            <Image
+              src="/logo-icon.png"
+              alt="Iṣẹ́yáá"
+              width={56}
+              height={56}
+              priority
+              className="w-14 h-14 rounded-2xl mb-2 shadow-[0_0_30px_rgba(26,107,60,0.5)]"
+            />
             <span className="text-gradient-gold text-3xl font-black tracking-tight">Iṣẹ́yáá</span>
           </Link>
           <p className="text-white/40 text-sm mt-2">Sign in to your account</p>

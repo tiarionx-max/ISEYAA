@@ -8,6 +8,7 @@ import { PageTransition } from '@/components/ui/PageTransition';
 import { fetcher, api } from '@/lib/api';
 import { useSession } from 'next-auth/react';
 import { redirect } from 'next/navigation';
+import Image from 'next/image';
 import { toast } from 'sonner';
 import {
   Wallet, Ticket, Home, Package, ArrowUpRight, ArrowDownLeft,
@@ -46,9 +47,13 @@ function WalletCard({ balance }: { balance: any }) {
         {/* Top row */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center">
-              <span className="text-gold font-black text-xs">IS</span>
-            </div>
+            <Image
+              src="/logo-icon.png"
+              alt="Iṣẹ́yáá"
+              width={32}
+              height={32}
+              className="w-8 h-8 rounded-lg"
+            />
             <span className="text-white/70 text-xs font-semibold tracking-wider uppercase">Iṣẹ́yáá Wallet</span>
           </div>
           <span className="flex items-center gap-1.5 text-[10px] font-semibold bg-white/10 border border-white/20 text-white/80 px-2.5 py-1 rounded-full">

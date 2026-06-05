@@ -7,6 +7,7 @@ import { Navbar } from '@/components/layout/Navbar';
 import { OgunMap } from '@/components/ui/OgunMap';
 import { fetcher } from '@/lib/api';
 import Link from 'next/link';
+import Image from 'next/image';
 import dynamic from 'next/dynamic';
 import {
   Calendar, Home, ShoppingBag, Music,
@@ -498,9 +499,13 @@ export default function HomePage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-12">
             <div className="col-span-2 md:col-span-1">
               <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 rounded-xl bg-forest flex items-center justify-center shadow-forest-glow">
-                  <span className="text-gold font-black text-xs">IS</span>
-                </div>
+                <Image
+                  src="/logo-icon.png"
+                  alt="Iṣẹ́yáá"
+                  width={32}
+                  height={32}
+                  className="w-8 h-8 rounded-xl"
+                />
                 <span className="text-gradient-gold text-lg font-black">Iṣẹ́yáá</span>
               </div>
               <p className="text-white/30 text-xs leading-relaxed max-w-[180px]">

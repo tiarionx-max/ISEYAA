@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 
 export default function NotFound() {
   return (
@@ -16,23 +17,26 @@ export default function NotFound() {
         padding: '24px',
       }}
     >
+      <Image
+        src="/logo-icon.png"
+        alt="Iṣẹ́yáá"
+        width={80}
+        height={80}
+        priority
+        style={{ borderRadius: 20, marginBottom: 24, boxShadow: '0 0 40px rgba(26,107,60,0.4)' }}
+      />
       <div
         style={{
-          width: 80,
-          height: 80,
-          borderRadius: 24,
-          background: 'rgba(26,107,60,0.12)',
-          border: '1px solid rgba(26,107,60,0.25)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginBottom: 24,
-          fontSize: 32,
+          fontSize: 48,
+          fontWeight: 900,
+          color: '#D4A843',
+          letterSpacing: '-0.02em',
+          marginBottom: 8,
         }}
       >
         404
       </div>
-      <h1 style={{ fontSize: 32, fontWeight: 900, margin: '0 0 8px' }}>Page Not Found</h1>
+      <h1 style={{ fontSize: 28, fontWeight: 900, margin: '0 0 8px' }}>Page Not Found</h1>
       <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 14, margin: '0 0 32px', maxWidth: 320 }}>
         The page you&apos;re looking for doesn&apos;t exist or has been moved.
       </p>
