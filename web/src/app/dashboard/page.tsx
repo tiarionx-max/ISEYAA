@@ -240,7 +240,7 @@ function TopupModal({ open, onClose, email }: { open: boolean; onClose: () => vo
                   required
                   autoFocus
                   placeholder="e.g. 5000"
-                  className="w-full bg-white/[0.06] text-white placeholder-white/25 text-sm rounded-xl px-4 py-3 border border-white/10 focus:outline-none focus:border-forest/60 focus:bg-white/[0.08] transition-all"
+                  className="w-full bg-[rgba(0,0,0,0.35)] text-white placeholder-white/25 text-sm rounded-xl px-4 py-3 border border-white/10 focus:outline-none focus:border-forest/60 focus:bg-[rgba(0,0,0,0.45)] transition-all"
                 />
                 <p className="text-white/30 text-[11px] mt-1.5">Min ₦100 · Max ₦1,000,000</p>
               </div>
@@ -348,7 +348,7 @@ function SendMoneyCard() {
             onChange={(e) => setRecipientPhone(e.target.value)}
             required
             placeholder="+2348012345678"
-            className="w-full bg-white/[0.06] text-white placeholder-white/25 text-sm rounded-xl px-4 py-2.5 border border-white/10 focus:outline-none focus:border-forest/60 focus:bg-white/[0.08] transition-all"
+            className="w-full bg-[rgba(0,0,0,0.35)] text-white placeholder-white/25 text-sm rounded-xl px-4 py-2.5 border border-white/10 focus:outline-none focus:border-forest/60 focus:bg-[rgba(0,0,0,0.45)] transition-all"
           />
         </div>
 
@@ -365,7 +365,7 @@ function SendMoneyCard() {
               step={100}
               required
               placeholder="1000"
-              className="w-full bg-white/[0.06] text-white placeholder-white/25 text-sm rounded-xl px-4 py-2.5 border border-white/10 focus:outline-none focus:border-forest/60 focus:bg-white/[0.08] transition-all"
+              className="w-full bg-[rgba(0,0,0,0.35)] text-white placeholder-white/25 text-sm rounded-xl px-4 py-2.5 border border-white/10 focus:outline-none focus:border-forest/60 focus:bg-[rgba(0,0,0,0.45)] transition-all"
             />
           </div>
           <div>
@@ -378,7 +378,7 @@ function SendMoneyCard() {
               onChange={(e) => setNarration(e.target.value.slice(0, 120))}
               maxLength={120}
               placeholder="Birthday gift"
-              className="w-full bg-white/[0.06] text-white placeholder-white/25 text-sm rounded-xl px-4 py-2.5 border border-white/10 focus:outline-none focus:border-forest/60 focus:bg-white/[0.08] transition-all"
+              className="w-full bg-[rgba(0,0,0,0.35)] text-white placeholder-white/25 text-sm rounded-xl px-4 py-2.5 border border-white/10 focus:outline-none focus:border-forest/60 focus:bg-[rgba(0,0,0,0.45)] transition-all"
             />
           </div>
         </div>
@@ -499,7 +499,7 @@ function TicketsTab() {
               </div>
               <span className={`text-[11px] px-2.5 py-1 rounded-full font-semibold border ${
                 t.status === 'ISSUED' ? 'bg-green-900/30 text-green-400 border-green-700/25' :
-                t.status === 'USED' ? 'bg-white/[0.08] text-white/40 border-white/10' :
+                t.status === 'USED' ? 'bg-[rgba(0,0,0,0.45)] text-white/40 border-white/10' :
                 'bg-amber-900/30 text-amber-400 border-amber-700/25'
               }`}>{t.status}</span>
             </div>

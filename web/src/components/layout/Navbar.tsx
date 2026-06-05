@@ -71,7 +71,7 @@ export function Navbar() {
                   'relative flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium transition-all duration-200',
                   active
                     ? 'text-white'
-                    : 'text-white/60 hover:text-white hover:bg-white/[0.06]',
+                    : 'text-white/60 hover:text-white hover:bg-[rgba(0,0,0,0.35)]',
                 )}
               >
                 <Icon size={14} />
@@ -94,7 +94,7 @@ export function Navbar() {
             <div className="relative">
               <button
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.06] border border-white/10 hover:bg-white/10 transition-all"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[rgba(0,0,0,0.35)] border border-white/10 hover:bg-white/10 transition-all"
               >
                 <div className="w-7 h-7 rounded-lg bg-forest-gradient flex items-center justify-center text-xs font-bold text-white">
                   {initials}
@@ -117,7 +117,7 @@ export function Navbar() {
                       <Link
                         href="/dashboard"
                         onClick={() => setUserMenuOpen(false)}
-                        className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-white/80 hover:text-white hover:bg-white/[0.08] transition-colors"
+                        className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-white/80 hover:text-white hover:bg-[rgba(0,0,0,0.45)] transition-colors"
                       >
                         <LayoutDashboard size={14} className="text-gold" />
                         Dashboard
@@ -126,7 +126,7 @@ export function Navbar() {
                         <Link
                           href="/admin"
                           onClick={() => setUserMenuOpen(false)}
-                          className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-white/80 hover:text-white hover:bg-white/[0.08] transition-colors"
+                          className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-white/80 hover:text-white hover:bg-[rgba(0,0,0,0.45)] transition-colors"
                         >
                           <Shield size={14} className="text-gold" />
                           Admin Panel
@@ -158,7 +158,7 @@ export function Navbar() {
 
         {/* Mobile toggle */}
         <button
-          className="md:hidden w-9 h-9 flex items-center justify-center rounded-xl bg-white/[0.06] text-white/70 hover:text-white hover:bg-white/10 transition-all"
+          className="md:hidden w-9 h-9 flex items-center justify-center rounded-xl bg-[rgba(0,0,0,0.35)] text-white/70 hover:text-white hover:bg-white/10 transition-all"
           onClick={() => setMobileOpen(!mobileOpen)}
         >
           {mobileOpen ? <X size={18} /> : <Menu size={18} />}
@@ -185,7 +185,7 @@ export function Navbar() {
                     'flex items-center gap-2.5 px-3 py-3 rounded-xl text-sm font-medium transition-colors',
                     pathname === href
                       ? 'bg-forest/70 text-white border border-forest/40'
-                      : 'text-white/60 hover:text-white hover:bg-white/[0.06]',
+                      : 'text-white/60 hover:text-white hover:bg-[rgba(0,0,0,0.35)]',
                   )}
                 >
                   <Icon size={16} />
@@ -198,7 +198,7 @@ export function Navbar() {
                     <Link
                       href="/dashboard"
                       onClick={() => setMobileOpen(false)}
-                      className="flex items-center gap-2.5 px-3 py-3 rounded-xl text-sm text-white/70 hover:text-white hover:bg-white/[0.06]"
+                      className="flex items-center gap-2.5 px-3 py-3 rounded-xl text-sm text-white/70 hover:text-white hover:bg-[rgba(0,0,0,0.35)]"
                     >
                       <LayoutDashboard size={16} /> Dashboard
                     </Link>
