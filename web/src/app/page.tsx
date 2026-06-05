@@ -508,7 +508,7 @@ export default function HomePage() {
                 />
                 <span className="text-gradient-gold text-lg font-black">Iṣẹ́yáá</span>
               </div>
-              <p className="text-white/30 text-xs leading-relaxed max-w-[180px]">
+              <p className="text-white/55 text-xs leading-relaxed max-w-[180px]">
                 Ogun State&apos;s unified digital super-platform. Operated by LJ Entertainment.
               </p>
             </div>
@@ -549,7 +549,7 @@ export default function HomePage() {
                   <ul className="space-y-2.5">
                     {links.map((l) => (
                       <li key={l.label}>
-                        <Link href={l.href} className="text-white/30 text-sm hover:text-white/60 transition-colors">
+                        <Link href={l.href} className="text-white/55 text-sm hover:text-white transition-colors">
                           {l.label}
                         </Link>
                       </li>
@@ -560,8 +560,8 @@ export default function HomePage() {
             })()}
           </div>
           <div className="border-t border-white/5 pt-8 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <p className="text-white/20 text-xs">© 2026 Iṣẹ́yáá · Operated by LJ Entertainment · Endorsed by Ogun State Government</p>
-            <p className="text-white/20 text-xs">NDPA Compliant · CBN Licensed Wallet · Paystack Partner</p>
+            <p className="text-white/45 text-xs">© 2026 Iṣẹ́yáá · Operated by LJ Entertainment · Endorsed by Ogun State Government</p>
+            <p className="text-white/45 text-xs">NDPA Compliant · CBN Licensed Wallet · Paystack Partner</p>
           </div>
         </div>
       </footer>

@@ -217,8 +217,32 @@ textarea:not([class*="bg-"]) {
   color: white;
 }
 
-/* Legacy alias */
-.btn-forest { }
+/* Primary forest CTA — alias of btn-primary, used by login, register, dashboard,
+   marketplace waitlist, studio booking, stays booking, navbar Sign in, etc. */
+.btn-forest {
+  background: linear-gradient(135deg, #1A6B3C 0%, #22913f 100%);
+  box-shadow: 0 4px 20px rgba(26,107,60,0.4), 0 0 0 1px rgba(26,107,60,0.3) inset;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  color: white;
+  font-weight: 700;
+}
+.btn-forest:hover {
+  background: linear-gradient(135deg, #22913f 0%, #2aaa50 100%);
+  box-shadow: 0 6px 28px rgba(26,107,60,0.55), 0 0 0 1px rgba(26,107,60,0.4) inset;
+  transform: translateY(-2px);
+}
+.btn-forest:active { transform: translateY(0); }
+.btn-forest:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Avatar / pill gradient — real utility (Tailwind config only set this as
+   backgroundImage which won't apply via bg-forest-gradient class). */
+.bg-forest-gradient {
+  background-image: linear-gradient(135deg, #0f3d20 0%, #1A6B3C 100%);
+}
 
 /* ── Card hover ─────────────────────────────────────────────────────────── */
 .card-hover {

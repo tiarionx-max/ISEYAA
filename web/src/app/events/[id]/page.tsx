@@ -118,12 +118,12 @@ export default function EventDetailPage() {
                 <button
                   onClick={() => purchase.mutate()}
                   disabled={purchase.isPending}
-                  className="w-full py-3 bg-forest text-white font-semibold rounded-xl hover:bg-forest-light disabled:opacity-50 transition-colors"
+                  className="w-full py-3 btn-forest text-sm rounded-xl disabled:opacity-50"
                 >
-                  {purchase.isPending ? 'Processing...' : 'Purchase Tickets'}
+                  {purchase.isPending ? 'Processing…' : 'Purchase Tickets'}
                 </button>
               ) : (
-                <a href="/login" className="block text-center py-3 bg-forest/50 text-white/70 font-semibold rounded-xl hover:bg-forest transition-colors">
+                <a href="/login" className="block text-center py-3 btn-ghost text-sm rounded-xl">
                   Sign in to buy tickets
                 </a>
               )}

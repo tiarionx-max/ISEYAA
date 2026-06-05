@@ -25,10 +25,11 @@ const TABS = [
 ];
 
 /* ── Wallet Card ─────────────────────────────────────────────────────────── */
-function WalletCard({ balance }: { balance: any }) {
+function WalletCard({ balance, spent = 0 }: { balance: any; spent?: number }) {
   const tier = balance?.kyc_tier ?? 0;
   const limit = balance?.daily_limit_ngn ?? 0;
   const balanceNgn = balance?.balance_ngn ?? 0;
+  const usedPct = limit ? Math.min((Number(spent) / limit) * 100, 100) : 0;
 
   return (
     <div
@@ -72,11 +73,13 @@ function WalletCard({ balance }: { balance: any }) {
         {/* Daily limit bar */}
         <div>
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-white/40 text-[11px]">Daily Limit</span>
-            <span className="text-white/60 text-[11px] font-semibold">₦{Number(limit).toLocaleString()}</span>
+            <span className="text-white/40 text-[11px]">Spent today / Daily limit</span>
+            <span className="text-white/60 text-[11px] font-semibold">
+              ₦{Number(spent).toLocaleString()} <span className="text-white/30">/ ₦{Number(limit).toLocaleString()}</span>
+            </span>
           </div>
           <div className="h-1.5 bg-white/15 rounded-full overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-gold/70 to-gold rounded-full" style={{ width: limit ? `${Math.min((balanceNgn / limit) * 100, 100)}%` : '2%' }} />
+            <div className="h-full bg-gradient-to-r from-gold/70 to-gold rounded-full transition-all" style={{ width: `${usedPct || 2}%` }} />
           </div>
         </div>
       </div>
@@ -202,8 +205,8 @@ function TopupModal({ open, onClose, email }: { open: boolean; onClose: () => vo
             exit={{ opacity: 0, y: 18, scale: 0.96 }}
             transition={{ duration: 0.22, ease: [0.25, 0.46, 0.45, 0.94] }}
             onClick={(e) => e.stopPropagation()}
-            className="relative w-full max-w-md glass border border-white/10 rounded-3xl p-7"
-            style={{ boxShadow: '0 24px 80px rgba(0,0,0,0.6)' }}
+            className="relative w-full max-w-md bg-jungle-2/98 backdrop-blur-xl border border-white/12 rounded-3xl p-7"
+            style={{ boxShadow: '0 24px 80px rgba(0,0,0,0.7)' }}
           >
             <button
               onClick={onClose}
@@ -415,7 +418,7 @@ function WalletTab({ email }: { email: string }) {
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
       {/* Wallet card */}
-      <WalletCard balance={balance} />
+      <WalletCard balance={balance} spent={totalSpent} />
 
       {/* Stat pills */}
       <div className="grid grid-cols-3 gap-3 mt-4">

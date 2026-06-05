@@ -107,7 +107,7 @@ export default function MarketplacePage() {
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="rounded-3xl border border-white/10 bg-white/[0.03] p-8 backdrop-blur-sm"
+              className="rounded-3xl border border-white/12 bg-jungle-2/95 p-8 backdrop-blur-xl"
               style={{ boxShadow: '0 10px 40px rgba(0,0,0,0.3)' }}
             >
               {!joined ? (
