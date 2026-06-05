@@ -93,7 +93,7 @@ function ServiceCard({ service, index }: { service: typeof SERVICES[0]; index: n
 
         <div className="relative flex flex-col flex-1">
           <div className="flex items-start justify-between mb-6">
-            <div className="w-12 h-12 rounded-2xl bg-white/6 border border-white/10 flex items-center justify-center group-hover:bg-white/10 transition-colors">
+            <div className="w-12 h-12 rounded-2xl bg-white/[0.06] border border-white/10 flex items-center justify-center group-hover:bg-white/10 transition-colors">
               <Icon size={22} className="text-gold" />
             </div>
             <span className="text-[10px] font-bold text-white/40 bg-white/5 border border-white/8 px-2.5 py-1 rounded-full uppercase tracking-widest">

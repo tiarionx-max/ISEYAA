@@ -205,7 +205,7 @@ export default function PropertyDetailPage() {
                       value={checkIn}
                       min={today}
                       onChange={(e) => setCheckIn(e.target.value)}
-                      className="w-full bg-white/6 text-white text-sm rounded-xl px-3 py-2.5 border border-white/10 focus:outline-none focus:border-indigo-400/50 focus:bg-white/8 transition-all"
+                      className="w-full bg-white/[0.06] text-white text-sm rounded-xl px-3 py-2.5 border border-white/10 focus:outline-none focus:border-indigo-400/50 focus:bg-white/[0.08] transition-all"
                     />
                   </div>
                   <div>
@@ -215,7 +215,7 @@ export default function PropertyDetailPage() {
                       value={checkOut}
                       min={checkIn || today}
                       onChange={(e) => setCheckOut(e.target.value)}
-                      className="w-full bg-white/6 text-white text-sm rounded-xl px-3 py-2.5 border border-white/10 focus:outline-none focus:border-indigo-400/50 focus:bg-white/8 transition-all"
+                      className="w-full bg-white/[0.06] text-white text-sm rounded-xl px-3 py-2.5 border border-white/10 focus:outline-none focus:border-indigo-400/50 focus:bg-white/[0.08] transition-all"
                     />
                   </div>
                   <div>
@@ -226,7 +226,7 @@ export default function PropertyDetailPage() {
                       max={property.maxGuests ?? 16}
                       value={guests}
                       onChange={(e) => setGuests(Math.max(1, Number(e.target.value) || 1))}
-                      className="w-full bg-white/6 text-white text-sm rounded-xl px-3 py-2.5 border border-white/10 focus:outline-none focus:border-indigo-400/50 focus:bg-white/8 transition-all"
+                      className="w-full bg-white/[0.06] text-white text-sm rounded-xl px-3 py-2.5 border border-white/10 focus:outline-none focus:border-indigo-400/50 focus:bg-white/[0.08] transition-all"
                     />
                   </div>
                 </div>

@@ -82,13 +82,13 @@ function SlotCard({ slot, index }: { slot: any; index: number }) {
 
         <div className="flex items-center gap-4 text-white/40 text-xs">
           <span className="flex items-center gap-1.5">
-            <div className="w-5 h-5 rounded-md bg-white/6 flex items-center justify-center">
+            <div className="w-5 h-5 rounded-md bg-white/[0.06] flex items-center justify-center">
               <Clock size={10} className="text-gold/60" />
             </div>
             {slot.durationMinutes} min slots
           </span>
           <span className="flex items-center gap-1.5">
-            <div className="w-5 h-5 rounded-md bg-white/6 flex items-center justify-center">
+            <div className="w-5 h-5 rounded-md bg-white/[0.06] flex items-center justify-center">
               <span className="text-[9px] text-gold/60 font-bold">₦</span>
             </div>
             ₦{Number(slot.pricePerHour).toLocaleString()}/hr
@@ -118,7 +118,7 @@ function SlotCard({ slot, index }: { slot: any; index: number }) {
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
                 min={new Date().toISOString().split('T')[0]}
-                className="w-full bg-white/6 text-white text-sm rounded-xl px-3.5 py-2.5 border border-white/10 focus:outline-none focus:border-purple-500/50 transition-colors"
+                className="w-full bg-white/[0.06] text-white text-sm rounded-xl px-3.5 py-2.5 border border-white/10 focus:outline-none focus:border-purple-500/50 transition-colors"
               />
             </div>
 
@@ -129,7 +129,7 @@ function SlotCard({ slot, index }: { slot: any; index: number }) {
                   type="time"
                   value={startTime}
                   onChange={(e) => setStartTime(e.target.value)}
-                  className="w-full bg-white/6 text-white text-sm rounded-xl px-3.5 py-2.5 border border-white/10 focus:outline-none focus:border-purple-500/50 transition-colors"
+                  className="w-full bg-white/[0.06] text-white text-sm rounded-xl px-3.5 py-2.5 border border-white/10 focus:outline-none focus:border-purple-500/50 transition-colors"
                 />
               </div>
               <div className="flex-1">
@@ -137,7 +137,7 @@ function SlotCard({ slot, index }: { slot: any; index: number }) {
                 <select
                   value={durationHours}
                   onChange={(e) => setDurationHours(Number(e.target.value))}
-                  className="w-full bg-white/6 text-white text-sm rounded-xl px-3.5 py-2.5 border border-white/10 focus:outline-none focus:border-purple-500/50 transition-colors"
+                  className="w-full bg-white/[0.06] text-white text-sm rounded-xl px-3.5 py-2.5 border border-white/10 focus:outline-none focus:border-purple-500/50 transition-colors"
                 >
                   {[1, 2, 3, 4, 6, 8].map((h) => (
                     <option key={h} value={h}>{h}h</option>
@@ -155,7 +155,7 @@ function SlotCard({ slot, index }: { slot: any; index: number }) {
             <div className="flex gap-2">
               <button
                 onClick={() => setShowForm(false)}
-                className="flex-1 py-2.5 bg-white/6 text-white/60 text-sm font-medium rounded-xl hover:bg-white/10 transition-colors border border-white/8"
+                className="flex-1 py-2.5 bg-white/[0.06] text-white/60 text-sm font-medium rounded-xl hover:bg-white/10 transition-colors border border-white/8"
               >
                 Cancel
               </button>
