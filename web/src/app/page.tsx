@@ -1,8 +1,11 @@
 'use client';
 
 import { motion, useScroll, useTransform } from 'framer-motion';
+import { useQuery } from '@tanstack/react-query';
+import { useSession } from 'next-auth/react';
 import { Navbar } from '@/components/layout/Navbar';
 import { OgunMap } from '@/components/ui/OgunMap';
+import { fetcher } from '@/lib/api';
 import Link from 'next/link';
 import {
   Calendar, Home, ShoppingBag, Music,
@@ -10,14 +13,6 @@ import {
   Shield, Smartphone, Globe, ChevronDown,
 } from 'lucide-react';
 import { useRef } from 'react';
-
-/* ── Data ────────────────────────────────────────────────────────────────── */
-const STATS = [
-  { value: '20',   label: 'LGAs Covered',   icon: MapPin },
-  { value: '7M+',  label: 'Citizens',        icon: Users  },
-  { value: '61',   label: 'Attractions',     icon: Star   },
-  { value: '100%', label: 'Secure & NDPA',   icon: Shield },
-];
 
 const SERVICES = [
   {
@@ -117,6 +112,32 @@ export default function HomePage() {
   const mapY = useTransform(scrollYProgress, [0, 1], ['0%', '15%']);
   const mapOpacity = useTransform(scrollYProgress, [0, 0.7], [1, 0]);
   const textY = useTransform(scrollYProgress, [0, 1], ['0%', '25%']);
+
+  const { data: session } = useSession();
+
+  // Live counts pulled from the backend so STATS aren't hardcoded
+  const { data: lgas, isLoading: lgasLoading } = useQuery<any[]>({
+    queryKey: ['home-lgas'],
+    queryFn: () => fetcher('/lgas'),
+    staleTime: 5 * 60 * 1000,
+  });
+  const { data: attractions, isLoading: attractionsLoading } = useQuery<any[]>({
+    queryKey: ['home-attractions'],
+    queryFn: () => fetcher('/attractions'),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const lgaCount = Array.isArray(lgas) ? lgas.length : null;
+  const attractionCount = Array.isArray(attractions) ? attractions.length : null;
+
+  const STATS = [
+    { value: lgasLoading || lgaCount === null ? '—' : String(lgaCount),                label: 'LGAs Covered',     icon: MapPin },
+    { value: '7M+',                                                                     label: 'Citizens served',  icon: Users  },
+    { value: attractionsLoading || attractionCount === null ? '—' : String(attractionCount), label: 'Attractions', icon: Star   },
+    { value: '100%',                                                                    label: 'Secure & NDPA',    icon: Shield },
+  ];
+
+  const HIGHLIGHT_LGAS = Array.isArray(lgas) ? lgas.slice(0, 8) : [];
 
   return (
     <div className="min-h-screen bg-jungle text-white overflow-x-hidden">
@@ -288,21 +309,33 @@ export default function HomePage() {
                 From Imeko Afon in the northwest to Ogun Waterside in the southeast — every local government area is live on Iṣẹ́yáá. Discover attractions, book stays, and find events near you.
               </p>
 
-              <div className="flex flex-col gap-3">
-                {[
-                  { label: 'Abeokuta South', desc: 'State Capital · Heritage & Culture', color: 'text-gold' },
-                  { label: 'Sagamu',          desc: 'Commerce Hub · Events Capital',      color: 'text-forest-light' },
-                  { label: 'Ado-Odo/Ota',    desc: 'Industrial Zone · Largest LGA',      color: 'text-forest-light' },
-                  { label: 'Ijebu Ode',       desc: 'Tourism Gateway · Historic Markets', color: 'text-forest-light' },
-                ].map(({ label, desc, color }) => (
-                  <div key={label} className="flex items-center gap-3 group cursor-default">
-                    <div className={`w-1.5 h-1.5 rounded-full ${color === 'text-gold' ? 'bg-gold' : 'bg-forest-light'} shrink-0`} />
-                    <div>
-                      <span className={`text-sm font-bold ${color}`}>{label}</span>
-                      <span className="text-white/30 text-xs ml-2">{desc}</span>
-                    </div>
-                  </div>
-                ))}
+              <div className="flex flex-wrap gap-2">
+                {lgasLoading && HIGHLIGHT_LGAS.length === 0
+                  ? Array.from({ length: 8 }).map((_, i) => (
+                      <div
+                        key={i}
+                        className="h-7 w-28 rounded-full bg-white/5 border border-white/8 animate-pulse"
+                      />
+                    ))
+                  : HIGHLIGHT_LGAS.map((lga: any, i: number) => (
+                      <Link
+                        key={lga.id ?? lga.slug ?? lga.name}
+                        href={`/stays?lga=${encodeURIComponent(lga.slug ?? '')}`}
+                        className={`group inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold transition-colors ${
+                          i === 0
+                            ? 'bg-gold/12 border-gold/30 text-gold hover:bg-gold/20'
+                            : 'bg-white/5 border-white/10 text-forest-light hover:border-forest/40 hover:bg-forest/10'
+                        }`}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${i === 0 ? 'bg-gold' : 'bg-forest-light'} shrink-0`} />
+                        {lga.name}
+                        {typeof lga._count?.attractions === 'number' && (
+                          <span className="text-white/30 text-[10px] ml-0.5">
+                            · {lga._count.attractions}
+                          </span>
+                        )}
+                      </Link>
+                    ))}
               </div>
             </motion.div>
 
@@ -450,22 +483,52 @@ export default function HomePage() {
                 Ogun State&apos;s unified digital super-platform. Operated by LJ Entertainment.
               </p>
             </div>
-            {[
-              { heading: 'Platform', links: ['Events', 'Stays', 'Marketplace', 'Studio'] },
-              { heading: 'Account',  links: ['Sign In', 'Register', 'Dashboard', 'Wallet'] },
-              { heading: 'Legal',    links: ['Privacy Policy', 'NDPA Notice', 'Terms of Use', 'Cookies'] },
-            ].map(({ heading, links }) => (
-              <div key={heading}>
-                <h4 className="text-white/60 text-xs font-bold uppercase tracking-widest mb-4">{heading}</h4>
-                <ul className="space-y-2.5">
-                  {links.map((l) => (
-                    <li key={l}>
-                      <a href="#" className="text-white/30 text-sm hover:text-white/60 transition-colors">{l}</a>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
+            {(() => {
+              const accountLinks: { label: string; href: string }[] = [
+                { label: 'Sign In',   href: '/login' },
+                { label: 'Register',  href: '/register' },
+              ];
+              if (session) {
+                accountLinks.push({ label: 'Dashboard', href: '/dashboard' });
+              }
+
+              const groups: { heading: string; links: { label: string; href: string }[] }[] = [
+                {
+                  heading: 'Platform',
+                  links: [
+                    { label: 'Events',      href: '/events' },
+                    { label: 'Stays',       href: '/stays' },
+                    { label: 'Marketplace', href: '/marketplace' },
+                    { label: 'Studio',      href: '/studio' },
+                  ],
+                },
+                { heading: 'Account', links: accountLinks },
+                {
+                  heading: 'Legal',
+                  links: [
+                    { label: 'Privacy Policy', href: '/privacy' },
+                    { label: 'NDPA Notice',    href: '/ndpa' },
+                    { label: 'Terms of Use',   href: '/terms' },
+                    { label: 'Cookies',        href: '/cookies' },
+                  ],
+                },
+              ];
+
+              return groups.map(({ heading, links }) => (
+                <div key={heading}>
+                  <h4 className="text-white/60 text-xs font-bold uppercase tracking-widest mb-4">{heading}</h4>
+                  <ul className="space-y-2.5">
+                    {links.map((l) => (
+                      <li key={l.label}>
+                        <Link href={l.href} className="text-white/30 text-sm hover:text-white/60 transition-colors">
+                          {l.label}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ));
+            })()}
           </div>
           <div className="border-t border-white/5 pt-8 flex flex-col sm:flex-row items-center justify-between gap-3">
             <p className="text-white/20 text-xs">© 2026 Iṣẹ́yáá · Operated by LJ Entertainment · Endorsed by Ogun State Government</p>

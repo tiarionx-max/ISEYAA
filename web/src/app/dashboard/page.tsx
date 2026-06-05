@@ -1,17 +1,18 @@
 'use client';
 
-import { motion } from 'framer-motion';
-import { useQuery } from '@tanstack/react-query';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Navbar } from '@/components/layout/Navbar';
 import { PageTransition } from '@/components/ui/PageTransition';
-import { fetcher } from '@/lib/api';
+import { fetcher, api } from '@/lib/api';
 import { useSession } from 'next-auth/react';
 import { redirect } from 'next/navigation';
+import { toast } from 'sonner';
 import {
   Wallet, Ticket, Home, Package, ArrowUpRight, ArrowDownLeft,
   Clock, TrendingUp, ShieldCheck, Plus, ExternalLink, Calendar,
-  MapPin, ChevronRight, Inbox, Receipt, Star,
+  MapPin, ChevronRight, Receipt, Send, X, Loader2,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -139,10 +140,272 @@ function EmptyState({ icon: Icon, title, desc, cta, href }: { icon: any; title: 
   );
 }
 
+/* ── Top-up Modal ────────────────────────────────────────────────────────── */
+function TopupModal({ open, onClose, email }: { open: boolean; onClose: () => void; email: string }) {
+  const [amount, setAmount] = useState('');
+  const qc = useQueryClient();
+
+  const topup = useMutation({
+    mutationFn: (amt: number) =>
+      api.post('/wallet/topup', { amount: amt, email }).then((r) => r.data),
+    onSuccess: (data: any) => {
+      const url = data?.authorizationUrl ?? data?.payment?.authorizationUrl;
+      if (url) {
+        window.open(url, '_blank');
+        toast.success('Top-up window opened — complete in the new tab');
+      } else {
+        toast.error('No payment URL returned from gateway');
+      }
+      qc.invalidateQueries({ queryKey: ['wallet-balance'] });
+      qc.invalidateQueries({ queryKey: ['wallet-txns'] });
+      setAmount('');
+      onClose();
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.message ?? 'Failed to initiate top-up';
+      toast.error(Array.isArray(msg) ? msg.join(', ') : msg);
+    },
+  });
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const n = Number(amount);
+    if (!Number.isFinite(n) || n < 100) {
+      toast.error('Minimum top-up is ₦100');
+      return;
+    }
+    if (n > 1_000_000) {
+      toast.error('Maximum top-up is ₦1,000,000');
+      return;
+    }
+    topup.mutate(n);
+  }
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/70 backdrop-blur-sm"
+          onClick={onClose}
+        >
+          <motion.div
+            initial={{ opacity: 0, y: 18, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 18, scale: 0.96 }}
+            transition={{ duration: 0.22, ease: [0.25, 0.46, 0.45, 0.94] }}
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-md glass border border-white/10 rounded-3xl p-7"
+            style={{ boxShadow: '0 24px 80px rgba(0,0,0,0.6)' }}
+          >
+            <button
+              onClick={onClose}
+              className="absolute top-4 right-4 w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-white/50 hover:text-white transition-colors"
+            >
+              <X size={15} />
+            </button>
+
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-11 h-11 rounded-2xl bg-forest/30 border border-forest/30 flex items-center justify-center">
+                <Plus size={20} className="text-gold" />
+              </div>
+              <div>
+                <h3 className="text-white font-extrabold text-lg">Top Up Wallet</h3>
+                <p className="text-white/40 text-xs">Funded via Paystack · CBN compliant</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="text-[11px] text-white/45 mb-2 block font-semibold uppercase tracking-wider">
+                  Amount (NGN)
+                </label>
+                <input
+                  type="number"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  min={100}
+                  max={1_000_000}
+                  step={100}
+                  required
+                  autoFocus
+                  placeholder="e.g. 5000"
+                  className="w-full bg-white/6 text-white placeholder-white/25 text-sm rounded-xl px-4 py-3 border border-white/10 focus:outline-none focus:border-forest/60 focus:bg-white/8 transition-all"
+                />
+                <p className="text-white/30 text-[11px] mt-1.5">Min ₦100 · Max ₦1,000,000</p>
+              </div>
+
+              <div className="flex gap-2 flex-wrap">
+                {[1000, 2500, 5000, 10000].map((quick) => (
+                  <button
+                    key={quick}
+                    type="button"
+                    onClick={() => setAmount(String(quick))}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-white/5 hover:bg-forest/20 border border-white/10 hover:border-forest/40 text-white/65 hover:text-white transition-all"
+                  >
+                    ₦{quick.toLocaleString()}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="submit"
+                disabled={topup.isPending}
+                className="w-full py-3.5 btn-forest text-white font-bold rounded-2xl flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed mt-2"
+              >
+                {topup.isPending ? (
+                  <>
+                    <Loader2 size={15} className="animate-spin" /> Opening Paystack…
+                  </>
+                ) : (
+                  <>
+                    <ExternalLink size={15} /> Continue to Paystack
+                  </>
+                )}
+              </button>
+            </form>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+/* ── Send Money Card ─────────────────────────────────────────────────────── */
+function SendMoneyCard() {
+  const [recipientPhone, setRecipientPhone] = useState('');
+  const [amount, setAmount] = useState('');
+  const [narration, setNarration] = useState('');
+  const qc = useQueryClient();
+
+  const transfer = useMutation({
+    mutationFn: (payload: { recipientPhone: string; amount: number; narration?: string }) =>
+      api.post('/wallet/transfer', payload).then((r) => r.data),
+    onSuccess: (data: any) => {
+      toast.success(
+        `Sent ₦${Number(data?.amount ?? 0).toLocaleString()}. New balance: ₦${Number(data?.newBalance ?? 0).toLocaleString()} · ${data?.reference ?? ''}`,
+      );
+      qc.invalidateQueries({ queryKey: ['wallet-balance'] });
+      qc.invalidateQueries({ queryKey: ['wallet-txns'] });
+      setRecipientPhone('');
+      setAmount('');
+      setNarration('');
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.message ?? 'Transfer failed';
+      toast.error(Array.isArray(msg) ? msg.join(', ') : msg);
+    },
+  });
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const n = Number(amount);
+    if (!recipientPhone.trim()) {
+      toast.error('Recipient phone is required');
+      return;
+    }
+    if (!Number.isFinite(n) || n < 100) {
+      toast.error('Minimum transfer is ₦100');
+      return;
+    }
+    transfer.mutate({
+      recipientPhone: recipientPhone.trim(),
+      amount: n,
+      ...(narration.trim() ? { narration: narration.trim() } : {}),
+    });
+  }
+
+  return (
+    <div className="mt-6 glass rounded-2xl border border-white/8 overflow-hidden">
+      <div className="flex items-center gap-2.5 px-5 py-4 border-b border-white/8">
+        <div className="w-8 h-8 rounded-xl bg-forest/30 border border-forest/30 flex items-center justify-center">
+          <Send size={14} className="text-gold" />
+        </div>
+        <div>
+          <h2 className="font-bold text-white text-sm">Send Money</h2>
+          <p className="text-white/35 text-[11px]">Instant transfer to any Iṣẹ́yáá user</p>
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit} className="p-5 space-y-3.5">
+        <div>
+          <label className="text-[11px] text-white/45 mb-1.5 block font-semibold uppercase tracking-wider">
+            Recipient Phone
+          </label>
+          <input
+            type="tel"
+            value={recipientPhone}
+            onChange={(e) => setRecipientPhone(e.target.value)}
+            required
+            placeholder="+2348012345678"
+            className="w-full bg-white/6 text-white placeholder-white/25 text-sm rounded-xl px-4 py-2.5 border border-white/10 focus:outline-none focus:border-forest/60 focus:bg-white/8 transition-all"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-[11px] text-white/45 mb-1.5 block font-semibold uppercase tracking-wider">
+              Amount (NGN)
+            </label>
+            <input
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              min={100}
+              step={100}
+              required
+              placeholder="1000"
+              className="w-full bg-white/6 text-white placeholder-white/25 text-sm rounded-xl px-4 py-2.5 border border-white/10 focus:outline-none focus:border-forest/60 focus:bg-white/8 transition-all"
+            />
+          </div>
+          <div>
+            <label className="text-[11px] text-white/45 mb-1.5 block font-semibold uppercase tracking-wider">
+              Narration (optional)
+            </label>
+            <input
+              type="text"
+              value={narration}
+              onChange={(e) => setNarration(e.target.value.slice(0, 120))}
+              maxLength={120}
+              placeholder="Birthday gift"
+              className="w-full bg-white/6 text-white placeholder-white/25 text-sm rounded-xl px-4 py-2.5 border border-white/10 focus:outline-none focus:border-forest/60 focus:bg-white/8 transition-all"
+            />
+          </div>
+        </div>
+
+        <button
+          type="submit"
+          disabled={transfer.isPending}
+          className="w-full py-3 btn-forest text-white font-bold rounded-2xl flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed text-sm"
+        >
+          {transfer.isPending ? (
+            <>
+              <Loader2 size={14} className="animate-spin" /> Sending…
+            </>
+          ) : (
+            <>
+              <Send size={14} /> Send Money
+            </>
+          )}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 /* ── Tabs ────────────────────────────────────────────────────────────────── */
-function WalletTab() {
+function WalletTab({ email }: { email: string }) {
   const { data: balance } = useQuery({ queryKey: ['wallet-balance'], queryFn: () => fetcher('/wallet/balance') });
   const { data: txns } = useQuery({ queryKey: ['wallet-txns'], queryFn: () => fetcher('/wallet/transactions?limit=10') });
+  const [topupOpen, setTopupOpen] = useState(false);
+
+  // Compute total spent from transactions (real data, not hardcoded)
+  const totalSpent = (txns?.data ?? [])
+    .filter((tx: any) => tx.type === 'DEBIT' || tx.type === 'TRANSFER')
+    .filter((tx: any) => tx?.metadata?.direction !== 'in')
+    .reduce((sum: number, tx: any) => sum + Math.abs(Number(tx.amount ?? 0)), 0);
 
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
@@ -164,18 +427,26 @@ function WalletTab() {
           color="bg-forest/40 border border-forest/30"
         />
         <StatPill
-          label="Total Spent"
-          value={`₦${Number(balance?.total_spent ?? 0).toLocaleString()}`}
+          label="Spent (recent)"
+          value={`₦${Number(totalSpent).toLocaleString()}`}
           icon={TrendingUp}
           color="bg-indigo-900/40 border border-indigo-700/20"
         />
       </div>
 
       {/* Top up CTA */}
-      <button className="w-full mt-4 py-3.5 glass border border-white/10 rounded-2xl text-sm font-semibold text-white/70 hover:text-white hover:border-forest/40 hover:bg-forest/10 transition-all flex items-center justify-center gap-2">
+      <button
+        onClick={() => setTopupOpen(true)}
+        className="w-full mt-4 py-3.5 glass border border-white/10 rounded-2xl text-sm font-semibold text-white/70 hover:text-white hover:border-forest/40 hover:bg-forest/10 transition-all flex items-center justify-center gap-2"
+      >
         <Plus size={15} className="text-gold" />
         Top Up Wallet via Paystack
       </button>
+
+      <TopupModal open={topupOpen} onClose={() => setTopupOpen(false)} email={email} />
+
+      {/* Send Money */}
+      <SendMoneyCard />
 
       {/* Transactions */}
       <div className="mt-6 glass rounded-2xl border border-white/8 overflow-hidden">
@@ -401,7 +672,7 @@ export default function DashboardPage() {
           </motion.div>
 
           {/* Tab content */}
-          {tab === 'wallet' && <WalletTab />}
+          {tab === 'wallet' && <WalletTab email={session?.user?.email ?? ''} />}
           {tab === 'tickets' && <TicketsTab />}
           {tab === 'bookings' && <BookingsTab />}
           {tab === 'orders' && <OrdersTab />}

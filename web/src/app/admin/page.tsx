@@ -372,38 +372,6 @@ export default function AdminPage() {
             </div>
           </motion.div>
 
-          {/* ── Platform health ──────────────────────────────────────────── */}
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.64 }}
-            className="glass rounded-2xl border border-white/6 p-5"
-          >
-            <div className="flex items-center gap-2 mb-4">
-              <Activity size={14} className="text-green-400" />
-              <h3 className="text-sm font-bold text-white">Platform Health</h3>
-              <div className="ml-auto flex items-center gap-1.5 text-[11px] text-green-400 font-semibold">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                All systems operational
-              </div>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {[
-                { label: 'API Server',   status: 'Online',         latency: '12ms'  },
-                { label: 'Database',     status: 'Healthy',        latency: '3ms'   },
-                { label: 'Paystack',     status: 'Live',           latency: '—'     },
-                { label: 'Webhooks',     status: 'Listening',      latency: '—'     },
-              ].map(({ label, status, latency }) => (
-                <div key={label} className="flex items-center justify-between p-3 bg-white/2 rounded-xl border border-white/5">
-                  <div>
-                    <p className="text-white/50 text-[11px] font-medium">{label}</p>
-                    <p className="text-green-400 text-xs font-bold mt-0.5">{status}</p>
-                  </div>
-                  {latency !== '—' && <span className="text-[10px] text-white/20 font-mono">{latency}</span>}
-                </div>
-              ))}
-            </div>
-          </motion.div>
         </main>
       </PageTransition>
     </div>
