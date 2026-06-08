@@ -37,10 +37,10 @@ p.lGA.count().then(n => { console.log(n); p.\$disconnect(); }).catch(() => { con
 
 if [ "$LGA_COUNT" = "0" ]; then
   echo "Database is empty — running seed..."
-  node dist/prisma/seed.js || npx ts-node prisma/seed.ts || echo "WARN: seed failed, continuing startup"
+  npx ts-node --compiler-options '{"module":"CommonJS"}' prisma/seed.ts || echo "WARN: seed failed, continuing startup"
 else
   echo "Database already seeded (${LGA_COUNT} LGAs) — skipping seed"
 fi
 
-echo "Starting ISEYAA backend..."
-exec node --require ./dist/src/instrumentation.js ./dist/src/main.js
+echo "Starting Iṣẹ́yáá backend..."
+exec node --require ./dist/instrumentation.js ./dist/main.js
