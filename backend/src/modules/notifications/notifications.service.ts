@@ -1,16 +1,50 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
+import { GoogleAuth, JWT } from 'google-auth-library';
 import { PrismaService } from '../../prisma/prisma.service';
+
+interface ServiceAccountJson {
+  project_id: string;
+  client_email: string;
+  private_key: string;
+}
 
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
+  private fcmProjectId: string | null = null;
+  private fcmAuthClient: JWT | null = null;
 
   constructor(
     private prisma: PrismaService,
     private config: ConfigService,
-  ) {}
+  ) {
+    this.initFcm();
+  }
+
+  private initFcm() {
+    const raw = this.config.get<string>('FIREBASE_SERVICE_ACCOUNT_JSON', '');
+    if (!raw) {
+      this.logger.warn('FIREBASE_SERVICE_ACCOUNT_JSON not set — push notifications disabled');
+      return;
+    }
+    try {
+      const json: ServiceAccountJson = JSON.parse(raw);
+      this.fcmProjectId = json.project_id;
+      this.fcmAuthClient = new GoogleAuth({
+        credentials: { client_email: json.client_email, private_key: json.private_key },
+        scopes: ['https://www.googleapis.com/auth/firebase.messaging'],
+      }).fromJSON({
+        type: 'service_account',
+        client_email: json.client_email,
+        private_key: json.private_key,
+      } as any) as JWT;
+      this.logger.log(`FCM v1 initialised for project ${json.project_id}`);
+    } catch (err: any) {
+      this.logger.error('Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON', err.message);
+    }
+  }
 
   // TODO: persistence not yet wired — no Notification model in the Prisma schema.
   // Returning an empty array so the mobile screen has a stable route.
@@ -26,26 +60,55 @@ export class NotificationsService {
     return { registered: true };
   }
 
-  async sendPush(userId: string, title: string, body: string, data?: any) {
+  async sendPush(userId: string, title: string, body: string, data?: Record<string, string>) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     const meta = user?.metadata as any;
     const token = meta?.fcmToken;
 
     if (!token) {
       this.logger.warn(`No FCM token for user ${userId}`);
-      return { sent: false, reason: 'no_token' };
+      return { sent: false, reason: 'no_token' as const };
+    }
+
+    if (!this.fcmAuthClient || !this.fcmProjectId) {
+      this.logger.warn('FCM not configured — skipping push');
+      return { sent: false, reason: 'not_configured' as const };
     }
 
     try {
+      const accessTokenResponse = await this.fcmAuthClient.getAccessToken();
+      const accessToken = accessTokenResponse?.token;
+      if (!accessToken) {
+        this.logger.error('Failed to obtain FCM access token');
+        return { sent: false, reason: 'auth_failed' as const };
+      }
+
+      // FCM HTTP v1 payload — data values MUST be strings
+      const stringData: Record<string, string> | undefined = data
+        ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)]))
+        : undefined;
+
       await axios.post(
-        'https://fcm.googleapis.com/fcm/send',
-        { to: token, notification: { title, body }, data },
-        { headers: { Authorization: `key=${this.config.get('FIREBASE_SERVER_KEY')}` } },
+        `https://fcm.googleapis.com/v1/projects/${this.fcmProjectId}/messages:send`,
+        {
+          message: {
+            token,
+            notification: { title, body },
+            ...(stringData && { data: stringData }),
+          },
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+        },
       );
       return { sent: true };
-    } catch (err) {
-      this.logger.error('FCM send failed', err);
-      return { sent: false };
+    } catch (err: any) {
+      const detail = err?.response?.data ?? err.message;
+      this.logger.error('FCM v1 send failed', JSON.stringify(detail));
+      return { sent: false, reason: 'send_failed' as const };
     }
   }
 }
