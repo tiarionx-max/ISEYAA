@@ -27,6 +27,12 @@ export class PaystackService {
     const { email, amountKobo, reference, metadata, callbackUrl } = params;
     const secretKey = this.config.get<string>('PAYSTACK_SECRET_KEY', '');
 
+    if (!secretKey) {
+      this.logger.error('Paystack initiate payment skipped — PAYSTACK_SECRET_KEY is not set in env');
+      throw new Error('PAYSTACK_SECRET_KEY not configured');
+    }
+    this.logger.log(`Paystack initiate: ref=${reference} amount=${amountKobo} keyPrefix=${secretKey.slice(0, 8)}…`);
+
     try {
       const response = await axios.post(
         `${this.baseUrl}/transaction/initialize`,
@@ -43,7 +49,9 @@ export class PaystackService {
       const { authorization_url, access_code, reference: ref } = response.data.data;
       return { authorizationUrl: authorization_url, accessCode: access_code, reference: ref };
     } catch (err) {
-      this.logger.error('Paystack initiate payment failed', err?.response?.data ?? err.message);
+      const status = (err as any)?.response?.status;
+      const body = (err as any)?.response?.data;
+      this.logger.error(`Paystack initiate failed (HTTP ${status}): ${JSON.stringify(body) ?? (err as Error).message}`);
       throw err;
     }
   }
