@@ -1,4 +1,5 @@
 import { PrismaClient, AttractionCategory } from '@prisma/client';
+import { v4 as uuidv4 } from 'uuid';
 
 const prisma = new PrismaClient();
 
@@ -2069,6 +2070,190 @@ async function main() {
   }
   console.log(`  ✓ Experiences: created ${xCreated}, skipped ${xSkipped}`);
 
+  // ─── 11. Seed Vendors + Products (Temu-style marketplace) ──────────────
+  console.log('\n🛍️  Seeding marketplace vendors + products...');
+
+  type VendorSeed = {
+    handle: string; businessName: string; lgaName: string; description: string;
+    products: Array<{
+      name: string; category: string; price: number; compareAt?: number;
+      description: string; stock: number; image: string; featured?: boolean;
+    }>;
+  };
+
+  const VENDORS: VendorSeed[] = [
+    {
+      handle: 'iya-adunni-adire',
+      businessName: 'Iya Adunni Adire Studio',
+      lgaName: 'Abeokuta South',
+      description: 'Three generations of Adire indigo artisans. Each piece is hand-dyed in our Itoku Market workshop.',
+      products: [
+        { name: 'Classic Adire Indigo Wrapper (2 yards)', category: 'fashion', price: 8500, description: 'Traditional indigo Adire fabric, hand-dyed in Itoku Market. Perfect for skirts, dresses, head ties.', stock: 35, featured: true, image: 'https://images.unsplash.com/photo-1488462237308-ecaa28b729d7?w=1200' },
+        { name: 'Adire Eleko Tablecloth', category: 'fashion', price: 14000, compareAt: 18000, description: 'Cassava-paste resist-dyed dining tablecloth. Seats 6.', stock: 12, image: 'https://images.unsplash.com/photo-1604147706283-d7119b5b822c?w=1200' },
+        { name: 'Adire Throw Pillow Set (2)', category: 'fashion', price: 9500, description: 'Pair of square throw pillows in matching Adire pattern.', stock: 28, image: 'https://images.unsplash.com/photo-1493663284031-b7e3aefcae8e?w=1200' },
+      ],
+    },
+    {
+      handle: 'ofada-mama-direct',
+      businessName: 'Ofada Mama Direct',
+      lgaName: 'Obafemi Owode',
+      description: 'Farm-direct Ofada rice from Ofada town. Milled the week you order.',
+      products: [
+        { name: 'Ofada Rice 5kg — Premium Brown', category: 'food', price: 7500, description: 'Freshly milled brown Ofada rice. Long-grain, locally grown.', stock: 200, featured: true, image: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=1200' },
+        { name: 'Ayamashe Pepper Sauce 500ml', category: 'food', price: 3500, description: 'Traditional fermented green pepper sauce. The official Ofada partner.', stock: 80, image: 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=1200' },
+        { name: 'Ofada + Ayamashe Combo Pack', category: 'food', price: 10000, compareAt: 11000, description: 'A 5kg bag of Ofada + 500ml Ayamashe at a discount.', stock: 60, image: 'https://images.unsplash.com/photo-1565299585323-38d6b0865b47?w=1200' },
+      ],
+    },
+    {
+      handle: 'olumo-crafts-collective',
+      businessName: 'Olumo Crafts Collective',
+      lgaName: 'Abeokuta South',
+      description: 'Wood-carvers, bead artists, and weavers from the Olumo Rock foothills. Member-owned cooperative.',
+      products: [
+        { name: 'Egba Talking Drum (Gangan)', category: 'crafts', price: 22000, description: 'Hand-carved Iroko wood, antelope-skin head, woven leather tension straps. Comes with strap and beater.', stock: 9, featured: true, image: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=1200' },
+        { name: 'Beaded Wall Hanging — Yoruba Crown Motif', category: 'crafts', price: 12500, description: 'Indigo + gold glass beads on raffia backing. Approx 60×90cm.', stock: 14, image: 'https://images.unsplash.com/photo-1518611012118-696072aa579a?w=1200' },
+        { name: 'Hand-Carved Wooden Stool — Egba Pattern', category: 'crafts', price: 18000, description: 'Single-piece carved stool. Sits 35cm tall.', stock: 6, image: 'https://images.unsplash.com/photo-1519710164239-da123dc03ef4?w=1200' },
+      ],
+    },
+    {
+      handle: 'ake-canvas-gallery',
+      businessName: 'Ake Canvas Gallery',
+      lgaName: 'Abeokuta South',
+      description: 'Original paintings, prints, and photography from Ake-quarter artists.',
+      products: [
+        { name: 'Olumo Rock at Sunset — Original Acrylic', category: 'art', price: 85000, description: '60×80cm signed original by Toyin Adesanya. Includes wooden frame.', stock: 1, featured: true, image: 'https://images.unsplash.com/photo-1547891654-e66ed7ebb968?w=1200' },
+        { name: 'Adire Patterns — Limited Print Set (3)', category: 'art', price: 16500, description: 'Set of 3 archival prints, A3 size, edition of 100.', stock: 22, image: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=1200' },
+        { name: 'Egba Masquerade Photograph — A2', category: 'art', price: 9500, description: 'Documentary photography from the 2025 Lisabi Festival.', stock: 18, image: 'https://images.unsplash.com/photo-1531058020387-3be344556be6?w=1200' },
+      ],
+    },
+    {
+      handle: 'gateway-tech-shop',
+      businessName: 'Gateway Tech Shop',
+      lgaName: 'Abeokuta North',
+      description: 'Phone accessories, solar gear, and tech essentials for Ogun creatives and students.',
+      products: [
+        { name: 'Solar Power Bank 20,000 mAh', category: 'tech', price: 18500, description: 'Foldable solar panel + dual USB output. Charges your phone 4× per cycle.', stock: 45, image: 'https://images.unsplash.com/photo-1609091839311-d5365f9ff1c5?w=1200' },
+        { name: 'Wireless Bluetooth Speaker — Adire Edition', category: 'tech', price: 12000, compareAt: 15000, description: 'Custom Adire-print wrap on a powerful 10W speaker. 12hr battery.', stock: 38, image: 'https://images.unsplash.com/photo-1608043152269-423dbba4e7e1?w=1200' },
+        { name: 'USB-C Multiport Adapter (7-in-1)', category: 'tech', price: 9000, description: 'HDMI + 2× USB-A + SD + microSD + USB-C PD + ethernet. For laptops & tablets.', stock: 70, image: 'https://images.unsplash.com/photo-1625948515291-69613efd103f?w=1200' },
+      ],
+    },
+    {
+      handle: 'ogun-farm-fresh',
+      businessName: 'Ogun Farm Fresh',
+      lgaName: 'Ewekoro',
+      description: 'Same-day-harvest produce delivery from Ewekoro farms.',
+      products: [
+        { name: 'Egusi Melon Seeds 1kg — Local A-grade', category: 'agriculture', price: 4500, description: 'Hand-shelled egusi seeds. Plant or grind for soup.', stock: 100, image: 'https://images.unsplash.com/photo-1471193945509-9ad0617afabf?w=1200' },
+        { name: 'Yam Tubers — Box of 4 large', category: 'agriculture', price: 9000, description: 'Newly harvested yams from Ewekoro. Sweet variety.', stock: 50, image: 'https://images.unsplash.com/photo-1518977676601-b53f82aba655?w=1200' },
+        { name: 'Garden Egg Basket (15 pcs)', category: 'agriculture', price: 2500, description: 'Crisp Nigerian garden eggs. Picked this morning.', stock: 80, image: 'https://images.unsplash.com/photo-1518977956812-cd3dbadaaf31?w=1200' },
+      ],
+    },
+  ];
+
+  let vCreated = 0, vSkipped = 0, prodCreated = 0, prodSkipped = 0;
+  for (const v of VENDORS) {
+    const lga = lgaByName(v.lgaName);
+    if (!lga) { console.warn(`  ⚠ LGA not found: ${v.lgaName}`); continue; }
+
+    // Vendor needs a unique user — synthesise one per vendor
+    const vendorEmail = `vendor+${v.handle}@iseyaa.local`;
+    const vendorUser = await prisma.user.upsert({
+      where: { email: vendorEmail },
+      create: {
+        email: vendorEmail,
+        phone: `+234${Math.floor(8000000000 + Math.random() * 1000000000)}`,
+        firstName: v.businessName.split(' ')[0],
+        lastName: 'Vendor',
+        passwordHash: await bcrypt.hash(uuidv4(), 12),
+        role: 'VENDOR' as any,
+        registeredRoles: ['VENDOR'] as any,
+        status: 'ACTIVE' as any,
+        ndpaConsent: true,
+        ndpaConsentAt: new Date(),
+      },
+      update: {},
+      select: { id: true },
+    });
+
+    let vendor = await prisma.vendor.findUnique({ where: { slug: v.handle } });
+    if (!vendor) {
+      vendor = await prisma.vendor.create({
+        data: {
+          userId: vendorUser.id,
+          lgaId: lga.id,
+          businessName: v.businessName,
+          slug: v.handle,
+          description: v.description,
+          status: 'ACTIVE' as any,
+          commissionRate: 12,
+        },
+      });
+      vCreated++;
+    } else { vSkipped++; }
+
+    for (const p of v.products) {
+      const slug = p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      const existing = await prisma.product.findUnique({ where: { slug } });
+      if (existing) { prodSkipped++; continue; }
+
+      await prisma.product.create({
+        data: {
+          vendorId: vendor.id,
+          name: p.name,
+          slug,
+          description: p.description,
+          imageUrls: [p.image],
+          price: p.price,
+          compareAtPrice: p.compareAt,
+          category: p.category,
+          stock: p.stock,
+          isFeatured: p.featured ?? false,
+          isActive: true,
+        },
+      });
+      prodCreated++;
+    }
+  }
+  console.log(`  ✓ Vendors: created ${vCreated}, skipped ${vSkipped} | Products: created ${prodCreated}, skipped ${prodSkipped}`);
+
+  // ─── 12. Seed News headlines (landing-page ticker) ─────────────────────
+  console.log('\n📰 Seeding news headlines...');
+
+  const NEWS: Array<{ headline: string; summary?: string; source: string; category: string; priority?: boolean }> = [
+    { headline: 'Ogun State pledges ₦2.5bn tourism infrastructure boost for 2026', source: 'Ogun State Govt', category: 'gov', priority: true, summary: 'Funds to refurbish Olumo Rock visitor centre, Ofada cultural plaza, and Ijebu beachfront.' },
+    { headline: 'Iṣẹ́yáá platform reaches 50,000 verified citizen accounts', source: 'Iṣẹ́yáá Desk', category: 'business', priority: true },
+    { headline: 'Ojude Oba Festival 2026 ticket sales open — VIP seats already 60% sold', source: 'Iṣẹ́yáá Events', category: 'culture' },
+    { headline: 'Awujale opens new heritage museum at Ijebu Ode palace', source: 'Awujale Press', category: 'culture' },
+    { headline: 'Sagamu commissions 12 new electric tricycles for tourist routes', source: 'Sagamu LGA', category: 'gov' },
+    { headline: 'Ofada Rice gets official Geographical Indication protection', source: 'Federal Min. of Agriculture', category: 'business' },
+    { headline: 'Gateway Music Festival lineup announced — Burna Boy headlines', source: 'Iṣẹ́yáá Events', category: 'culture', priority: true },
+    { headline: 'Adire artisans cooperative crosses ₦100m revenue milestone', source: 'Ogun Trade Desk', category: 'business' },
+    { headline: 'New Ijebu coastal highway opens — Lagos to Ogun Waterside in 90 mins', source: 'Federal Roads', category: 'gov' },
+    { headline: 'Iṣẹ́yáá Studio Cooperative subsidises recording rates by 50% for emerging artists', source: 'Iṣẹ́yáá Desk', category: 'business' },
+    { headline: 'Egba traditional drums declared intangible cultural heritage', source: 'NCMM Nigeria', category: 'culture' },
+    { headline: 'Ogun Waterside surfing championship draws international athletes', source: 'Sport24', category: 'sport' },
+  ];
+
+  let nCreated = 0;
+  for (const n of NEWS) {
+    const exists = await prisma.newsItem.findFirst({ where: { headline: n.headline } });
+    if (exists) continue;
+    await prisma.newsItem.create({
+      data: {
+        headline: n.headline,
+        summary: n.summary,
+        source: n.source,
+        category: n.category,
+        isPriority: n.priority ?? false,
+        isLive: true,
+        publishedAt: new Date(Date.now() - Math.floor(Math.random() * 7) * 86400000),
+      },
+    });
+    nCreated++;
+  }
+  console.log(`  ✓ News headlines: created ${nCreated}`);
+
+  // ─── 13. Summary ───────────────────────────────────────────────────────
   const lgaCount = await prisma.lGA.count();
   const attractionCount = await prisma.attraction.count();
   const eventCount = await prisma.event.count();
@@ -2081,6 +2266,9 @@ async function main() {
   console.log(`   Events: ${eventCount}`);
   console.log(`   Properties: ${propertyCount}`);
   console.log(`   Studio slots: ${studioCount}`);
+  console.log(`   Vendors: ${await prisma.vendor.count()}`);
+  console.log(`   Products: ${await prisma.product.count()}`);
+  console.log(`   News headlines: ${await prisma.newsItem.count()}`);
   console.log(`   PlatformConfig rows: ${platformConfigCount}`);
 }
 

@@ -88,17 +88,19 @@ export class MarketplaceService implements OnModuleInit {
     });
   }
 
-  findProducts(filters: { vendorId?: string; q?: string; page?: number; limit?: number }) {
-    const { vendorId, q, page = 1, limit = 20 } = filters;
+  findProducts(filters: { vendorId?: string; q?: string; category?: string; featured?: boolean; page?: number; limit?: number }) {
+    const { vendorId, q, category, featured, page = 1, limit = 24 } = filters;
     return this.prisma.product.findMany({
       where: {
         deletedAt: null,
         isActive: true,
         ...(vendorId && { vendorId }),
         ...(q && { name: { contains: q, mode: 'insensitive' } }),
+        ...(category && { category }),
+        ...(featured && { isFeatured: true }),
       },
-      include: { vendor: { select: { businessName: true, slug: true } } },
-      orderBy: { createdAt: 'desc' },
+      include: { vendor: { select: { businessName: true, slug: true, lga: { select: { name: true } } } } },
+      orderBy: [{ isFeatured: 'desc' }, { createdAt: 'desc' }],
       skip: (page - 1) * limit,
       take: limit,
     });

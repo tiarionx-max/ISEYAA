@@ -439,20 +439,25 @@ model Vendor {
 }
 
 model Product {
-  id          String    @id @default(uuid())
-  vendorId    String
-  vendor      Vendor    @relation(fields: [vendorId], references: [id])
-  name        String
-  slug        String    @unique
-  description String?
-  imageUrls   String[]
-  price       Decimal
-  stock       Int       @default(0)
-  isActive    Boolean   @default(true)
-  metadata    Json?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  deletedAt   DateTime?
+  id              String    @id @default(uuid())
+  vendorId        String
+  vendor          Vendor    @relation(fields: [vendorId], references: [id])
+  name            String
+  slug            String    @unique
+  description     String?
+  imageUrls       String[]
+  price           Decimal
+  compareAtPrice  Decimal?  // "was ₦X" — for sale strikethrough
+  category        String?   // 'fashion' | 'crafts' | 'food' | 'art' | 'tech' | 'agriculture'
+  stock           Int       @default(0)
+  rating          Decimal?
+  reviewCount     Int       @default(0)
+  isActive        Boolean   @default(true)
+  isFeatured      Boolean   @default(false)
+  metadata        Json?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
 
   orderItems OrderItem[]
 
@@ -834,4 +839,23 @@ model WaitlistEntry {
   @@unique([source, phone])
   @@index([source, createdAt])
   @@map("waitlist_entries")
+}
+
+model NewsItem {
+  id           String    @id @default(uuid())
+  headline     String
+  summary      String?
+  link         String?   // external URL or internal route
+  source       String?   // "Ogun State Gov", "BBC Pidgin", "Iṣẹ́yáá Desk", etc.
+  category     String?   // 'gov' | 'tourism' | 'business' | 'culture' | 'sport'
+  imageUrl     String?
+  publishedAt  DateTime  @default(now())
+  isLive       Boolean   @default(true)
+  isPriority   Boolean   @default(false)
+  metadata     Json?
+  createdAt    DateTime  @default(now())
+  deletedAt    DateTime?
+
+  @@index([isLive, publishedAt])
+  @@map("news_items")
 }

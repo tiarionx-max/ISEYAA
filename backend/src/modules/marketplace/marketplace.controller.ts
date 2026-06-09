@@ -39,10 +39,16 @@ export class ProductsController {
   findAll(
     @Query('vendorId') vendorId?: string,
     @Query('q') q?: string,
+    @Query('category') category?: string,
+    @Query('featured') featured?: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page?: number,
-    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit?: number,
+    @Query('limit', new DefaultValuePipe(24), ParseIntPipe) limit?: number,
   ) {
-    return this.marketplaceService.findProducts({ vendorId, q, page, limit });
+    return this.marketplaceService.findProducts({
+      vendorId, q, category,
+      featured: featured === 'true',
+      page, limit,
+    });
   }
 
   @Get(':id')

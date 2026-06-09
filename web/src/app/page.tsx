@@ -1,10 +1,12 @@
 'use client';
 
-import { motion, useScroll, useTransform } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import { useSession } from 'next-auth/react';
 import { Navbar } from '@/components/layout/Navbar';
 import { OgunMap } from '@/components/ui/OgunMap';
+import { Billboard } from '@/components/landing/Billboard';
+import { NewsTicker } from '@/components/landing/NewsTicker';
 import { fetcher } from '@/lib/api';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -12,15 +14,16 @@ import dynamic from 'next/dynamic';
 import {
   Calendar, Home, ShoppingBag, Music,
   ArrowRight, MapPin, Users, Star, Zap,
-  Shield, Smartphone, Globe, ChevronDown,
+  Shield, Smartphone, Globe,
 } from 'lucide-react';
-import { useRef } from 'react';
 
-/* three.js scene — lazy + no SSR (canvas requires window) */
+/* three.js scene — lazy + no SSR (canvas requires window).
+   No longer rendered in the hero; kept for potential reuse elsewhere. */
 const HeroLogo3D = dynamic(
   () => import('@/components/3d/HeroLogo3D').then((m) => m.HeroLogo3D),
   { ssr: false, loading: () => null },
 );
+void HeroLogo3D;
 
 const SERVICES = [
   {
@@ -115,12 +118,6 @@ function ServiceCard({ service, index }: { service: typeof SERVICES[0]; index: n
 
 /* ── Page ────────────────────────────────────────────────────────────────── */
 export default function HomePage() {
-  const heroRef = useRef<HTMLDivElement>(null);
-  const { scrollYProgress } = useScroll({ target: heroRef, offset: ['start start', 'end start'] });
-  const mapY = useTransform(scrollYProgress, [0, 1], ['0%', '15%']);
-  const mapOpacity = useTransform(scrollYProgress, [0, 0.7], [1, 0]);
-  const textY = useTransform(scrollYProgress, [0, 1], ['0%', '25%']);
-
   const { data: session } = useSession();
 
   // Live counts pulled from the backend so STATS aren't hardcoded
@@ -151,114 +148,11 @@ export default function HomePage() {
     <div className="min-h-screen bg-jungle text-white overflow-x-hidden">
       <Navbar />
 
-      {/* ── HERO ────────────────────────────────────────────────────────── */}
-      <section ref={heroRef} className="relative min-h-screen flex items-center overflow-hidden">
+      {/* ── HERO: Rotating Billboard ────────────────────────────────────── */}
+      <Billboard />
 
-        {/* Deep layered background */}
-        <div className="absolute inset-0" style={{
-          background: 'radial-gradient(ellipse 80% 70% at 70% 40%, rgba(26,107,60,0.12) 0%, transparent 70%), radial-gradient(ellipse 60% 50% at 20% 80%, rgba(200,150,42,0.06) 0%, transparent 60%), linear-gradient(180deg, #030806 0%, #071009 40%, #0c1a0f 100%)',
-        }} />
-        <div className="absolute inset-0 bg-grid-fine" />
-
-        {/* Animated OgunMap — right side */}
-        <motion.div
-          style={{ y: mapY, opacity: mapOpacity }}
-          className="absolute right-0 top-0 bottom-0 w-[55%] flex items-center justify-center pointer-events-none select-none"
-        >
-          <div className="absolute inset-0" style={{
-            background: 'radial-gradient(ellipse 60% 70% at 60% 50%, rgba(26,107,60,0.08) 0%, transparent 70%)',
-          }} />
-          <OgunMap className="w-full max-w-[520px] h-auto drop-shadow-[0_0_80px_rgba(26,107,60,0.15)]" dim />
-          {/* Right edge fade */}
-          <div className="absolute inset-0" style={{
-            background: 'linear-gradient(90deg, #0c1a0f 0%, transparent 20%, transparent 80%, #0c1a0f 100%), linear-gradient(180deg, #030806 0%, transparent 15%, transparent 85%, #0c1a0f 100%)',
-          }} />
-        </motion.div>
-
-        {/* Hero content */}
-        <motion.div style={{ y: textY }} className="relative z-10 w-full max-w-7xl mx-auto px-6 lg:px-8 pt-24 pb-36">
-          <div className="grid lg:grid-cols-[1fr_auto] gap-12 items-center">
-          <div className="max-w-2xl">
-
-            {/* Badge */}
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
-              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-forest text-xs font-semibold text-gold/90 mb-8"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-              Official Platform · Ogun State Government
-            </motion.div>
-
-            {/* Headline */}
-            <motion.h1
-              initial={{ opacity: 0, y: 28 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.65, delay: 0.1, ease: [0.25, 0.46, 0.45, 0.94] }}
-              className="text-[clamp(52px,8vw,96px)] font-black leading-[0.92] tracking-tight mb-6"
-            >
-              <span className="text-gradient-gold block">Iṣẹ́yáá</span>
-              <span className="text-gradient-white block mt-1 text-[clamp(24px,3.5vw,42px)] font-extrabold tracking-normal">
-                Everything Ogun State.<br className="hidden sm:block" /> One Platform.
-              </span>
-            </motion.h1>
-
-            {/* Sub */}
-            <motion.p
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.28 }}
-              className="text-white/50 text-base md:text-lg leading-relaxed mb-10 max-w-lg"
-            >
-              Tourism, events, stays, marketplace, studio & government services — unified for all 7 million citizens across 20 LGAs.
-            </motion.p>
-
-            {/* CTAs */}
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.42 }}
-              className="flex flex-wrap gap-3"
-            >
-              <Link href="/events" className="btn-primary inline-flex items-center gap-2 px-7 py-3.5 rounded-2xl text-[15px]">
-                Explore the Platform <ArrowRight size={16} />
-              </Link>
-              <Link href="/login" className="btn-ghost inline-flex items-center gap-2 px-7 py-3.5 rounded-2xl text-[15px]">
-                Create Free Account
-              </Link>
-            </motion.div>
-          </div>
-
-          {/* 3D logo (right column on desktop, hidden < lg) */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.92 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.9, delay: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }}
-            className="hidden lg:block relative w-[420px] h-[420px] xl:w-[480px] xl:h-[480px]"
-          >
-            {/* Soft glow halo behind the 3D scene */}
-            <div
-              className="absolute inset-0 rounded-full blur-3xl opacity-40"
-              style={{ background: 'radial-gradient(circle, rgba(212,168,67,0.35) 0%, transparent 65%)' }}
-            />
-            <HeroLogo3D className="absolute inset-0" />
-          </motion.div>
-          </div>
-        </motion.div>
-
-        {/* Scroll cue */}
-        <motion.div
-          className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2"
-          animate={{ y: [0, 6, 0] }}
-          transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-        >
-          <span className="text-white/25 text-[10px] uppercase tracking-[0.2em]">Scroll</span>
-          <ChevronDown size={14} className="text-white/25" />
-        </motion.div>
-      </section>
+      {/* ── NEWS TICKER ─────────────────────────────────────────────────── */}
+      <NewsTicker />
 
       {/* ── STATS STRIP ─────────────────────────────────────────────────── */}
       <section className="relative py-4 border-y border-white/5">

@@ -8,12 +8,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Map, Calendar, Home, ShoppingBag, Music, LayoutDashboard, LogOut, Menu, X,
-  ChevronDown, Shield, Sparkles, RefreshCw,
+  ChevronDown, Shield, Sparkles, RefreshCw, ShoppingCart,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import clsx from 'clsx';
 import { api, fetcher } from '@/lib/api';
 import { toast } from 'sonner';
+import { useCartStore, useCartDrawerStore } from '@/lib/cart';
 
 const NAV_ITEMS = [
   { href: '/', label: 'Explore', icon: Map },
@@ -31,6 +32,12 @@ export function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [cartMounted, setCartMounted] = useState(false);
+  const cartCount = useCartStore((s) => s.items.reduce((sum, i) => sum + i.quantity, 0));
+  const openCart = useCartDrawerStore((s) => s.openDrawer);
+
+  // Cart count is read from localStorage on client only — wait for hydration so SSR/CSR match
+  useEffect(() => { setCartMounted(true); }, []);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -128,6 +135,20 @@ export function Navbar() {
 
         {/* Right side */}
         <div className="hidden md:flex items-center gap-2">
+          {/* Cart icon — always visible (logged-in or not) */}
+          <button
+            onClick={openCart}
+            className="relative w-9 h-9 flex items-center justify-center rounded-xl bg-[rgba(0,0,0,0.35)] border border-white/10 text-white/75 hover:text-white hover:bg-white/10 transition-all"
+            aria-label="Open cart"
+          >
+            <ShoppingCart size={15} />
+            {cartMounted && cartCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-gold text-jungle text-[10px] font-black flex items-center justify-center border-2 border-jungle">
+                {cartCount > 99 ? '99+' : cartCount}
+              </span>
+            )}
+          </button>
+
           {/* "Become a host" entry point — visible to everyone who can't switch */}
           {!canSwitch && (
             <Link
@@ -256,13 +277,28 @@ export function Navbar() {
           )}
         </div>
 
-        {/* Mobile toggle */}
-        <button
-          className="md:hidden w-9 h-9 flex items-center justify-center rounded-xl bg-[rgba(0,0,0,0.35)] text-white/70 hover:text-white hover:bg-white/10 transition-all"
-          onClick={() => setMobileOpen(!mobileOpen)}
-        >
-          {mobileOpen ? <X size={18} /> : <Menu size={18} />}
-        </button>
+        {/* Mobile right-side buttons */}
+        <div className="md:hidden flex items-center gap-2">
+          <button
+            onClick={openCart}
+            className="relative w-9 h-9 flex items-center justify-center rounded-xl bg-[rgba(0,0,0,0.35)] border border-white/10 text-white/70 hover:text-white hover:bg-white/10 transition-all"
+            aria-label="Open cart"
+          >
+            <ShoppingCart size={16} />
+            {cartMounted && cartCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-gold text-jungle text-[10px] font-black flex items-center justify-center border-2 border-jungle">
+                {cartCount > 99 ? '99+' : cartCount}
+              </span>
+            )}
+          </button>
+          <button
+            className="w-9 h-9 flex items-center justify-center rounded-xl bg-[rgba(0,0,0,0.35)] text-white/70 hover:text-white hover:bg-white/10 transition-all"
+            onClick={() => setMobileOpen(!mobileOpen)}
+            aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+          >
+            {mobileOpen ? <X size={18} /> : <Menu size={18} />}
+          </button>
+        </div>
       </div>
 
       {/* Mobile menu */}
