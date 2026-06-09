@@ -54,6 +54,13 @@ export class UsersController {
     return this.usersService.switchRole(user.userId, dto.role);
   }
 
+  @Post('me/become-host')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Promote current user to HOST and add HOST to registeredRoles' })
+  becomeHost(@CurrentUser() user: { userId: string }) {
+    return this.usersService.becomeHost(user.userId);
+  }
+
   @Delete('me/data')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'NDPA right-to-erasure: anonymize personal data' })

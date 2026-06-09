@@ -69,6 +69,19 @@ enum PropertyType {
   APARTMENT
   VILLA
   RESORT
+  LOUNGE
+  CLUB
+  BEACH
+  TOUR
+  EXPERIENCE
+  ATTRACTION
+}
+
+enum BookingMode {
+  NIGHTLY       // stays — pricePerNight × nights
+  HOURLY        // lounges / studio-like / club table — pricePerHour × hours
+  TIMED_EVENT   // tour, attraction visit — fixed price × people, fixed start
+  MEMBERSHIP    // social club — monthly / yearly subscription
 }
 
 enum BookingStatus {
@@ -346,14 +359,24 @@ model Property {
   slug          String       @unique
   description   String?
   type          PropertyType
+  bookingMode   BookingMode  @default(NIGHTLY)
+  category      String?      // free-form sub-category, e.g. "rooftop_lounge", "afrobeats_club"
   imageUrls     String[]
+  coverImageUrl String?      // hero photo for category cards
   address       String
   latitude      Decimal?
   longitude     Decimal?
-  pricePerNight Decimal
+  pricePerNight Decimal      // primary price; meaning depends on bookingMode
+  pricePerHour  Decimal?     // for HOURLY (lounges, club tables)
+  membershipMonthlyPrice Decimal? // for MEMBERSHIP (social clubs)
+  membershipBenefits     String[] // bullet points for memberships
   maxGuests     Int
   amenities     String[]
+  highlights    String[]     // 3-5 key selling points shown on detail page
+  rating        Decimal?     // average review rating, populated by webhook/cron
+  reviewCount   Int          @default(0)
   isActive      Boolean      @default(true)
+  isFeatured    Boolean      @default(false)
   metadata      Json?
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
@@ -361,6 +384,8 @@ model Property {
 
   bookings Booking[]
 
+  @@index([type, isActive])
+  @@index([bookingMode])
   @@map("properties")
 }
 

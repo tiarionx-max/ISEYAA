@@ -27,10 +27,21 @@ export class StaysController {
   findAll(
     @Query('lgaId') lgaId?: string,
     @Query('type') type?: string,
+    @Query('types') types?: string,
+    @Query('bookingMode') bookingMode?: string,
+    @Query('featured') featured?: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page?: number,
-    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit?: number,
+    @Query('limit', new DefaultValuePipe(24), ParseIntPipe) limit?: number,
   ) {
-    return this.staysService.findAllProperties({ lgaId, type, page, limit });
+    return this.staysService.findAllProperties({
+      lgaId,
+      type,
+      types: types ? types.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
+      bookingMode,
+      featured: featured === 'true',
+      page,
+      limit,
+    });
   }
 
   @Get(':id')

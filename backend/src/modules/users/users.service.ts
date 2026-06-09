@@ -61,6 +61,27 @@ export class UsersService {
     });
   }
 
+  /** Become a host — adds HOST to registeredRoles and switches active role. */
+  async becomeHost(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId, deletedAt: null },
+      select: { registeredRoles: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        registeredRoles: user.registeredRoles.includes('HOST' as UserRole)
+          ? user.registeredRoles
+          : { set: [...user.registeredRoles, 'HOST' as UserRole] },
+        role: 'HOST' as UserRole,
+      },
+      select: USER_SELECT,
+    });
+    return updated;
+  }
+
   async eraseData(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId, deletedAt: null },

@@ -16,7 +16,7 @@ backend/dist/
 !.env.example
 
 # Service-account / credentials — never commit
-*firebase-adminsdk*.json
+firebase.json
 *service-account*.json
 *-credentials.json
 google-service-account.json

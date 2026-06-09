@@ -1859,7 +1859,216 @@ async function main() {
   }
   console.log(`  ✓ Studio slots: created ${sCreated}, skipped ${sSkipped}`);
 
-  // ─── 10. Summary ───────────────────────────────────────────────────────
+  // ─── 10. Seed Experience Listings — lounges, clubs, beach, tours, memberships ─
+  console.log('\n🌴 Seeding experience listings (lounges / clubs / beach / tours / memberships)...');
+
+  type ExpType = 'LOUNGE' | 'CLUB' | 'BEACH' | 'TOUR' | 'EXPERIENCE' | 'ATTRACTION';
+  type ExpMode = 'NIGHTLY' | 'HOURLY' | 'TIMED_EVENT' | 'MEMBERSHIP';
+
+  const EXPERIENCES: Array<{
+    name: string; lgaName: string; type: ExpType; bookingMode: ExpMode;
+    category: string; description: string; address: string;
+    pricePerNight?: number; pricePerHour?: number; membershipMonthlyPrice?: number;
+    membershipBenefits?: string[]; highlights: string[];
+    maxGuests: number; amenities: string[]; imageUrls: string[]; coverImageUrl: string;
+    featured?: boolean;
+  }> = [
+    // ── LOUNGES ────────────────────────────────────────────────────────
+    {
+      name: 'The Adire Rooftop Lounge',
+      lgaName: 'Abeokuta South', type: 'LOUNGE', bookingMode: 'HOURLY', category: 'rooftop_lounge',
+      description: 'Sky-high rooftop lounge with handcrafted Adire interiors, palm-wine cocktails and live afrobeats DJs Thursday through Sunday.',
+      address: 'Quarry Rd, Abeokuta South', pricePerHour: 8000, pricePerNight: 8000, maxGuests: 30,
+      highlights: ['Skyline view of Olumo Rock', 'Curated palm-wine cocktail menu', 'Live DJ Thu–Sun', 'Adire-print private booths'],
+      amenities: ['WiFi', 'Bar', 'Live Music', 'Private Booths', 'Valet Parking', 'Smoking Area'],
+      coverImageUrl: 'https://images.unsplash.com/photo-1572116469696-31de0f17cc34?w=1600',
+      imageUrls: ['https://images.unsplash.com/photo-1572116469696-31de0f17cc34?w=1600','https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=1600'],
+      featured: true,
+    },
+    {
+      name: 'Ijebu Sky Bar',
+      lgaName: 'Ijebu Ode', type: 'LOUNGE', bookingMode: 'HOURLY', category: 'cocktail_lounge',
+      description: 'Modern cocktail bar with the longest gin & tonic list in Ogun. Smart-casual dress code.',
+      address: 'Folagbade St, Ijebu Ode', pricePerHour: 6500, pricePerNight: 6500, maxGuests: 25,
+      highlights: ['40+ gin & tonic pairings', 'Smart-casual dress code', 'Sunday afrobeats brunch'],
+      amenities: ['WiFi', 'Bar', 'AC', 'Booth Seating', 'Parking'],
+      coverImageUrl: 'https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=1600',
+      imageUrls: ['https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=1600'],
+    },
+    {
+      name: 'Sagamu Garden Lounge',
+      lgaName: 'Shagamu', type: 'LOUNGE', bookingMode: 'HOURLY', category: 'garden_lounge',
+      description: 'Open-air garden lounge under fairy lights. Suya station, pepper-soup pots, and live highlife on weekends.',
+      address: 'Sabo, Sagamu', pricePerHour: 5000, pricePerNight: 5000, maxGuests: 60,
+      highlights: ['Open-air garden seating', 'Live suya + pepper-soup station', 'Highlife band weekends'],
+      amenities: ['Outdoor Seating', 'Live Music', 'Bar', 'Parking', 'Pet Friendly'],
+      coverImageUrl: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1600',
+      imageUrls: ['https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1600'],
+    },
+
+    // ── CLUBS / MEMBERSHIPS ─────────────────────────────────────────────
+    {
+      name: 'Abeokuta Yacht & Country Club',
+      lgaName: 'Abeokuta South', type: 'CLUB', bookingMode: 'MEMBERSHIP', category: 'social_club',
+      description: 'Historic riverside social club est. 1962. Tennis courts, swimming pool, billiards room, and weekend regattas on the Ogun river.',
+      address: 'Riverside Drive, Abeokuta South',
+      membershipMonthlyPrice: 25000, pricePerNight: 0, maxGuests: 4,
+      membershipBenefits: ['Unlimited swim & gym access', 'Free racquet sports court bookings', 'Member discount on F&B (15%)', '4 guest passes per month', 'Priority event seating'],
+      highlights: ['Riverside setting on Ogun River', 'Heated 25m pool', 'Floodlit tennis courts'],
+      amenities: ['Pool', 'Gym', 'Tennis', 'Restaurant', 'Bar', 'Parking', 'Childcare'],
+      coverImageUrl: 'https://images.unsplash.com/photo-1571902943202-507ec2618e8f?w=1600',
+      imageUrls: ['https://images.unsplash.com/photo-1571902943202-507ec2618e8f?w=1600'],
+      featured: true,
+    },
+    {
+      name: 'Ijebu Heritage Club',
+      lgaName: 'Ijebu Ode', type: 'CLUB', bookingMode: 'MEMBERSHIP', category: 'social_club',
+      description: 'Members-only cultural club preserving Ijebu traditions. Monthly cultural evenings, language classes, drumming circles.',
+      address: 'Awujale Way, Ijebu Ode',
+      membershipMonthlyPrice: 12000, pricePerNight: 0, maxGuests: 2,
+      membershipBenefits: ['Monthly cultural evening', 'Free Yoruba language class', 'Drumming circle access', 'Heritage library'],
+      highlights: ['Run by Ijebu elders', 'Cultural classes 4× monthly', 'Drumming circle every Sat'],
+      amenities: ['Library', 'Cultural Classes', 'Restaurant', 'WiFi'],
+      coverImageUrl: 'https://images.unsplash.com/photo-1511795409834-ef04bbd61622?w=1600',
+      imageUrls: ['https://images.unsplash.com/photo-1511795409834-ef04bbd61622?w=1600'],
+    },
+    {
+      name: 'Club Eko Abeokuta',
+      lgaName: 'Abeokuta North', type: 'CLUB', bookingMode: 'HOURLY', category: 'night_club',
+      description: 'High-energy afrobeats nightclub. International DJ rotation, VIP bottle service, dance floor for 400.',
+      address: 'Asero Estate, Abeokuta North', pricePerHour: 35000, pricePerNight: 35000, maxGuests: 10,
+      highlights: ['Afrobeats / amapiano headliners', 'VIP bottle service', '400-capacity dance floor'],
+      amenities: ['Bar', 'VIP Booths', 'Bottle Service', 'Coat Check', 'Smoking Area', 'Valet'],
+      coverImageUrl: 'https://images.unsplash.com/photo-1571266028243-d220c9c3b31f?w=1600',
+      imageUrls: ['https://images.unsplash.com/photo-1571266028243-d220c9c3b31f?w=1600'],
+    },
+
+    // ── BEACH ────────────────────────────────────────────────────────────
+    {
+      name: 'Ogun Waterside Sunset Beach',
+      lgaName: 'Ogun Waterside', type: 'BEACH', bookingMode: 'TIMED_EVENT', category: 'beach_day',
+      description: 'Private stretch of palm-fringed Atlantic coast. Day pass includes umbrella, two loungers, fresh coconuts, and a beach bonfire at sunset.',
+      address: 'Lekki-Epe Coast, Ogun Waterside', pricePerNight: 9500, maxGuests: 4,
+      highlights: ['Private 200m beach access', 'Sunset bonfire included', 'Fresh seafood grill', 'Optional surf lessons'],
+      amenities: ['Loungers', 'Umbrellas', 'Beach Grill', 'Lifeguard', 'Toilets', 'Showers'],
+      coverImageUrl: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1600',
+      imageUrls: ['https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1600','https://images.unsplash.com/photo-1519046904884-53103b34b206?w=1600'],
+      featured: true,
+    },
+    {
+      name: 'Olokola Beach Cabanas',
+      lgaName: 'Ogun Waterside', type: 'BEACH', bookingMode: 'NIGHTLY', category: 'beach_cabana',
+      description: 'Overnight stay in private wooden cabanas right on the dunes. Wake to the sound of the surf.',
+      address: 'Olokola, Ogun Waterside', pricePerNight: 32000, maxGuests: 2,
+      highlights: ['Beachfront cabana, your own deck', 'Continental breakfast', 'Stargazing roof'],
+      amenities: ['AC', 'WiFi', 'Beach Access', 'Breakfast', 'Outdoor Shower'],
+      coverImageUrl: 'https://images.unsplash.com/photo-1499793983690-e29da59ef1c2?w=1600',
+      imageUrls: ['https://images.unsplash.com/photo-1499793983690-e29da59ef1c2?w=1600'],
+    },
+
+    // ── TOURS ────────────────────────────────────────────────────────────
+    {
+      name: 'Olumo Rock Climb + Sunset Drumming',
+      lgaName: 'Abeokuta South', type: 'TOUR', bookingMode: 'TIMED_EVENT', category: 'cultural_tour',
+      description: 'Guided 2-hour climb of Olumo Rock with an elder storyteller, followed by sunset drumming by the Egba master drummers at the summit.',
+      address: 'Olumo Rock, Ikija St, Abeokuta South', pricePerNight: 12000, maxGuests: 8,
+      highlights: ['Certified Egba historian guide', 'Sunset summit drumming', 'Complimentary palm-wine toast', 'Photo package included'],
+      amenities: ['Guide', 'Refreshments', 'Photography', 'Hiking Sticks', 'First Aid Kit'],
+      coverImageUrl: 'https://images.unsplash.com/photo-1551632811-561732d1e306?w=1600',
+      imageUrls: ['https://images.unsplash.com/photo-1551632811-561732d1e306?w=1600'],
+      featured: true,
+    },
+    {
+      name: 'Adire Workshop & Old Egba Quarter Walk',
+      lgaName: 'Abeokuta South', type: 'TOUR', bookingMode: 'TIMED_EVENT', category: 'craft_tour',
+      description: 'Half-day walking tour of Itoku Adire Market with a hands-on dyeing workshop. Take home a hand-printed piece of fabric.',
+      address: 'Itoku Market, Abeokuta South', pricePerNight: 18000, maxGuests: 6,
+      highlights: ['Hands-on tie-dye workshop', 'Tour master Adire artisans', 'Take home your own piece', 'Local lunch included'],
+      amenities: ['Workshop Materials', 'Guide', 'Lunch', 'Take-home Fabric'],
+      coverImageUrl: 'https://images.unsplash.com/photo-1488462237308-ecaa28b729d7?w=1600',
+      imageUrls: ['https://images.unsplash.com/photo-1488462237308-ecaa28b729d7?w=1600'],
+    },
+    {
+      name: 'Ofada Rice Farm-to-Table Day',
+      lgaName: 'Obafemi Owode', type: 'TOUR', bookingMode: 'TIMED_EVENT', category: 'food_tour',
+      description: 'Spend a day on an Ofada rice farm — plant a seedling, mill grains by hand, then cook ofada + ayamashe with a local chef.',
+      address: 'Ofada Town, Obafemi Owode', pricePerNight: 22000, maxGuests: 8,
+      highlights: ['Real farm hands-on', 'Cook with chef', 'Take home 1kg Ofada rice', 'Vegetarian options'],
+      amenities: ['Cooking Class', 'Meals', 'Take-home Rice', 'Guide', 'Vegetarian'],
+      coverImageUrl: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=1600',
+      imageUrls: ['https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=1600'],
+    },
+    {
+      name: 'Yewa River Canoe Safari',
+      lgaName: 'Ipokia', type: 'TOUR', bookingMode: 'TIMED_EVENT', category: 'nature_tour',
+      description: 'Half-day guided canoe trip down the Yewa river. Birdlife, mangrove tunnels, riverside fishing village lunch.',
+      address: 'Ihunbo-Ipokia, Ipokia', pricePerNight: 15000, maxGuests: 6,
+      highlights: ['Canoe + paddle provided', 'Bilingual nature guide', 'Lunch in fishing village', 'Bird checklist'],
+      amenities: ['Canoe', 'Life Jackets', 'Lunch', 'Guide', 'Waterproof Bag'],
+      coverImageUrl: 'https://images.unsplash.com/photo-1542718610-a1d656d1884c?w=1600',
+      imageUrls: ['https://images.unsplash.com/photo-1542718610-a1d656d1884c?w=1600'],
+    },
+
+    // ── EXPERIENCE (one-offs) ─────────────────────────────────────────────
+    {
+      name: 'Royal Lunch at Awujale Court',
+      lgaName: 'Ijebu Ode', type: 'EXPERIENCE', bookingMode: 'TIMED_EVENT', category: 'cultural_experience',
+      description: 'A once-monthly hosted lunch inside the Awujale\'s palace courtyard. Traditional Ijebu fare and royal storytelling.',
+      address: 'Awujale Palace, Ijebu Ode', pricePerNight: 45000, maxGuests: 2,
+      highlights: ['Inside the royal palace', 'Hosted by palace chief', '7-course traditional menu', 'Photos allowed in courtyard'],
+      amenities: ['Lunch', 'Royal Storyteller', 'Photography', 'Souvenir'],
+      coverImageUrl: 'https://images.unsplash.com/photo-1547036967-23d11aacaee0?w=1600',
+      imageUrls: ['https://images.unsplash.com/photo-1547036967-23d11aacaee0?w=1600'],
+    },
+    {
+      name: 'Afrobeats Dance Class',
+      lgaName: 'Abeokuta South', type: 'EXPERIENCE', bookingMode: 'TIMED_EVENT', category: 'dance_class',
+      description: 'Learn modern afrobeats moves from a Lagos-trained choreographer. 90 minutes, all levels welcome.',
+      address: 'Ake Cultural Centre, Abeokuta South', pricePerNight: 6000, maxGuests: 20,
+      highlights: ['90-min class', 'Beginner-friendly', 'Recorded video to take home', 'Refreshments'],
+      amenities: ['Instructor', 'Sound System', 'Mirrors', 'Refreshments', 'Lockers'],
+      coverImageUrl: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=1600',
+      imageUrls: ['https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=1600'],
+    },
+  ];
+
+  let xCreated = 0;
+  let xSkipped = 0;
+  for (const e of EXPERIENCES) {
+    const lga = lgaByName(e.lgaName);
+    if (!lga) { console.warn(`  ⚠ LGA not found: ${e.lgaName}, skipping ${e.name}`); continue; }
+    const slug = e.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const existing = await prisma.property.findUnique({ where: { slug } });
+    if (existing) { xSkipped++; continue; }
+
+    await prisma.property.create({
+      data: {
+        lgaId: lga.id,
+        hostId: systemUser.id,
+        name: e.name,
+        slug,
+        description: e.description,
+        type: e.type as any,
+        bookingMode: e.bookingMode as any,
+        category: e.category,
+        imageUrls: e.imageUrls,
+        coverImageUrl: e.coverImageUrl,
+        address: e.address,
+        pricePerNight: e.pricePerNight ?? 0,
+        pricePerHour: e.pricePerHour,
+        membershipMonthlyPrice: e.membershipMonthlyPrice,
+        membershipBenefits: e.membershipBenefits ?? [],
+        highlights: e.highlights,
+        maxGuests: e.maxGuests,
+        amenities: e.amenities,
+        isActive: true,
+        isFeatured: e.featured ?? false,
+      },
+    });
+    xCreated++;
+  }
+  console.log(`  ✓ Experiences: created ${xCreated}, skipped ${xSkipped}`);
+
   const lgaCount = await prisma.lGA.count();
   const attractionCount = await prisma.attraction.count();
   const eventCount = await prisma.event.count();

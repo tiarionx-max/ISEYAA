@@ -71,19 +71,25 @@ export class StaysService implements OnModuleInit {
   async findAllProperties(filters: {
     lgaId?: string;
     type?: string;
+    types?: string[]; // multiple types for category filtering, e.g. ['LOUNGE','CLUB']
+    bookingMode?: string;
+    featured?: boolean;
     page?: number;
     limit?: number;
   }) {
-    const { lgaId, type, page = 1, limit = 20 } = filters;
+    const { lgaId, type, types, bookingMode, featured, page = 1, limit = 24 } = filters;
     return this.prisma.property.findMany({
       where: {
         deletedAt: null,
         isActive: true,
         ...(lgaId && { lgaId }),
         ...(type && { type: type as any }),
+        ...(types && types.length > 0 && { type: { in: types as any } }),
+        ...(bookingMode && { bookingMode: bookingMode as any }),
+        ...(featured && { isFeatured: true }),
       },
       include: { lga: { select: { name: true, slug: true } } },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ isFeatured: 'desc' }, { createdAt: 'desc' }],
       skip: (page - 1) * limit,
       take: limit,
     });

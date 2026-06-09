@@ -2,12 +2,18 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Map, Calendar, Home, ShoppingBag, Music, LayoutDashboard, LogOut, Menu, X, ChevronDown, Shield } from 'lucide-react';
+import {
+  Map, Calendar, Home, ShoppingBag, Music, LayoutDashboard, LogOut, Menu, X,
+  ChevronDown, Shield, Sparkles, RefreshCw,
+} from 'lucide-react';
 import { useState, useEffect } from 'react';
 import clsx from 'clsx';
+import { api, fetcher } from '@/lib/api';
+import { toast } from 'sonner';
 
 const NAV_ITEMS = [
   { href: '/', label: 'Explore', icon: Map },
@@ -19,7 +25,9 @@ const NAV_ITEMS = [
 
 export function Navbar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { data: session } = useSession();
+  const queryClient = useQueryClient();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -30,9 +38,39 @@ export function Navbar() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  const isAdmin = (session as any)?.user?.role === 'SUPER_ADMIN' || (session as any)?.user?.role === 'LGA_ADMIN';
+  // Pull /users/me to learn registeredRoles — session only carries the active role
+  const { data: me } = useQuery<any>({
+    queryKey: ['me'],
+    queryFn: () => fetcher('/users/me'),
+    enabled: !!session,
+    staleTime: 30_000,
+  });
+
+  const sessionRole = (session as any)?.user?.role as string | undefined;
+  const activeRole: string = me?.role ?? sessionRole ?? 'CITIZEN';
+  const registeredRoles: string[] = me?.registeredRoles ?? [];
+  const hasHost = registeredRoles.includes('HOST');
+  const hasCitizen = registeredRoles.includes('CITIZEN');
+  const canSwitch = hasHost && hasCitizen;
+  const isAdmin = activeRole === 'SUPER_ADMIN' || activeRole === 'LGA_ADMIN';
   const firstName = session?.user?.name?.split(' ')[0] ?? 'Account';
-  const initials = session?.user?.name?.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() ?? '?';
+  const initials =
+    session?.user?.name?.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() ?? '?';
+
+  const switchRole = useMutation({
+    mutationFn: (role: 'HOST' | 'CITIZEN') =>
+      api.patch('/users/me/role', { role }).then((r) => r.data),
+    onSuccess: (_data, role) => {
+      toast.success(role === 'HOST' ? 'Switched to host' : 'Switched to traveler');
+      queryClient.invalidateQueries({ queryKey: ['me'] });
+      setUserMenuOpen(false);
+      router.refresh();
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.message;
+      toast.error(Array.isArray(msg) ? msg.join(', ') : msg ?? 'Could not switch role');
+    },
+  });
 
   return (
     <nav
@@ -90,6 +128,17 @@ export function Navbar() {
 
         {/* Right side */}
         <div className="hidden md:flex items-center gap-2">
+          {/* "Become a host" entry point — visible to everyone who can't switch */}
+          {!canSwitch && (
+            <Link
+              href="/host"
+              className="hidden lg:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-semibold text-white/75 hover:text-white hover:bg-[rgba(0,0,0,0.35)] transition-all"
+            >
+              <Sparkles size={13} className="text-gold" />
+              Become a host
+            </Link>
+          )}
+
           {session ? (
             <div className="relative">
               <button
@@ -100,6 +149,18 @@ export function Navbar() {
                   {initials}
                 </div>
                 <span className="text-sm text-white/80 font-medium">{firstName}</span>
+                {canSwitch && (
+                  <span
+                    className={clsx(
+                      'text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded-md',
+                      activeRole === 'HOST'
+                        ? 'bg-gold/20 text-gold border border-gold/30'
+                        : 'bg-forest/25 text-forest-light border border-forest/30',
+                    )}
+                  >
+                    {activeRole === 'HOST' ? 'Host' : 'Traveler'}
+                  </span>
+                )}
                 <ChevronDown size={13} className={clsx('text-white/40 transition-transform', userMenuOpen && 'rotate-180')} />
               </button>
 
@@ -110,7 +171,7 @@ export function Navbar() {
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -8, scale: 0.96 }}
                     transition={{ duration: 0.15 }}
-                    className="absolute right-0 top-full mt-2 w-52 rounded-2xl bg-jungle-2/98 backdrop-blur-xl border border-white/12 shadow-[0_20px_60px_rgba(0,0,0,0.65)] overflow-hidden"
+                    className="absolute right-0 top-full mt-2 w-60 rounded-2xl bg-jungle-2/98 backdrop-blur-xl border border-white/12 shadow-[0_20px_60px_rgba(0,0,0,0.65)] overflow-hidden"
                     onMouseLeave={() => setUserMenuOpen(false)}
                   >
                     <div className="p-1">
@@ -133,6 +194,36 @@ export function Navbar() {
                         </Link>
                       )}
                     </div>
+
+                    {/* Role section */}
+                    <div className="border-t border-white/8 p-1">
+                      {canSwitch ? (
+                        <button
+                          onClick={() =>
+                            switchRole.mutate(activeRole === 'HOST' ? 'CITIZEN' : 'HOST')
+                          }
+                          disabled={switchRole.isPending}
+                          className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-white/80 hover:text-white hover:bg-[rgba(0,0,0,0.45)] transition-colors disabled:opacity-50"
+                        >
+                          <RefreshCw size={14} className="text-gold" />
+                          {switchRole.isPending
+                            ? 'Switching…'
+                            : activeRole === 'HOST'
+                              ? 'Switch to traveler'
+                              : 'Switch to host'}
+                        </button>
+                      ) : (
+                        <Link
+                          href="/host"
+                          onClick={() => setUserMenuOpen(false)}
+                          className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-white/80 hover:text-white hover:bg-[rgba(0,0,0,0.45)] transition-colors"
+                        >
+                          <Sparkles size={14} className="text-gold" />
+                          Become a host
+                        </Link>
+                      )}
+                    </div>
+
                     <div className="border-t border-white/8 p-1">
                       <button
                         onClick={() => signOut()}
@@ -147,12 +238,21 @@ export function Navbar() {
               </AnimatePresence>
             </div>
           ) : (
-            <Link
-              href="/login"
-              className="px-5 py-2 btn-forest text-white text-sm font-semibold rounded-xl"
-            >
-              Sign in
-            </Link>
+            <>
+              <Link
+                href="/host"
+                className="hidden lg:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-semibold text-white/75 hover:text-white hover:bg-[rgba(0,0,0,0.35)] transition-all"
+              >
+                <Sparkles size={13} className="text-gold" />
+                Become a host
+              </Link>
+              <Link
+                href="/login"
+                className="px-5 py-2 btn-forest text-white text-sm font-semibold rounded-xl"
+              >
+                Sign in
+              </Link>
+            </>
           )}
         </div>
 
@@ -192,6 +292,30 @@ export function Navbar() {
                   {label}
                 </Link>
               ))}
+
+              {/* Host entry */}
+              {canSwitch ? (
+                <button
+                  onClick={() => {
+                    switchRole.mutate(activeRole === 'HOST' ? 'CITIZEN' : 'HOST');
+                    setMobileOpen(false);
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-3 rounded-xl text-sm text-white/70 hover:text-white hover:bg-[rgba(0,0,0,0.35)]"
+                >
+                  <RefreshCw size={16} className="text-gold" />
+                  {activeRole === 'HOST' ? 'Switch to traveler' : 'Switch to host'}
+                </button>
+              ) : (
+                <Link
+                  href="/host"
+                  onClick={() => setMobileOpen(false)}
+                  className="flex items-center gap-2.5 px-3 py-3 rounded-xl text-sm text-white/70 hover:text-white hover:bg-[rgba(0,0,0,0.35)]"
+                >
+                  <Sparkles size={16} className="text-gold" />
+                  Become a host
+                </Link>
+              )}
+
               <div className="pt-2 border-t border-white/8 mt-2">
                 {session ? (
                   <>
