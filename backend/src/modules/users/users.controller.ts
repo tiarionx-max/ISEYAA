@@ -7,10 +7,17 @@ import {
   Body,
   Param,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
+import { S3Service } from '../../common/services/s3.service';
+import { ImageService } from '../../common/services/image.service';
+import { v4 as uuidv4 } from 'uuid';
 import { UsersService } from './users.service';
 import { KycService } from './kyc.service';
 import { VerifyBvnDto } from './dto/verify-bvn.dto';
@@ -33,6 +40,8 @@ export class UsersController {
   constructor(
     private readonly usersService: UsersService,
     private readonly kycService: KycService,
+    private readonly s3: S3Service,
+    private readonly imageService: ImageService,
   ) {}
 
   @Get('me')
@@ -59,6 +68,24 @@ export class UsersController {
   @ApiOperation({ summary: 'Promote current user to HOST and add HOST to registeredRoles' })
   becomeHost(@CurrentUser() user: { userId: string }) {
     return this.usersService.becomeHost(user.userId);
+  }
+
+  @Post('me/avatar')
+  @ApiOperation({ summary: 'Upload avatar (jpg/png/webp ≤5 MB, resized to 512×512 webp, stored on S3)' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } }),
+  )
+  async uploadAvatar(
+    @CurrentUser() user: { userId: string },
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    this.imageService.validateImage(file);
+    const { buffer, contentType } = await this.imageService.resizeAvatar(file.buffer);
+    const key = `avatars/${user.userId}/${uuidv4()}.webp`;
+    const avatarUrl = await this.s3.upload(key, buffer, contentType);
+    await this.usersService.update(user.userId, { avatarUrl });
+    return { avatarUrl };
   }
 
   @Delete('me/data')
