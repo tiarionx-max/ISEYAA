@@ -18,6 +18,7 @@ Sprint 1 is shipped. This roadmap covers the six remaining sprints: infrastructu
 - [ ] **Phase 5: AI Concierge + KYC** - GPT-4o concierge with tool calls, vector recommendations, and real identity verification
 - [ ] **Phase 6: QA, Security & Performance** - Load testing, security audit, query optimisation, and mobile performance
 - [ ] **Phase 7: Deployment & Launch** - Production go-live, app store submissions, and soft launch
+- [ ] **Phase 8: Mobile Redesign** - Bring mobile app in line with the redesigned web (Airbnb-style stays, Temu-style marketplace, host onboarding, news ticker), complete the 5-tab migration, and ship a fresh EAS preview build
 
 ## Phase Details
 
@@ -253,9 +254,35 @@ Plans:
 - Real-money E2E test (LAUNCH-03) requires Paystack LIVE keys — document clearly in MANUAL-ACTIONS.md
 **UI hint**: no
 
+### Phase 8: Mobile Redesign
+**Goal**: Mobile app matches the redesigned web experience — Airbnb-style category-tabbed stays browse, mode-aware stay detail (NIGHTLY/HOURLY/TIMED_EVENT/MEMBERSHIP), Temu-style marketplace with cart + checkout, host onboarding screen, and a news ticker on Discover — with the 5-tab navigation migration (Discover/Book/Wallet/Concierge/You) fully completed and a fresh EAS preview build delivered
+**Depends on**: Phase 1 (no infra dependency on 2–7)
+**Requirements**: MOB-RD-01, MOB-RD-02, MOB-RD-03, MOB-RD-04, MOB-RD-05, MOB-RD-06, MOB-RD-07, MOB-RD-08
+**Success Criteria** (what must be TRUE):
+  1. `mobile/app/(tabs)/` contains exactly 5 tabs (index/book/wallet/concierge/profile) — all legacy tabs (events, stays, studio, transport, delivery, driver, rider) removed from the tabs directory and migrated into the new tab structure or modal/stack screens per `mobile-redesign-UI-SPEC.md`
+  2. Discover tab (`(tabs)/index.tsx`) renders a hero with a working news ticker component (sourced from `GET /api/v1/news?limit=20`) and a curated content feed using the design tokens from `mobile/lib/tokens.ts`
+  3. Book tab → Stays sub-section renders a category-tabbed horizontal scroll matching the 10 web categories (All/Stays/Lounges/Clubs/Beach/Tours/Experiences/Memberships/Attractions/Featured), with a photo-first grid hitting `GET /api/v1/properties` filtered by selected category
+  4. Stay detail screen (`mobile/app/stays/[id].tsx`) renders a 4-image gallery, highlights with check icons, amenity chips, and a sticky booking sheet with 4 distinct UIs that switch on `property.bookingMode` — matching `web/src/app/stays/[id]/page.tsx`
+  5. Book tab → Marketplace sub-section renders 8 category tabs, product grid with discount badges and wishlist, and a working `CartDrawer` equivalent (zustand cart persisted to AsyncStorage as `iseyaa-cart-v1`) that flows into a checkout screen that hands off to Paystack via the existing `POST /api/v1/cart/checkout`
+  6. A new Host onboarding screen reachable from the You tab matches `web/src/app/host/page.tsx` (hero, 3 benefit cards, Q&A, gold CTA) and fires `POST /api/v1/users/me/become-host` on confirm — the success response navigates to a host dashboard stub or existing screen
+  7. A fresh Android EAS preview build (`eas build --platform android --profile preview --non-interactive`) completes successfully and the install URL is captured in the phase verification record
+  8. All existing 282+ tests still pass after mobile changes; no breaking changes to backend endpoints; web app unchanged
+**Plans**: (to be created by gsd-plan-phase)
+
+**Cross-cutting constraints:**
+- Use design tokens from `mobile-redesign-UI-SPEC.md` — no inline hex strings in component files (define once in `mobile/lib/tokens.ts`)
+- Use existing backend endpoints only — no new backend work in this phase
+- expo-router file-based navigation — no React Navigation Stack imports
+- `react-native-reanimated` for press animations (scale 0.97 spring) — not `Animated.spring` alone
+- `expo-image` (not `Image` from react-native) for all photo loads — better caching
+- News ticker uses `Animated.loop` + `translateX` — no `react-native-marquee` dep unless we already pulled it
+- All touch targets ≥ 44pt (iOS HIG); minimum tab/button heights enforced
+- Bundle ID unchanged: `ng.gov.ogun.iseyaa`
+**UI hint**: yes
+
 ## Progress
 
-**Execution Order:** 2 → 3 → 4 → 5 → 6 → 7
+**Execution Order:** 2 → 3 → 4 → 5 → 6 → 7 → 8
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -266,3 +293,4 @@ Plans:
 | 5. AI Concierge + KYC | 6/7 | In progress (05-07 human checkpoint deferred) | - |
 | 6. QA, Security & Performance | 5/6 | In Progress|  |
 | 7. Deployment & Launch | 4/5 | In Progress|  |
+| 8. Mobile Redesign | 0/0 | Not Started | - |
