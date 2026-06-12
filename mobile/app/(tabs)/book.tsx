@@ -1,71 +1,111 @@
+/**
+ * Book hub — Plan 08-05
+ *
+ * Top-level 4-pane switcher (CONTEXT §Navigation Architecture, locked):
+ *   1. Events       — <EventsSubsection /> (migrated from legacy book.tsx + events.tsx)
+ *   2. Stays        — NEW Airbnb-style 10-category strip + 2-col grid -> GET /properties
+ *   3. Studio       — legacy look preserved this phase (full redesign deferred)
+ *   4. Marketplace  — NEW Temu-style 8-category strip + 2-col product grid -> GET /products
+ *
+ * Header bag icon -> useCartStore.totalCount() badge, tap -> useCartDrawerStore.openDrawer().
+ *
+ * Closes MOB-RD-03 (Stays browse) + MOB-RD-05 browse-portion (Marketplace browse).
+ * Detail screens (/stays/:id, /marketplace/:id) + cart drawer are 08-06's scope.
+ */
+
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
-  ScrollView,
-  TouchableOpacity,
   StyleSheet,
+  Pressable,
+  FlatList,
   Animated,
-  TextInput,
-  Alert,
-  ActivityIndicator,
+  Easing,
+  TouchableOpacity,
+  Dimensions,
+  ListRenderItemInfo,
 } from 'react-native';
-import { useState, useRef, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useQuery, useMutation } from '@tanstack/react-query';
-import { fetcher, api } from '../../lib/api';
+import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { Filter, MapPin, Heart, Star, ShoppingBag, Sparkles, Check, ArrowRight } from 'lucide-react-native';
+import { Image as ExpoImage } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
-  SURFACE_DEEP,
-  SURFACE_MID,
-  SURFACE_RAISED,
+  Heart,
+  MapPin,
+  ShoppingBag,
+  Star,
+} from 'lucide-react-native';
+
+import { fetcher } from '../../lib/api';
+import { useCartStore, useCartDrawerStore } from '../../lib/cart-store';
+import {
+  STAY_CATEGORIES,
+  MARKETPLACE_CATEGORIES,
+  buildStayQuery,
+  buildMarketplaceQuery,
+  type StayCategory,
+  type MarketplaceCategory,
+} from '../../lib/category-config';
+
+import { CategoryStrip, type CategoryStripItem } from '../../components/ui/CategoryStrip';
+import { Chip } from '../../components/ui/Chip';
+import { PressableScale } from '../../components/ui/PressableScale';
+import { EventsSubsection } from '../../components/book/EventsSubsection';
+
+import {
+  BORDER,
+  BORDER_SUBTLE,
+  CARD_COLORS,
+  CARD_GRADIENTS,
+  FONT_DISPLAY,
+  FONT_MONO,
+  FONT_UI,
   GOLD,
   GOLD_DIM,
   GOLD_LINE,
   INK,
+  INK_DIM,
+  INK_FAINT,
   INK_MID,
-  BORDER,
-  RADIUS_SM,
-  RADIUS_MD,
   RADIUS_LG,
+  RADIUS_MD,
   RADIUS_PILL,
-  FONT_DISPLAY,
-  FONT_MONO,
-  FONT_UI,
+  RADIUS_SM,
   SPACE_4,
   SPACE_5,
-  CARD_GRADIENTS,
+  SURFACE_DEEP,
+  SURFACE_MID,
+  SURFACE_RAISED,
+  TYPE,
 } from '../../lib/tokens';
 
-// ── Types ──────────────────────────────────────────────────────────────
-type ActiveTab = 'Events' | 'Stays' | 'Studio' | 'Market';
+// ── Constants ──────────────────────────────────────────────────────────
+type Section = 'events' | 'stays' | 'studio' | 'marketplace';
+const SECTIONS: { id: Section; label: string }[] = [
+  { id: 'events', label: 'Events' },
+  { id: 'stays', label: 'Stays' },
+  { id: 'studio', label: 'Studio' },
+  { id: 'marketplace', label: 'Market' },
+];
 
-const TABS: ActiveTab[] = ['Events', 'Stays', 'Studio', 'Market'];
+// Discount badge red — only inline hex allowed per plan (Task 0 GREEN-LIT).
+const DISCOUNT_RED = '#EF4444';
 
-const FILTER_CHIPS: Record<ActiveTab, string[]> = {
-  Stays:  ['This weekend', '2 guests', 'Under ₦50k', 'Pool', 'WiFi', 'Pet-friendly'],
-  Events: ['This week', 'Free', 'Cultural', 'Music', 'Family', 'Outdoor'],
-  Studio: ['This weekend', 'Half-day', 'Solo', 'Group', 'Outdoor', 'Indoor'],
-  Market: ['Apparel', 'Home', 'Pantry', 'Under ₦10k', 'Adire', 'Handmade'],
-};
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const GRID_GUTTER = 12;
+const GRID_H_PADDING = 16;
+const CARD_WIDTH = (SCREEN_WIDTH - GRID_H_PADDING * 2 - GRID_GUTTER) / 2;
 
-const GRADIENT_KEYS = ['gold', 'forest', 'rock', 'dusk', 'indigo'] as const;
-type GradientKey = typeof GRADIENT_KEYS[number];
-
-function gradientForIndex(i: number): [string, string] {
-  const key = GRADIENT_KEYS[i % GRADIENT_KEYS.length] as GradientKey;
-  return CARD_GRADIENTS[key] as [string, string];
-}
-
-// ── Shimmer hook ───────────────────────────────────────────────────────
-function useShimmerOpacity() {
+// ── Shimmer (skeleton) ─────────────────────────────────────────────────
+function useShimmer() {
   const anim = useRef(new Animated.Value(0.3)).current;
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(anim, { toValue: 0.7, duration: 700, useNativeDriver: true }),
-        Animated.timing(anim, { toValue: 0.3, duration: 700, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 0.7, duration: 700, easing: Easing.linear, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 0.3, duration: 700, easing: Easing.linear, useNativeDriver: true }),
       ]),
     );
     loop.start();
@@ -74,419 +114,574 @@ function useShimmerOpacity() {
   return anim;
 }
 
-// ── Skeleton card ──────────────────────────────────────────────────────
-function SkeletonCard() {
-  const opacity = useShimmerOpacity();
+function GridSkeleton({ count = 4 }: { count?: number }) {
+  const opacity = useShimmer();
   return (
-    <Animated.View style={[styles.skeletonCard, { opacity }]}>
-      <View style={styles.skeletonHero} />
-      <View style={styles.skeletonBody}>
-        <View style={[styles.skeletonLine, { width: '75%' }]} />
-        <View style={[styles.skeletonLine, { width: '48%', marginTop: 10 }]} />
-      </View>
-    </Animated.View>
-  );
-}
-
-// ── Tag chip ───────────────────────────────────────────────────────────
-function TagChip({ label }: { label: string }) {
-  return (
-    <View style={styles.tagChip}>
-      <Text style={styles.tagChipText}>{label}</Text>
+    <View style={styles.gridSkeletonRow}>
+      {Array.from({ length: count }).map((_, i) => (
+        <Animated.View
+          key={i}
+          style={[styles.skeletonCard, { opacity, width: CARD_WIDTH }]}
+        >
+          <View style={styles.skeletonHero} />
+          <View style={styles.skeletonBody}>
+            <View style={[styles.skeletonLine, { width: '75%' }]} />
+            <View style={[styles.skeletonLine, { width: '48%', marginTop: 8 }]} />
+          </View>
+        </Animated.View>
+      ))}
     </View>
   );
 }
 
-// ── Heart button ───────────────────────────────────────────────────────
-function HeartButton() {
-  const [liked, setLiked] = useState(false);
-  return (
-    <TouchableOpacity style={styles.heartBtn} onPress={() => setLiked((v) => !v)} activeOpacity={0.75}>
-      <Heart size={14} color={liked ? '#F87171' : INK} fill={liked ? '#F87171' : 'transparent'} />
-    </TouchableOpacity>
-  );
-}
+// ── Price helper (mirrors web/src/app/stays/page.tsx::formatPrice) ────
+type Property = {
+  id: string;
+  name: string;
+  city?: string | null;
+  propertyType?: string;
+  bookingMode?: string;
+  pricePerNight?: number | null;
+  pricePerHour?: number | null;
+  membershipMonthlyPrice?: number | null;
+  coverImageUrl?: string | null;
+  galleryImages?: string[];
+  isFeatured?: boolean;
+  maxGuests?: number;
+  averageRating?: number | null;
+  lga?: { name?: string } | null;
+};
 
-// ── Feed card ──────────────────────────────────────────────────────────
-interface FeedCardProps {
-  tag: string;
-  title: string;
-  location: string;
-  price: string;
-  priceLabel: string;
-  meta: string;
-  actionLabel: string;
-  gradientIndex: number;
-  rating?: number;
-  onAction: () => void;
-  onPress: () => void;
-}
-
-function FeedCard({
-  tag,
-  title,
-  location,
-  price,
-  priceLabel,
-  meta,
-  actionLabel,
-  gradientIndex,
-  rating,
-  onAction,
-  onPress,
-}: FeedCardProps) {
-  const colors = gradientForIndex(gradientIndex);
-  return (
-    <TouchableOpacity style={styles.card} activeOpacity={0.88} onPress={onPress}>
-      {/* Photo hero */}
-      <View style={styles.cardHero}>
-        <LinearGradient colors={colors} style={StyleSheet.absoluteFillObject} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
-        <LinearGradient colors={['transparent', 'rgba(5,14,14,0.55)']} style={StyleSheet.absoluteFillObject} start={{ x: 0, y: 0.3 }} end={{ x: 0, y: 1 }} />
-        <View style={styles.heroTagWrap}><TagChip label={tag} /></View>
-        <View style={styles.heroHeartWrap}><HeartButton /></View>
-        {/* Only show star rating when data provides a value */}
-        {rating != null && (
-          <View style={styles.heroStarWrap}>
-            <Star size={11} color={GOLD} fill={GOLD} />
-            <Text style={styles.heroRating}>{rating.toFixed(1)}</Text>
-          </View>
-        )}
-      </View>
-
-      {/* Body */}
-      <View style={styles.cardBody}>
-        <Text style={styles.cardTitle} numberOfLines={2}>{title}</Text>
-        <View style={styles.locationRow}>
-          <MapPin size={11} color={INK_MID} />
-          <Text style={styles.locationText} numberOfLines={1}>{location}</Text>
-        </View>
-        <View style={styles.priceRow}>
-          <Text style={styles.priceText}>{price}</Text>
-          <Text style={styles.priceLabelText}>{priceLabel}</Text>
-        </View>
-        <View style={styles.divider} />
-        <View style={styles.cardFooter}>
-          <Text style={styles.metaText} numberOfLines={1}>{meta}</Text>
-          <TouchableOpacity style={styles.actionBtn} onPress={onAction} activeOpacity={0.82}>
-            <Text style={styles.actionBtnText}>{actionLabel}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
-}
-
-// ── Events feed ────────────────────────────────────────────────────────
-function EventsFeed({ data, isLoading }: { data: any[]; isLoading: boolean }) {
-  if (isLoading || data.length === 0) {
-    return <View style={styles.feedList}><SkeletonCard /><SkeletonCard /></View>;
+function formatPrice(p: Property): { primary: string; suffix: string } {
+  const mode = p?.bookingMode ?? 'NIGHTLY';
+  const fmt = (n: number | null | undefined) =>
+    `₦${Number(n ?? 0).toLocaleString()}`;
+  switch (mode) {
+    case 'HOURLY':
+      return { primary: fmt(p.pricePerHour ?? p.pricePerNight), suffix: '/ hour' };
+    case 'MEMBERSHIP':
+      return {
+        primary: fmt(p.membershipMonthlyPrice ?? p.pricePerNight),
+        suffix: '/ month',
+      };
+    case 'TIMED_EVENT':
+      return { primary: `From ${fmt(p.pricePerNight)}`, suffix: 'per person' };
+    case 'NIGHTLY':
+    default:
+      return { primary: fmt(p.pricePerNight), suffix: '/ night' };
   }
+}
+
+function typeBadgeLabel(type?: string): string {
+  if (!type) return '';
+  return type.charAt(0) + type.slice(1).toLowerCase();
+}
+
+// ── Stay card ─────────────────────────────────────────────────────────
+function StayCard({ item, index }: { item: Property; index: number }) {
+  const { primary, suffix } = formatPrice(item);
+  const cover = item.coverImageUrl ?? item.galleryImages?.[0] ?? null;
+  const fallback = CARD_COLORS[index % CARD_COLORS.length];
+  const badge = typeBadgeLabel(item.propertyType);
+  const rating = item.averageRating;
+
   return (
-    <View style={styles.feedList}>
-      {data.map((item: any, i: number) => {
-        const isFree = !item.ticketPrice || Number(item.ticketPrice) === 0;
-        const price = isFree ? 'FREE' : `₦${Number(item.ticketPrice).toLocaleString()}`;
-        const startDate = item.startDate
-          ? new Date(item.startDate).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' })
-          : 'TBA';
-        return (
-          <FeedCard
-            key={item.id ?? i}
-            tag="Event"
-            title={item.title ?? 'Untitled Event'}
-            location={item.lga?.name ?? item.venue ?? 'Ogun State'}
-            price={price}
-            priceLabel={isFree ? '' : 'per ticket'}
-            meta={startDate}
-            actionLabel="Reserve"
-            gradientIndex={i}
-            rating={item.averageRating ?? item.rating}
-            onPress={() => router.push(`/events/${item.id}`)}
-            onAction={() => router.push(`/events/${item.id}`)}
+    <PressableScale
+      onPress={() => router.push(`/stays/${item.id}` as never)}
+      style={[styles.gridCard, { width: CARD_WIDTH }]}
+    >
+      <View style={styles.gridHero}>
+        {cover ? (
+          <ExpoImage
+            source={{ uri: cover }}
+            style={StyleSheet.absoluteFillObject}
+            contentFit="cover"
+            transition={200}
           />
+        ) : (
+          <LinearGradient
+            colors={fallback}
+            style={StyleSheet.absoluteFillObject}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          />
+        )}
+        <LinearGradient
+          colors={['transparent', 'rgba(5,14,14,0.65)']}
+          style={StyleSheet.absoluteFillObject}
+          start={{ x: 0, y: 0.4 }}
+          end={{ x: 0, y: 1 }}
+        />
+        {badge ? (
+          <View style={styles.gridBadgeTL}>
+            <Text style={styles.gridBadgeText}>{badge}</Text>
+          </View>
+        ) : null}
+        {rating != null ? (
+          <View style={styles.gridStarBR}>
+            <Star size={10} color={GOLD} fill={GOLD} />
+            <Text style={styles.gridStarText}>
+              {Number(rating).toFixed(1)}
+            </Text>
+          </View>
+        ) : null}
+        <View style={styles.gridPriceChipBL}>
+          <Chip label={primary} active />
+        </View>
+      </View>
+      <View style={styles.gridBody}>
+        <Text style={styles.gridTitle} numberOfLines={2}>
+          {item.name}
+        </Text>
+        <View style={styles.gridMetaRow}>
+          <MapPin size={10} color={INK_MID} />
+          <Text style={styles.gridMetaText} numberOfLines={1}>
+            {item.lga?.name ?? item.city ?? 'Ogun State'}
+          </Text>
+        </View>
+        <Text style={styles.gridPriceSuffix}>{suffix}</Text>
+      </View>
+    </PressableScale>
+  );
+}
+
+// ── Stays section ─────────────────────────────────────────────────────
+function StaysSection() {
+  const [activeId, setActiveId] = useState<string>('all');
+
+  const activeCat = useMemo<StayCategory>(
+    () => STAY_CATEGORIES.find((c) => c.id === activeId) ?? STAY_CATEGORIES[0],
+    [activeId],
+  );
+
+  const stripItems: CategoryStripItem[] = useMemo(
+    () =>
+      STAY_CATEGORIES.map((c) => ({
+        id: c.id,
+        label: c.label,
+        icon: c.icon,
+      })),
+    [],
+  );
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['stays-browse', activeId],
+    queryFn: () => fetcher(`/properties?${buildStayQuery(activeCat)}`),
+    staleTime: 30_000,
+  });
+
+  const properties: Property[] = data?.data ?? [];
+
+  const renderItem = ({ item, index }: ListRenderItemInfo<Property>) => (
+    <StayCard item={item} index={index} />
+  );
+
+  return (
+    <View style={styles.sectionRoot}>
+      <CategoryStrip items={stripItems} activeId={activeId} onChange={setActiveId} />
+      {isLoading ? (
+        <View style={styles.gridPadding}>
+          <GridSkeleton count={4} />
+          <GridSkeleton count={4} />
+        </View>
+      ) : properties.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyText}>
+            No stays in this category yet.
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          data={properties}
+          keyExtractor={(p) => p.id}
+          renderItem={renderItem}
+          numColumns={2}
+          columnWrapperStyle={{ gap: GRID_GUTTER, paddingHorizontal: GRID_H_PADDING }}
+          contentContainerStyle={styles.gridContent}
+          showsVerticalScrollIndicator={false}
+          ItemSeparatorComponent={() => <View style={{ height: GRID_GUTTER }} />}
+        />
+      )}
+    </View>
+  );
+}
+
+// ── Studio section (legacy preserved — CONTEXT decision: redesign deferred) ──
+type StudioItem = {
+  id: string;
+  name?: string;
+  type?: string;
+  pricePerHour?: number;
+  averageRating?: number | null;
+  rating?: number | null;
+  location?: string;
+  lga?: { name?: string } | null;
+};
+
+function StudioSection() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['studio-slots'],
+    queryFn: () => fetcher('/studio/feed?limit=10'),
+  });
+  const studios: StudioItem[] = (data?.data ?? data ?? []) as StudioItem[];
+
+  if (isLoading || studios.length === 0) {
+    return (
+      <View style={styles.gridPadding}>
+        <GridSkeleton count={4} />
+        <GridSkeleton count={4} />
+      </View>
+    );
+  }
+
+  // Reproduce legacy single-column FeedCard rendering with same fields.
+  return (
+    <View style={styles.legacyFeedList}>
+      {studios.map((item, i) => {
+        const colors = (CARD_GRADIENTS[
+          ['gold', 'forest', 'rock', 'dusk', 'indigo'][i % 5] as keyof typeof CARD_GRADIENTS
+        ] as string[]).slice(0, 2) as [string, string];
+        const rating = item.averageRating ?? item.rating;
+        return (
+          <PressableScale
+            key={item.id ?? i}
+            onPress={() =>
+              router.push({
+                pathname: '/ai-chat',
+                params: {
+                  prompt: `Book ${item.name ?? 'this studio space'} for me`,
+                },
+              } as never)
+            }
+            style={styles.legacyCard}
+          >
+            <View style={styles.legacyHero}>
+              <LinearGradient
+                colors={colors}
+                style={StyleSheet.absoluteFillObject}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              />
+              <LinearGradient
+                colors={['transparent', 'rgba(5,14,14,0.55)']}
+                style={StyleSheet.absoluteFillObject}
+                start={{ x: 0, y: 0.3 }}
+                end={{ x: 0, y: 1 }}
+              />
+              <View style={styles.legacyTagWrap}>
+                <View style={styles.legacyTag}>
+                  <Text style={styles.legacyTagText}>STUDIO</Text>
+                </View>
+              </View>
+              {rating != null && (
+                <View style={styles.legacyStar}>
+                  <Star size={11} color={GOLD} fill={GOLD} />
+                  <Text style={styles.legacyStarText}>
+                    {Number(rating).toFixed(1)}
+                  </Text>
+                </View>
+              )}
+            </View>
+            <View style={styles.legacyBody}>
+              <Text style={styles.legacyTitle} numberOfLines={2}>
+                {item.name ?? 'Studio Space'}
+              </Text>
+              <View style={styles.legacyMetaRow}>
+                <MapPin size={11} color={INK_MID} />
+                <Text style={styles.legacyMetaText} numberOfLines={1}>
+                  {item.lga?.name ?? item.location ?? 'Ogun State'}
+                </Text>
+              </View>
+              <View style={styles.legacyPriceRow}>
+                <Text style={styles.legacyPrice}>
+                  ₦{Number(item.pricePerHour ?? 0).toLocaleString()}
+                </Text>
+                <Text style={styles.legacyPriceLabel}>/ hour</Text>
+              </View>
+              <View style={styles.legacyDivider} />
+              <View style={styles.legacyFooter}>
+                <Text style={styles.legacyMetaText} numberOfLines={1}>
+                  {item.type ?? 'Recording'}
+                </Text>
+                <View style={styles.legacyAction}>
+                  <Text style={styles.legacyActionText}>Book Studio</Text>
+                </View>
+              </View>
+            </View>
+          </PressableScale>
         );
       })}
     </View>
   );
 }
 
-// ── Stays feed ─────────────────────────────────────────────────────────
-function StaysFeed({ data, isLoading }: { data: any[]; isLoading: boolean }) {
-  if (isLoading || data.length === 0) {
-    return <View style={styles.feedList}><SkeletonCard /><SkeletonCard /></View>;
+// ── Marketplace section ───────────────────────────────────────────────
+type ProductItem = {
+  id: string;
+  name: string;
+  price: number | string;
+  compareAtPrice?: number | string | null;
+  imageUrls?: string[];
+  category?: string;
+  isFeatured?: boolean;
+  vendor?: { id?: string; businessName?: string | null } | null;
+  inventory?: number;
+  description?: string | null;
+};
+
+// Dynamic haptics — same pattern as profile.tsx:18-26 and PressableScale.tsx.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let Haptics: any = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  Haptics = require('expo-haptics');
+} catch (_) {
+  // no-op
+}
+
+function ProductCard({
+  item,
+  wishlisted,
+  onToggleWishlist,
+}: {
+  item: ProductItem;
+  wishlisted: boolean;
+  onToggleWishlist: (id: string) => void;
+}) {
+  const price = Number(item.price ?? 0);
+  const compareAt =
+    item.compareAtPrice != null ? Number(item.compareAtPrice) : null;
+  const hasDiscount = compareAt != null && compareAt > price;
+  const discountPct = hasDiscount
+    ? Math.round(((compareAt - price) / compareAt) * 100)
+    : 0;
+  const cover = item.imageUrls?.[0] ?? null;
+
+  function handleAdd() {
+    useCartStore.getState().addItem(
+      {
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        imageUrls: item.imageUrls,
+        vendor: item.vendor ?? null,
+      },
+      1,
+    );
+    if (Haptics) {
+      try {
+        Haptics.impactAsync?.(Haptics.ImpactFeedbackStyle?.Light);
+      } catch (_) {
+        // ignore
+      }
+    }
   }
+
   return (
-    <View style={styles.feedList}>
-      {data.map((item: any, i: number) => (
-        <FeedCard
-          key={item.id ?? i}
-          tag="Stay"
-          title={item.name ?? 'Unnamed Property'}
-          location={item.lga?.name ?? item.city ?? 'Ogun State'}
-          price={`₦${Number(item.pricePerNight ?? 0).toLocaleString()}`}
-          priceLabel="/ night"
-          meta={`Up to ${item.maxGuests ?? '—'} guests`}
-          actionLabel="Book"
-          gradientIndex={i}
-          rating={item.averageRating ?? item.rating}
-          onPress={() => router.push(`/stays/${item.id}`)}
-          onAction={() => router.push(`/stays/${item.id}`)}
-        />
-      ))}
-    </View>
+    <PressableScale
+      onPress={() => router.push(`/marketplace/${item.id}` as never)}
+      style={[styles.gridCard, { width: CARD_WIDTH }]}
+    >
+      {/* Square thumbnail */}
+      <View style={styles.productThumb}>
+        {cover ? (
+          <ExpoImage
+            source={{ uri: cover }}
+            style={StyleSheet.absoluteFillObject}
+            contentFit="cover"
+            transition={200}
+          />
+        ) : (
+          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: SURFACE_RAISED }]} />
+        )}
+        {hasDiscount ? (
+          <View style={styles.discountPill}>
+            <Text style={styles.discountText}>-{discountPct}%</Text>
+          </View>
+        ) : null}
+        <Pressable
+          onPress={() => onToggleWishlist(item.id)}
+          style={styles.wishlistBtn}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Toggle wishlist"
+        >
+          <Heart
+            size={16}
+            color={wishlisted ? '#F87171' : INK}
+            fill={wishlisted ? '#F87171' : 'transparent'}
+          />
+        </Pressable>
+      </View>
+
+      {/* Body */}
+      <View style={styles.productBody}>
+        <Text style={styles.productName} numberOfLines={2}>
+          {item.name}
+        </Text>
+        <View style={styles.productPriceRow}>
+          <Text style={styles.productPrice}>
+            ₦{price.toLocaleString()}
+          </Text>
+          {hasDiscount && compareAt != null ? (
+            <Text style={styles.productCompareAt}>
+              ₦{compareAt.toLocaleString()}
+            </Text>
+          ) : null}
+        </View>
+        <Pressable
+          onPress={handleAdd}
+          style={({ pressed }) => [
+            styles.addBtn,
+            pressed && { opacity: 0.85 },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel={`Add ${item.name} to cart`}
+        >
+          <Text style={styles.addBtnText}>Add</Text>
+        </Pressable>
+      </View>
+    </PressableScale>
   );
 }
 
-// ── Studio feed ────────────────────────────────────────────────────────
-function StudioFeed({ data, isLoading }: { data: any[]; isLoading: boolean }) {
-  if (isLoading || data.length === 0) {
-    return <View style={styles.feedList}><SkeletonCard /><SkeletonCard /></View>;
-  }
-  return (
-    <View style={styles.feedList}>
-      {data.map((item: any, i: number) => (
-        <FeedCard
-          key={item.id ?? i}
-          tag="Studio"
-          title={item.name ?? 'Studio Space'}
-          location={item.lga?.name ?? item.location ?? 'Ogun State'}
-          price={`₦${Number(item.pricePerHour ?? 0).toLocaleString()}`}
-          priceLabel="/ hour"
-          meta={item.type ?? 'Recording'}
-          actionLabel="Book Studio"
-          gradientIndex={i}
-          rating={item.averageRating ?? item.rating}
-          onPress={() => router.push({ pathname: '/ai-chat', params: { prompt: `Book ${item.name ?? 'this studio space'} for me` } } as any)}
-          onAction={() => router.push({ pathname: '/ai-chat', params: { prompt: `Book ${item.name ?? 'this studio space'} for me` } } as any)}
-        />
-      ))}
-    </View>
+function MarketplaceSection() {
+  const [activeId, setActiveId] = useState<string>('all');
+  const [wishlist, setWishlist] = useState<Set<string>>(new Set());
+
+  const activeCat = useMemo<MarketplaceCategory>(
+    () =>
+      MARKETPLACE_CATEGORIES.find((c) => c.id === activeId) ??
+      MARKETPLACE_CATEGORIES[0],
+    [activeId],
   );
-}
 
-// ── Market waitlist ─────────────────────────────────────────────────────
-function MarketWaitlist() {
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [fullName, setFullName] = useState('');
-  const [joined, setJoined] = useState(false);
-  const [position, setPosition] = useState<number | null>(null);
+  const stripItems: CategoryStripItem[] = useMemo(
+    () =>
+      MARKETPLACE_CATEGORIES.map((c) => ({
+        id: c.id,
+        label: c.label,
+        icon: c.icon,
+      })),
+    [],
+  );
 
-  const join = useMutation({
-    mutationFn: (payload: { email?: string; phone?: string; fullName?: string }) =>
-      api.post('/waitlist', { source: 'marketplace_mobile', ...payload }).then((r) => r.data),
-    onSuccess: (data: any) => {
-      setJoined(true);
-      setPosition(data?.position ?? null);
-    },
-    onError: (err: any) => {
-      const msg = err?.response?.data?.message ?? 'Could not join waitlist. Please try again.';
-      Alert.alert('Something went wrong', Array.isArray(msg) ? msg[0] : msg);
-    },
+  const { data, isLoading } = useQuery({
+    queryKey: ['products-browse', activeId],
+    queryFn: () =>
+      fetcher(`/products?${buildMarketplaceQuery(activeCat)}`),
+    staleTime: 30_000,
   });
 
-  function submit() {
-    if (!email && !phone) {
-      Alert.alert('Almost there', 'Enter your email or phone number.');
-      return;
-    }
-    join.mutate({
-      email: email.trim() || undefined,
-      phone: phone.trim() || undefined,
-      fullName: fullName.trim() || undefined,
+  const products: ProductItem[] = data?.data ?? [];
+
+  function toggleWishlist(id: string) {
+    setWishlist((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
     });
   }
 
-  if (joined) {
-    return (
-      <View style={styles.waitlistRoot}>
-        <View style={styles.waitlistConfirmCard}>
-          <View style={styles.waitlistCheckCircle}>
-            <Check size={26} color={GOLD} strokeWidth={2.5} />
-          </View>
-          <Text style={styles.waitlistConfirmTitle}>You're in.</Text>
-          {position !== null && (
-            <Text style={styles.waitlistPosition}>
-              You're #<Text style={{ color: GOLD, fontWeight: '700' }}>{position}</Text> on the list.
-            </Text>
-          )}
-          <Text style={styles.waitlistConfirmSub}>
-            We'll text or email you the moment the marketplace opens.
-          </Text>
-        </View>
-      </View>
-    );
-  }
+  const renderItem = ({ item }: ListRenderItemInfo<ProductItem>) => (
+    <ProductCard
+      item={item}
+      wishlisted={wishlist.has(item.id)}
+      onToggleWishlist={toggleWishlist}
+    />
+  );
 
   return (
-    <View style={styles.waitlistRoot}>
-      <View style={styles.waitlistHeroCard}>
-        <View style={styles.waitlistKickerRow}>
-          <Sparkles size={13} color={GOLD} />
-          <Text style={styles.waitlistKicker}>COMING SOON</Text>
+    <View style={styles.sectionRoot}>
+      <CategoryStrip items={stripItems} activeId={activeId} onChange={setActiveId} />
+      {isLoading ? (
+        <View style={styles.gridPadding}>
+          <GridSkeleton count={4} />
+          <GridSkeleton count={4} />
         </View>
-        <Text style={styles.waitlistTitle}>Marketplace</Text>
-        <Text style={styles.waitlistTitleItalic}>opens soon.</Text>
-        <Text style={styles.waitlistDesc}>
-          Authentic Adire, handmade goods, and local produce from Ogun State vendors. Join the waitlist for early access — no spam.
-        </Text>
-
-        <View style={styles.waitlistBullets}>
-          {[
-            'Verified Ogun State sellers only',
-            'Wallet-native checkout with escrow protection',
-            'Early signups get priority access',
-          ].map((line, i) => (
-            <View key={i} style={styles.waitlistBulletRow}>
-              <View style={styles.waitlistBulletDot}>
-                <Check size={9} color={GOLD} strokeWidth={3} />
-              </View>
-              <Text style={styles.waitlistBulletText}>{line}</Text>
-            </View>
-          ))}
+      ) : products.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyText}>
+            No products in this category yet.
+          </Text>
         </View>
-      </View>
-
-      <View style={styles.waitlistFormCard}>
-        <Text style={styles.waitlistFormHeading}>Reserve your spot</Text>
-
-        <TextInput
-          style={styles.waitlistInput}
-          placeholder="Full name (optional)"
-          placeholderTextColor={INK_MID}
-          value={fullName}
-          onChangeText={setFullName}
-          autoCapitalize="words"
+      ) : (
+        <FlatList
+          data={products}
+          keyExtractor={(p) => p.id}
+          renderItem={renderItem}
+          numColumns={2}
+          columnWrapperStyle={{ gap: GRID_GUTTER, paddingHorizontal: GRID_H_PADDING }}
+          contentContainerStyle={styles.gridContent}
+          showsVerticalScrollIndicator={false}
+          ItemSeparatorComponent={() => <View style={{ height: GRID_GUTTER }} />}
         />
-
-        <TextInput
-          style={styles.waitlistInput}
-          placeholder="you@example.com"
-          placeholderTextColor={INK_MID}
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
-        />
-
-        <TextInput
-          style={styles.waitlistInput}
-          placeholder="+234 801 234 5678 (optional)"
-          placeholderTextColor={INK_MID}
-          value={phone}
-          onChangeText={setPhone}
-          keyboardType="phone-pad"
-        />
-
-        <TouchableOpacity
-          style={[styles.waitlistCta, join.isPending && { opacity: 0.6 }]}
-          onPress={submit}
-          activeOpacity={0.85}
-          disabled={join.isPending}
-        >
-          {join.isPending ? (
-            <ActivityIndicator color="#050E0E" />
-          ) : (
-            <>
-              <Text style={styles.waitlistCtaText}>Reserve my spot</Text>
-              <ArrowRight size={16} color="#050E0E" strokeWidth={2.5} />
-            </>
-          )}
-        </TouchableOpacity>
-
-        <Text style={styles.waitlistFinePrint}>
-          We'll only message you about the marketplace launch.
-        </Text>
-      </View>
+      )}
     </View>
+  );
+}
+
+// ── Header ────────────────────────────────────────────────────────────
+function CartBag() {
+  // Subscribe to items length so the badge re-renders on add/remove.
+  const count = useCartStore((s) => s.items.reduce((a, i) => a + i.quantity, 0));
+  return (
+    <Pressable
+      onPress={() => useCartDrawerStore.getState().openDrawer()}
+      style={({ pressed }) => [
+        styles.bagBtn,
+        pressed && { opacity: 0.7 },
+      ]}
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityLabel="Open cart"
+    >
+      <ShoppingBag size={20} color={INK} />
+      {count > 0 ? (
+        <View style={styles.bagBadge}>
+          <Text style={styles.bagBadgeText}>
+            {count > 99 ? '99+' : String(count)}
+          </Text>
+        </View>
+      ) : null}
+    </Pressable>
   );
 }
 
 // ── Main screen ────────────────────────────────────────────────────────
 export default function BookScreen() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('Stays');
-  const [activeChip, setActiveChip] = useState<number>(0);
-
-  const { data: eventsData, isLoading: eventsLoading } = useQuery({
-    queryKey: ['events'],
-    queryFn: () => fetcher('/events?limit=10'),
-  });
-  const { data: staysData, isLoading: staysLoading } = useQuery({
-    queryKey: ['stays'],
-    queryFn: () => fetcher('/properties?limit=10'),
-  });
-  const { data: studioData, isLoading: studioLoading } = useQuery({
-    queryKey: ['studio-slots'],
-    queryFn: () => fetcher('/studio/feed?limit=10'),
-  });
-
-  const events: any[] = eventsData?.data ?? [];
-  const stays: any[] = staysData?.data ?? [];
-  const studios: any[] = (studioData?.data ?? studioData) ?? [];
-
-  const chips = FILTER_CHIPS[activeTab];
-
-  function handleTabChange(tab: ActiveTab) {
-    setActiveTab(tab);
-    setActiveChip(0);
-  }
+  // Default: Stays — showcase redesign this phase per CONTEXT.
+  const [activeSection, setActiveSection] = useState<Section>('stays');
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        {/* ── Header ── */}
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <Text style={styles.kicker}>BOOK</Text>
-            <View style={styles.displayRow}>
-              <Text style={styles.displayTitle}>All of Ogun,{' '}</Text>
-              <Text style={styles.displayTitleItalic}>one shelf.</Text>
-            </View>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Book</Text>
+        <CartBag />
+      </View>
+
+      {/* Sub-section switcher */}
+      <View style={styles.switcherWrap}>
+        {SECTIONS.map((s) => (
+          <View key={s.id} style={styles.switcherItem}>
+            <Chip
+              label={s.label}
+              active={activeSection === s.id}
+              onPress={() => setActiveSection(s.id)}
+            />
           </View>
-          <TouchableOpacity style={styles.filterBtn} activeOpacity={0.75}>
-            <Filter size={18} color={INK_MID} />
-          </TouchableOpacity>
-        </View>
+        ))}
+      </View>
 
-        {/* ── Category switcher ── */}
-        <View style={styles.switcherWrap}>
-          <View style={styles.switcher}>
-            {TABS.map((tab) => {
-              const isActive = activeTab === tab;
-              return (
-                <TouchableOpacity
-                  key={tab}
-                  style={[styles.switcherTab, isActive && styles.switcherTabActive]}
-                  onPress={() => handleTabChange(tab)}
-                  activeOpacity={0.8}
-                >
-                  <Text style={[styles.switcherTabText, isActive && styles.switcherTabTextActive]}>{tab}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-
-        {/* ── Filter chips (hidden on Market waitlist) ── */}
-        {activeTab !== 'Market' && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsContent} style={styles.chipsScroll}>
-            {chips.map((chip, i) => {
-              const isFirst = i === activeChip;
-              return (
-                <TouchableOpacity key={chip} style={[styles.chip, isFirst && styles.chipActive]} onPress={() => setActiveChip(i)} activeOpacity={0.75}>
-                  <Text style={[styles.chipText, isFirst && styles.chipTextActive]}>{chip}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        )}
-
-        {/* ── Feed ── */}
-        {activeTab === 'Events' && <EventsFeed data={events} isLoading={eventsLoading} />}
-        {activeTab === 'Stays' && <StaysFeed data={stays} isLoading={staysLoading} />}
-        {activeTab === 'Studio' && <StudioFeed data={studios} isLoading={studioLoading} />}
-        {activeTab === 'Market' && <MarketWaitlist />}
-      </ScrollView>
+      {/* Active sub-section */}
+      <View style={styles.sectionHost}>
+        {activeSection === 'events' && <EventsSubsection />}
+        {activeSection === 'stays' && <StaysSection />}
+        {activeSection === 'studio' && <StudioSection />}
+        {activeSection === 'marketplace' && <MarketplaceSection />}
+      </View>
     </SafeAreaView>
   );
 }
@@ -494,229 +689,389 @@ export default function BookScreen() {
 // ── Styles ─────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: SURFACE_MID },
-  scrollContent: { paddingBottom: 120 },
 
   // Header
   header: {
-    flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
-    paddingHorizontal: SPACE_4, paddingTop: SPACE_4, marginBottom: 12,
-  },
-  headerLeft: { flex: 1 },
-  kicker: { fontFamily: FONT_MONO, fontSize: 10, color: GOLD, letterSpacing: 1.8, textTransform: 'uppercase', marginBottom: 4 },
-  displayRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline' },
-  displayTitle: { fontFamily: FONT_DISPLAY, fontSize: 34, fontWeight: '400', color: INK, lineHeight: 40 },
-  displayTitleItalic: { fontFamily: FONT_DISPLAY, fontSize: 34, fontWeight: '400', fontStyle: 'italic', color: GOLD, lineHeight: 40 },
-  filterBtn: {
-    width: 40, height: 40, borderRadius: RADIUS_SM,
-    backgroundColor: SURFACE_RAISED, borderWidth: 1, borderColor: BORDER,
-    alignItems: 'center', justifyContent: 'center', marginTop: 6,
-  },
-
-  // Category switcher
-  switcherWrap: { marginHorizontal: SPACE_4, marginTop: 14 },
-  switcher: { flexDirection: 'row', backgroundColor: SURFACE_RAISED, borderWidth: 1, borderColor: BORDER, borderRadius: RADIUS_MD, padding: 4 },
-  switcherTab: { flex: 1, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
-  switcherTabActive: { backgroundColor: GOLD, shadowColor: GOLD, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.35, shadowRadius: 8, elevation: 4 },
-  switcherTabText: { fontFamily: FONT_UI, fontSize: 13, fontWeight: '600', color: INK_MID },
-  switcherTabTextActive: { color: '#050E0E', fontWeight: '700' },
-
-  // Filter chips
-  chipsScroll: { marginTop: 14 },
-  chipsContent: { paddingHorizontal: SPACE_5, gap: 8 },
-  chip: { height: 32, paddingHorizontal: 14, borderRadius: RADIUS_PILL, borderWidth: 1, borderColor: BORDER, backgroundColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
-  chipActive: { backgroundColor: GOLD_DIM, borderColor: GOLD_LINE },
-  chipText: { fontFamily: FONT_UI, fontSize: 12, fontWeight: '500', color: INK_MID },
-  chipTextActive: { color: GOLD, fontWeight: '600' },
-
-  // Feed list
-  feedList: { paddingHorizontal: SPACE_5, paddingTop: 14, gap: 14 },
-
-  // Feed card
-  card: { backgroundColor: SURFACE_RAISED, borderRadius: RADIUS_LG, borderWidth: 1, borderColor: BORDER, overflow: 'hidden' },
-  cardHero: { height: 180, width: '100%', position: 'relative' },
-  heroTagWrap: { position: 'absolute', top: 10, left: 10 },
-  heroHeartWrap: { position: 'absolute', top: 10, right: 10 },
-  heroStarWrap: {
-    position: 'absolute', bottom: 10, left: 10,
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: 'rgba(5,14,14,0.55)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: RADIUS_PILL,
-  },
-  heroRating: { fontFamily: FONT_MONO, fontSize: 11, color: GOLD, fontWeight: '600' },
-  heartBtn: {
-    width: 30, height: 30, borderRadius: 15,
-    backgroundColor: 'rgba(5,14,14,0.55)', alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
-  },
-
-  // Card body
-  cardBody: { paddingVertical: 14, paddingHorizontal: SPACE_4, gap: 6 },
-  cardTitle: { fontFamily: FONT_UI, fontSize: 16, fontWeight: '700', color: INK, lineHeight: 22 },
-  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  locationText: { fontFamily: FONT_UI, fontSize: 11.5, color: INK_MID, flex: 1 },
-  priceRow: { flexDirection: 'row', alignItems: 'baseline', gap: 4, marginTop: 2 },
-  priceText: { fontFamily: FONT_MONO, fontSize: 15, fontWeight: '600', color: GOLD },
-  priceLabelText: { fontFamily: FONT_UI, fontSize: 11.5, color: INK_MID },
-  divider: { height: 1, backgroundColor: BORDER, marginTop: 6, marginBottom: 2 },
-  cardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  metaText: { fontFamily: FONT_UI, fontSize: 11.5, color: INK_MID, flex: 1 },
-  actionBtn: { height: 36, paddingHorizontal: 16, borderRadius: 10, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center' },
-  actionBtnText: { fontFamily: FONT_UI, fontSize: 13, fontWeight: '700', color: '#050E0E' },
-
-  // Tag chip
-  tagChip: { height: 22, paddingHorizontal: 8, borderRadius: RADIUS_PILL, backgroundColor: GOLD_DIM, borderWidth: 1, borderColor: GOLD_LINE, alignItems: 'center', justifyContent: 'center' },
-  tagChipText: { fontFamily: FONT_MONO, fontSize: 9.5, color: GOLD, fontWeight: '600', letterSpacing: 0.4, textTransform: 'uppercase' },
-
-  // Skeleton
-  skeletonCard: { backgroundColor: SURFACE_RAISED, borderRadius: RADIUS_LG, borderWidth: 1, borderColor: BORDER, overflow: 'hidden' },
-  skeletonHero: { height: 180, backgroundColor: '#1B3636' },
-  skeletonBody: { padding: SPACE_4 },
-  skeletonLine: { height: 13, borderRadius: 6, backgroundColor: '#1B3636' },
-
-  // ── Waitlist ────────────────────────────────────────────────────────
-  waitlistRoot: {
-    paddingHorizontal: SPACE_4,
-    paddingTop: 12,
-    gap: 14,
-  },
-  waitlistHeroCard: {
-    backgroundColor: SURFACE_RAISED,
-    borderRadius: RADIUS_LG,
-    borderWidth: 1,
-    borderColor: BORDER,
-    padding: 22,
-  },
-  waitlistKickerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 8,
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACE_4,
+    paddingTop: SPACE_4,
+    paddingBottom: 8,
   },
-  waitlistKicker: {
-    fontFamily: FONT_MONO,
-    fontSize: 10,
-    color: GOLD,
-    fontWeight: '700',
-    letterSpacing: 1.8,
-  },
-  waitlistTitle: {
-    fontFamily: FONT_DISPLAY,
-    fontSize: 30,
+  headerTitle: {
+    ...TYPE.heading,
     color: INK,
-    lineHeight: 36,
-    fontWeight: '400',
   },
-  waitlistTitleItalic: {
-    fontFamily: FONT_DISPLAY,
-    fontSize: 30,
-    fontStyle: 'italic',
-    color: GOLD,
-    lineHeight: 36,
-    marginBottom: 14,
-  },
-  waitlistDesc: {
-    fontSize: 13.5,
-    color: INK_MID,
-    lineHeight: 20,
-    marginBottom: 18,
-  },
-  waitlistBullets: { gap: 10 },
-  waitlistBulletRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  waitlistBulletDot: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: GOLD_DIM,
+  bagBtn: {
+    minHeight: 44,
+    minWidth: 44,
+    borderRadius: RADIUS_PILL,
+    backgroundColor: SURFACE_RAISED,
     borderWidth: 1,
-    borderColor: GOLD_LINE,
+    borderColor: BORDER,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 1,
+    position: 'relative',
   },
-  waitlistBulletText: { flex: 1, fontSize: 13, color: INK_MID, lineHeight: 19 },
-
-  waitlistFormCard: {
-    backgroundColor: SURFACE_RAISED,
-    borderRadius: RADIUS_LG,
-    borderWidth: 1,
-    borderColor: BORDER,
-    padding: 20,
-    gap: 12,
-  },
-  waitlistFormHeading: {
-    fontFamily: FONT_DISPLAY,
-    fontSize: 20,
-    color: INK,
-    marginBottom: 4,
-  },
-  waitlistInput: {
-    height: 46,
-    borderRadius: RADIUS_SM,
-    backgroundColor: SURFACE_MID,
-    borderWidth: 1,
-    borderColor: BORDER,
-    paddingHorizontal: 14,
-    color: INK,
-    fontSize: 14,
-  },
-  waitlistCta: {
-    height: 50,
-    borderRadius: RADIUS_MD,
+  bagBadge: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 5,
+    borderRadius: 9,
     backgroundColor: GOLD,
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 4,
   },
-  waitlistCtaText: {
-    fontSize: 15,
+  bagBadgeText: {
+    fontFamily: FONT_MONO,
+    fontSize: 10,
     fontWeight: '700',
-    color: '#050E0E',
-    letterSpacing: 0.2,
+    color: SURFACE_DEEP,
   },
-  waitlistFinePrint: {
+
+  // Sub-section switcher
+  switcherWrap: {
+    flexDirection: 'row',
+    paddingHorizontal: SPACE_4,
+    paddingVertical: 8,
+    gap: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: BORDER_SUBTLE,
+  },
+  switcherItem: {
+    // Wrapper enforces 44pt touch target around the inner Chip body.
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+
+  sectionHost: { flex: 1 },
+  sectionRoot: { flex: 1 },
+
+  // Grid
+  gridContent: {
+    paddingTop: 12,
+    paddingBottom: 120,
+  },
+  gridPadding: {
+    paddingHorizontal: GRID_H_PADDING,
+    paddingTop: 12,
+    gap: 12,
+  },
+  gridSkeletonRow: {
+    flexDirection: 'row',
+    gap: GRID_GUTTER,
+  },
+
+  // Generic grid card (Stays + Marketplace share)
+  gridCard: {
+    backgroundColor: SURFACE_RAISED,
+    borderRadius: RADIUS_MD,
+    borderWidth: 1,
+    borderColor: BORDER,
+    overflow: 'hidden',
+  },
+
+  // Stay card hero
+  gridHero: {
+    height: 160,
+    width: '100%',
+    position: 'relative',
+  },
+  gridBadgeTL: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: RADIUS_PILL,
+    backgroundColor: GOLD_DIM,
+    borderWidth: 1,
+    borderColor: GOLD_LINE,
+  },
+  gridBadgeText: {
+    fontFamily: FONT_MONO,
+    fontSize: 9,
+    color: GOLD,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  gridStarBR: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: RADIUS_PILL,
+    backgroundColor: 'rgba(5,14,14,0.55)',
+  },
+  gridStarText: {
+    fontFamily: FONT_MONO,
+    fontSize: 10,
+    color: GOLD,
+    fontWeight: '600',
+  },
+  gridPriceChipBL: {
+    position: 'absolute',
+    bottom: 8,
+    left: 8,
+  },
+  gridBody: {
+    padding: 10,
+    gap: 4,
+  },
+  gridTitle: {
+    fontFamily: FONT_UI,
+    fontSize: 13,
+    fontWeight: '700',
+    color: INK,
+    lineHeight: 17,
+  },
+  gridMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  gridMetaText: {
+    fontFamily: FONT_UI,
     fontSize: 11,
     color: INK_MID,
-    textAlign: 'center',
+    flex: 1,
+  },
+  gridPriceSuffix: {
+    fontFamily: FONT_UI,
+    fontSize: 10.5,
+    color: INK_DIM,
     marginTop: 2,
   },
 
-  // Confirmation state
-  waitlistConfirmCard: {
+  // Product card (Marketplace)
+  productThumb: {
+    width: '100%',
+    aspectRatio: 1,
+    position: 'relative',
+    backgroundColor: SURFACE_RAISED,
+  },
+  discountPill: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: RADIUS_SM,
+    backgroundColor: DISCOUNT_RED,
+  },
+  discountText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: INK,
+    fontFamily: FONT_MONO,
+  },
+  wishlistBtn: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(5,14,14,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  productBody: {
+    padding: 10,
+    gap: 6,
+  },
+  productName: {
+    fontFamily: FONT_UI,
+    fontSize: 13,
+    fontWeight: '700',
+    color: INK,
+    lineHeight: 17,
+    minHeight: 34, // 2 lines reserved so all cards align
+  },
+  productPriceRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 6,
+  },
+  productPrice: {
+    fontFamily: FONT_MONO,
+    fontSize: 15,
+    fontWeight: '700',
+    color: GOLD,
+  },
+  productCompareAt: {
+    fontFamily: FONT_MONO,
+    fontSize: 11,
+    color: INK_FAINT,
+    textDecorationLine: 'line-through',
+  },
+  addBtn: {
+    minHeight: 44, // M-2 fix: 44pt touch target floor (NOT 40pt)
+    borderRadius: RADIUS_SM,
+    backgroundColor: GOLD,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  addBtnText: {
+    fontFamily: FONT_UI,
+    fontSize: 13,
+    fontWeight: '700',
+    color: SURFACE_DEEP,
+    letterSpacing: 0.3,
+  },
+
+  // Skeleton
+  skeletonCard: {
+    backgroundColor: SURFACE_RAISED,
+    borderRadius: RADIUS_MD,
+    borderWidth: 1,
+    borderColor: BORDER,
+    overflow: 'hidden',
+  },
+  skeletonHero: { height: 160, backgroundColor: '#1B3636' },
+  skeletonBody: { padding: 10 },
+  skeletonLine: { height: 11, borderRadius: 5, backgroundColor: '#1B3636' },
+
+  // Empty state
+  emptyState: {
+    paddingHorizontal: SPACE_5,
+    paddingTop: 40,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontFamily: FONT_UI,
+    fontSize: 13,
+    color: INK_FAINT,
+  },
+
+  // Legacy Studio rendering (preserved — single-column FeedCard look)
+  legacyFeedList: {
+    paddingHorizontal: SPACE_5,
+    paddingTop: 14,
+    gap: 14,
+    paddingBottom: 120,
+  },
+  legacyCard: {
     backgroundColor: SURFACE_RAISED,
     borderRadius: RADIUS_LG,
     borderWidth: 1,
-    borderColor: GOLD_LINE,
-    padding: 32,
-    alignItems: 'center',
+    borderColor: BORDER,
+    overflow: 'hidden',
   },
-  waitlistCheckCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+  legacyHero: { height: 180, width: '100%', position: 'relative' },
+  legacyTagWrap: { position: 'absolute', top: 10, left: 10 },
+  legacyTag: {
+    height: 22,
+    paddingHorizontal: 8,
+    borderRadius: RADIUS_PILL,
     backgroundColor: GOLD_DIM,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: GOLD_LINE,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 18,
   },
-  waitlistConfirmTitle: {
-    fontFamily: FONT_DISPLAY,
-    fontSize: 26,
+  legacyTagText: {
+    fontFamily: FONT_MONO,
+    fontSize: 9.5,
+    color: GOLD,
+    fontWeight: '600',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  legacyStar: {
+    position: 'absolute',
+    bottom: 10,
+    left: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(5,14,14,0.55)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: RADIUS_PILL,
+  },
+  legacyStarText: {
+    fontFamily: FONT_MONO,
+    fontSize: 11,
+    color: GOLD,
+    fontWeight: '600',
+  },
+  legacyBody: {
+    paddingVertical: 14,
+    paddingHorizontal: SPACE_4,
+    gap: 6,
+  },
+  legacyTitle: {
+    fontFamily: FONT_UI,
+    fontSize: 16,
+    fontWeight: '700',
     color: INK,
-    marginBottom: 6,
+    lineHeight: 22,
   },
-  waitlistPosition: {
-    fontSize: 14,
+  legacyMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  legacyMetaText: {
+    fontFamily: FONT_UI,
+    fontSize: 11.5,
     color: INK_MID,
-    marginBottom: 8,
+    flex: 1,
   },
-  waitlistConfirmSub: {
+  legacyPriceRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 4,
+    marginTop: 2,
+  },
+  legacyPrice: {
+    fontFamily: FONT_MONO,
+    fontSize: 15,
+    fontWeight: '600',
+    color: GOLD,
+  },
+  legacyPriceLabel: {
+    fontFamily: FONT_UI,
+    fontSize: 11.5,
+    color: INK_MID,
+  },
+  legacyDivider: {
+    height: 1,
+    backgroundColor: BORDER,
+    marginTop: 6,
+    marginBottom: 2,
+  },
+  legacyFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  legacyAction: {
+    minHeight: 36,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    backgroundColor: GOLD,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  legacyActionText: {
+    fontFamily: FONT_UI,
     fontSize: 13,
-    color: INK_MID,
-    textAlign: 'center',
-    lineHeight: 19,
-    maxWidth: 280,
+    fontWeight: '700',
+    color: SURFACE_DEEP,
   },
 });
