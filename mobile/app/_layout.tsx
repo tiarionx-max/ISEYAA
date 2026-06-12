@@ -45,6 +45,10 @@ export default function RootLayout() {
           <Stack.Screen name="kyc" options={{ title: 'Identity Verification', presentation: 'card' }} />
           <Stack.Screen name="events/[id]" options={{ title: 'Event' }} />
           <Stack.Screen name="stays/[id]" options={{ title: 'Property' }} />
+          <Stack.Screen name="marketplace/[id]" options={{ title: 'Product' }} />
+          <Stack.Screen name="cart" options={{ headerShown: false, presentation: 'transparentModal', animation: 'none' }} />
+          <Stack.Screen name="checkout" options={{ title: 'Checkout', presentation: 'card' }} />
+          <Stack.Screen name="host" options={{ headerShown: false, presentation: 'card' }} />
           <Stack.Screen name="transport-flow" options={{ headerShown: false, presentation: 'fullScreenModal' }} />
           <Stack.Screen name="delivery-flow" options={{ headerShown: false, presentation: 'fullScreenModal' }} />
           <Stack.Screen name="driver-dashboard" options={{ headerShown: false, presentation: 'fullScreenModal' }} />
