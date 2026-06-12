@@ -32,10 +32,11 @@ Out of scope:
 ### Navigation Architecture (LOCKED — from UI spec)
 - 5-tab layout: `index` (Discover), `book` (Hub), `wallet`, `concierge`, `profile` (You).
 - Tabs route file: `mobile/app/(tabs)/_layout.tsx` — keep as the registration point.
-- Removed tabs migrate as follows:
-  - `events.tsx` → Book hub → Events sub-section
-  - `stays.tsx` → Book hub → Stays sub-section
-  - `studio.tsx` → Book hub → Studio sub-section
+- Removed tabs migrate as follows. **All four Book sub-sections (Events / Stays / Studio / Marketplace) MUST be present** — none may be dropped, regardless of whether they get a Temu/Airbnb-style redesign in this phase. If a sub-section keeps its legacy look this phase, that is acceptable; what is NOT acceptable is the sub-section disappearing entirely:
+  - `events.tsx` → Book hub → **Events sub-section** (migrate existing EventsFeed + QR scan-in FAB from current `mobile/app/(tabs)/book.tsx` or `(tabs)/events.tsx` — preserve functionality)
+  - `stays.tsx` → Book hub → **Stays sub-section** (full Airbnb redesign this phase)
+  - `studio.tsx` → Book hub → **Studio sub-section** (keep legacy look this phase; full redesign deferred)
+  - `marketplace` (new) → Book hub → **Marketplace sub-section** (full Temu redesign this phase)
   - `transport.tsx` → Concierge tab → Transport entry point (existing `transport-flow.tsx` modal stays)
   - `delivery.tsx` → Concierge tab → Delivery entry point (existing `delivery-flow.tsx` modal stays)
   - `driver.tsx` → You tab → Driver Mode card → `driver-dashboard.tsx` full-screen modal
@@ -66,16 +67,20 @@ Out of scope:
   - `HOURLY` — date + start time + duration in hours + total = hours × `pricePerHour`.
   - `TIMED_EVENT` — date + time slot picker + total = `pricePerHour` × selected slot length (or flat `pricePerNight` if no slot data).
   - `MEMBERSHIP` — duration selector (1mo / 3mo / 6mo / 12mo) + total = months × `membershipMonthlyPrice` + benefits list display.
-- Confirm → POST `/api/v1/stays/bookings` (existing endpoint) → Paystack handoff (existing in-app browser flow via `expo-web-browser`).
+- Confirm → `POST /api/v1/properties/:id/bookings` (verified in `backend/src/modules/stays/stays.controller.ts:94`). Request body matches `CreateBookingDto`: `{ checkIn: ISO date, checkOut: ISO date, guests: int ≥ 1, email: string }`. The `email` field is REQUIRED (class-validator `@IsEmail()`). Default to `user.email` from session if available. Response includes Paystack `authorizationUrl` — open via `expo-web-browser`.
+- **Handoff doc had the wrong endpoint (`/stays/bookings`).** Use the canonical path above.
 
 ### Marketplace (Temu-style)
 - Categories: All / Fashion / Crafts / Food / Art / Tech / Agriculture / Featured (8 tabs).
 - Category → API filter: `?category=<name>` on `GET /api/v1/products`. Featured filters by `isFeatured=true`.
 - Grid: 2-column, square thumbs, discount badge (compare-at vs current price), wishlist heart toggle.
 - Product detail: gallery + qty stepper + Add to Cart + Buy Now + tabbed description/shipping/reviews.
-- Cart: zustand store `mobile/lib/cart-store.ts` persisted to AsyncStorage as `iseyaa-cart-v1`. Mirror web's `useCartDrawerStore` shape so the data model stays consistent.
+- Cart: zustand store `mobile/lib/cart-store.ts` persisted to AsyncStorage as `iseyaa-cart-v1`. **Mirror web's `web/src/lib/cart.ts` exactly** — two separate stores:
+  - `useCartStore` — items state. `CartItem = { productId, name, price, imageUrl: string|null, vendorName, quantity }`. Methods: `addItem(product, qty?)`, `removeItem(productId)`, `updateQty(productId, qty)`, `clear()`, `totalCount()`, `totalPrice()`. `addItem` accepts `MinimalProduct = { id, name, price: number|string, imageUrls?: string[], vendor?: { businessName?: string|null } | null }` — derives imageUrl from `imageUrls[0]`, vendorName from `vendor.businessName ?? 'Iseyaa Vendor'`, normalizes qty to floor(max(1, qty)), merges duplicates by productId.
+  - `useCartDrawerStore` — open state. Methods: `openDrawer()`, `closeDrawer()`, `toggleDrawer()`. (Names match web — do NOT rename to `open/close/toggle`.)
+  - Storage key: `iseyaa-cart-v1`. Use `AsyncStorage` via `createJSONStorage` from `zustand/middleware`. `partialize` to `{ items }` only.
 - Cart drawer: right-slide modal (`presentation: 'transparentModal'` with reanimated slide). Trigger: bag icon in the Book hub header with item count badge.
-- Checkout screen: order summary + delivery address form + Paystack handoff. Existing endpoint `POST /api/v1/cart/checkout` is the contract.
+- Checkout screen: order summary + email confirmation field + Paystack handoff. **Endpoint is `POST /api/v1/orders`** (verified `backend/src/modules/marketplace/marketplace.controller.ts:101`). Request body matches `CreateOrderDto`: `{ items: [{ productId, quantity }], email: string }`. **No `deliveryAddress` field** — backend's global `ValidationPipe` runs with `forbidNonWhitelisted: true`, so any extra field 400s. Delivery address collection is deferred (handoff doc's `/cart/checkout` endpoint never existed; this phase ships email-only checkout to match the actual backend contract). Response shape: `{ orderId, payment: { authorizationUrl, reference } }` — open authorizationUrl via `expo-web-browser`.
 
 ### News Ticker
 - Component: `mobile/components/NewsTicker.tsx`.

@@ -267,7 +267,30 @@ Plans:
   6. A new Host onboarding screen reachable from the You tab matches `web/src/app/host/page.tsx` (hero, 3 benefit cards, Q&A, gold CTA) and fires `POST /api/v1/users/me/become-host` on confirm — the success response navigates to a host dashboard stub or existing screen
   7. A fresh Android EAS preview build (`eas build --platform android --profile preview --non-interactive`) completes successfully and the install URL is captured in the phase verification record
   8. All existing 282+ tests still pass after mobile changes; no breaking changes to backend endpoints; web app unchanged
-**Plans**: (to be created by gsd-plan-phase)
+**Plans**: 11 plans
+Plans:
+**Wave 1** *(no dependencies — runs immediately, parallel)*
+- [ ] 08-01-PLAN.md — Install expo-image + expo-web-browser + @react-native-community/datetimepicker + create lib/category-config.ts + lib/cart-store.ts (mirrors web/src/lib/cart.ts exactly) + extend tokens.ts with CARD_GRADIENTS.goldHero
+- [ ] 08-02-PLAN.md — NewsTicker component (uses item.link) + shared UI primitives (PressableScale, CategoryStrip with 44pt min, Chip)
+
+**Wave 2** *(blocked on Wave 1)*
+- [ ] 08-03-PLAN.md — Discover tab: insert NewsTicker at top of (tabs)/index.tsx (full Discover hero redesign deferred)
+- [ ] 08-04-PLAN.md — Delete 7 legacy tabs + strip hidden Tabs.Screen registrations from (tabs)/_layout.tsx
+- [ ] 08-04b-PLAN.md — Pre-register 4 new Stack routes (marketplace/[id], cart, checkout, host) in app/_layout.tsx so Wave 3 plans have disjoint file ownership
+
+**Wave 3** *(blocked on Wave 2)*
+- [ ] 08-05-PLAN.md — Book hub rewrite: 4 sub-sections (Events / Stays / Studio / Marketplace), Stays (10 categories, /properties grid), Marketplace (8 categories, /products grid with wishlist + 44pt Add button), Events (migrated EventsFeed + QR FAB), Studio (legacy look preserved)
+- [ ] 08-06-PLAN.md — Marketplace product detail + cart drawer modal + checkout screen POSTing to /api/v1/orders with { items, email } (no delivery address — backend forbids extras); does NOT touch _layout.tsx
+- [ ] 08-07-PLAN.md — Host onboarding screen using CARD_GRADIENTS.goldHero + profile-tab "Become a host" card; does NOT touch _layout.tsx
+
+**Wave 4** *(blocked on Wave 3)*
+- [ ] 08-08-PLAN.md — Stay detail redesign: 4-image gallery + highlights + amenity chips + 4 mode-aware booking sheets (NIGHTLY/HOURLY/TIMED_EVENT/MEMBERSHIP) POSTing to /api/v1/properties/:id/bookings with { checkIn, checkOut, guests, email } — TIMED_EVENT uses pricePerHour × slot length
+
+**Wave 5** *(blocked on Wave 4)*
+- [ ] 08-09-PLAN.md — EAS preview build: bump android.versionCode + commit + submit `eas build --platform android --profile preview --non-interactive` + capture install URL
+
+**Wave 6** *(blocked on Wave 5)*
+- [ ] 08-10-PLAN.md — Human verification checkpoint: walk all 8 MOB-RD success criteria on installed APK + record in 08-VERIFICATION.md + finalize 08-VALIDATION.md
 
 **Cross-cutting constraints:**
 - Use design tokens from `mobile-redesign-UI-SPEC.md` — no inline hex strings in component files (define once in `mobile/lib/tokens.ts`)
@@ -293,4 +316,4 @@ Plans:
 | 5. AI Concierge + KYC | 6/7 | In progress (05-07 human checkpoint deferred) | - |
 | 6. QA, Security & Performance | 5/6 | In Progress|  |
 | 7. Deployment & Launch | 4/5 | In Progress|  |
-| 8. Mobile Redesign | 0/0 | Not Started | - |
+| 8. Mobile Redesign | 0/10 | Not Started | - |
