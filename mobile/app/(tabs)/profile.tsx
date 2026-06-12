@@ -14,6 +14,7 @@ import { fetcher } from '../../lib/api';
 import * as SecureStore from 'expo-secure-store';
 import { router } from 'expo-router';
 import Svg, { G, Rect, Path, Circle } from 'react-native-svg';
+import { PressableScale } from '../../components/ui/PressableScale';
 
 // expo-haptics — loaded dynamically so missing package is a runtime no-op, not a TS error
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -35,6 +36,7 @@ import {
   ShoppingBag,
   Heart,
   Clock,
+  Home,
   type LucideProps,
 } from 'lucide-react-native';
 
@@ -75,6 +77,9 @@ interface UserProfile {
   created_at?: string;
   trips_count?: number;
   stays_count?: number;
+  // 08-07: host detection — backend GET /users/me returns these.
+  registeredRoles?: string[];
+  isHost?: boolean;
 }
 
 interface WalletBalance {
@@ -374,6 +379,10 @@ export default function ProfileScreen() {
   const role = user?.role ?? 'CITIZEN';
   const isDriverOrAdmin = role === 'DRIVER' || role === 'ADMIN';
 
+  // 08-07: Host onboarding entry point — hide once user is already a HOST.
+  const alreadyHost =
+    (user?.registeredRoles ?? []).includes('HOST') || user?.isHost === true;
+
   // Stats
   const tripsCount = user?.trips_count ?? 0;
   const staysCount = user?.stays_count ?? 0;
@@ -555,6 +564,30 @@ export default function ProfileScreen() {
                 <DriverCardContent driverMode={driverMode} setDriverMode={setDriverMode} />
               </View>
             )}
+          </View>
+        )}
+
+        {/* ── Become a Host CTA (08-07) ──────────────── */}
+        {!alreadyHost && (
+          <View style={styles.hostCtaWrap}>
+            <PressableScale
+              onPress={() => router.push('/host' as never)}
+              hapticStyle="light"
+              style={styles.hostCtaCard}
+            >
+              <View style={styles.hostCtaInner}>
+                <View style={styles.hostCtaIconBox}>
+                  <Home size={20} color={GOLD} />
+                </View>
+                <View style={styles.hostCtaTextBlock}>
+                  <Text style={styles.hostCtaTitle}>Become a host</Text>
+                  <Text style={styles.hostCtaSub}>
+                    List your stay, club, or experience
+                  </Text>
+                </View>
+                <ChevronRight size={16} color={INK_FAINT} />
+              </View>
+            </PressableScale>
           </View>
         )}
 
@@ -945,6 +978,50 @@ const styles = StyleSheet.create({
   },
   driverCardSolid: {
     borderRadius: 18,
+  },
+
+  // Host CTA card (08-07)
+  hostCtaWrap: {
+    paddingHorizontal: SPACE_5,
+    marginTop: 14,
+  },
+  hostCtaCard: {
+    backgroundColor: SURFACE_RAISED,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 18,
+    overflow: 'hidden',
+  },
+  hostCtaInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 16,
+    minHeight: 44,
+  },
+  hostCtaIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS_SM,
+    backgroundColor: GOLD_DIM,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  hostCtaTextBlock: {
+    flex: 1,
+    gap: 3,
+  },
+  hostCtaTitle: {
+    fontSize: 13.5,
+    fontWeight: '600',
+    color: INK,
+    lineHeight: 19,
+  },
+  hostCtaSub: {
+    fontSize: 10.5,
+    fontWeight: '400',
+    color: INK_MID,
+    lineHeight: 15,
   },
 
   // Menu section
