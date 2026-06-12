@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 06-01-PLAN.md
-last_updated: "2026-05-21T02:06:53.107Z"
-last_activity: 2026-05-21
+stopped_at: Wave 4 blocked — Anthropic rate limit on subagent dispatch (resets 2026-06-09 13:40 America/Chicago). 08-08 (Stay detail rewrite) is next.
+last_updated: "2026-06-09T19:35:00.000Z"
+last_activity: 2026-06-09
 progress:
-  total_phases: 7
+  total_phases: 8
   completed_phases: 3
-  total_plans: 47
-  completed_plans: 44
-  percent: 94
+  total_plans: 58
+  completed_plans: 52
+  percent: 90
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-12)
 
 **Core value:** A tourist in Abeokuta can discover an attraction, book a guesthouse, buy an event ticket, and request a ride — all paid through one wallet — and the government analyst sees the revenue in real time.
-**Current focus:** Phase 7 — Deployment & Launch
+**Current focus:** Phase 8 — Mobile Redesign (Wave 4 blocked on rate limit)
 
 ## Current Position
 
-Phase: 7 of 7 (Deployment & Launch)
-Plan: 2 of 5 — plans created, ready to execute
-Status: Ready to execute
-Last activity: 2026-05-21
+Phase: 8 of 8 (Mobile Redesign)
+Plan: 8 of 11 plans complete; 08-08 next, then 08-09 (EAS build, human) + 08-10 (verification checkpoint, human)
+Status: Wave 4 blocked — Anthropic subagent quota resets 2026-06-09 13:40 America/Chicago
+Last activity: 2026-06-09
 
-Progress: [█████████░] 94%
+Progress: [█████████░] 90%
 
 ## Current Status
 
@@ -41,6 +41,24 @@ Progress: [█████████░] 94%
 - Phase 5: IN PROGRESS — 6/7 plans done (05-07 human checkpoint deferred, 282 tests passing)
 - Phase 6: IN PROGRESS — 5/6 plans done (06-06 human checkpoint pending)
 - Phase 7: PLANNED — 5 plans ready to execute (Wave 1: EAS build setup runs immediately)
+- Phase 8: IN PROGRESS — 8/11 plans done. Waves 1+2+3 complete & pushed to origin (commit 56ba553). 08-08 (Wave 4, stay detail) blocked on rate limit. 08-09 (EAS build) + 08-10 (verification) are human checkpoints.
+
+### Phase 8 plan ledger
+- [x] 08-01 — Foundations (deps + tokens + category-config + cart-store mirroring web/src/lib/cart.ts)
+- [x] 08-02 — UI primitives (NewsTicker + PressableScale + CategoryStrip + Chip)
+- [x] 08-03 — Discover NewsTicker insertion (slim additive edit)
+- [x] 08-04 — Delete 7 legacy tabs + strip hidden Tabs.Screen entries (5-tab final)
+- [x] 08-04b — Pre-register marketplace/[id], cart, checkout, host Stack routes
+- [x] 08-05 — Book hub 4-pane (Events migrated + Stays + Studio placeholder + Marketplace)
+- [x] 08-06 — Product detail + cart drawer + checkout (POST /api/v1/orders — email-only per backend contract)
+- [x] 08-07 — Host onboarding screen + profile CTA (POST /api/v1/users/me/become-host)
+- [ ] 08-08 — Stay detail rewrite (4-image gallery + 4 mode-aware booking sheets → POST /api/v1/properties/:id/bookings) **BLOCKED — RATE LIMIT**
+- [ ] 08-09 — EAS preview build (human checkpoint — operator runs `eas build --platform android --profile preview`)
+- [ ] 08-10 — Phase 8 human verification checkpoint (8 SCs)
+
+### Known pre-existing deferred items (tracked in .planning/phases/08-mobile-redesign/deferred-items.md)
+- `@sentry/react-native` typecheck error in `mobile/app/_layout.tsx` (unrelated to Phase 8, pre-existed before plan dispatch)
+- Worktree-side `expo-image` / `expo-web-browser` typecheck noise is `node_modules`-related, not project-code (verified)
 
 ## Performance Metrics
 
