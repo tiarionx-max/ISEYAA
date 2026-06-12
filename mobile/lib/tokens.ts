@@ -123,12 +123,15 @@ export const TYPE = {
 } as const;
 
 // ── Card gradient pairs (tone → [top, bottom]) ────
-export const CARD_GRADIENTS: Record<string, [string, string]> = {
-  gold:   ['#3a2e15', '#1f1808'],
-  forest: ['#1a3a2a', '#0d2018'],
-  rock:   ['#3a2820', '#1c130d'],
-  dusk:   ['#4a2415', '#1a0d08'],
-  indigo: ['#1a2a4a', '#0a1226'],
+// Widened to string[] so 4-stop hero gradients (e.g. goldHero) coexist with
+// 2-stop card tones. Existing 2-tuple entries remain unchanged.
+export const CARD_GRADIENTS: Record<string, string[]> = {
+  gold:     ['#3a2e15', '#1f1808'],
+  forest:   ['#1a3a2a', '#0d2018'],
+  rock:     ['#3a2820', '#1c130d'],
+  dusk:     ['#4a2415', '#1a0d08'],
+  indigo:   ['#1a2a4a', '#0a1226'],
+  goldHero: ['#3a2e15', '#6a4a14', '#C8962A', '#4a3208'],
 };
 
 export const CARD_COLORS: [string, string][] = [
