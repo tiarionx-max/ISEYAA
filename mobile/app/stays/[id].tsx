@@ -13,9 +13,9 @@
  *   6. Map placeholder (real maps deferred per CONTEXT §8.3 <deferred>)
  *   7. Sticky booking sheet at bottom — switches on property.bookingMode across 4 components
  *
- * Backend contract (verified):
+ * Backend contract (verified in stays.controller.ts:94):
  *   POST /api/v1/properties/:id/bookings  body = { checkIn, checkOut, guests, email }
- *   (NOT /stays/bookings — that path does not exist; H-3.)
+ *   (NOT the older path under stays — that path does not exist; H-3.)
  *
  * Email default: from `/users/me` session query (mirror checkout.tsx pattern).
  * Paystack handoff: expo-web-browser openAuthSessionAsync (same as checkout).
