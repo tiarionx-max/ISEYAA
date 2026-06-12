@@ -27,6 +27,7 @@ import { CalendarDays, Clock, Minus, Plus, Users } from 'lucide-react-native';
 
 import { PressableScale } from '../ui/PressableScale';
 import {
+  SURFACE_DEEP,
   SURFACE_RAISED,
   SURFACE_MID,
   GOLD,
@@ -294,7 +295,7 @@ export function HourlyBookingSheet({
         hapticStyle="medium"
       >
         {pending ? (
-          <ActivityIndicator color="#051A10" />
+          <ActivityIndicator color={SURFACE_DEEP} />
         ) : (
           <Text style={styles.ctaText}>
             {signedIn ? 'Reserve table' : 'Sign in to book'}
@@ -418,5 +419,5 @@ const styles = StyleSheet.create({
     marginTop: SPACE_2,
   },
   ctaDisabled: { opacity: 0.5 },
-  ctaText: { fontSize: 15, fontWeight: '700', color: '#051A10', letterSpacing: 0.2 },
+  ctaText: { fontSize: 15, fontWeight: '700', color: SURFACE_DEEP, letterSpacing: 0.2 },
 });
