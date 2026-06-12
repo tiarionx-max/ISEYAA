@@ -180,8 +180,8 @@ export function MembershipBookingSheet({
           onBlur={() => setEmailFocused(false)}
           style={[
             styles.input,
-            emailFocused && styles.inputFocused,
-            emailError && styles.inputError,
+            emailFocused ? styles.inputFocused : null,
+            emailError ? styles.inputError : null,
           ]}
           accessibilityLabel="Confirmation email"
         />

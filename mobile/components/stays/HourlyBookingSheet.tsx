@@ -172,7 +172,7 @@ export function HourlyBookingSheet({
           value={date}
           mode="date"
           minimumDate={today}
-          onChange={(_, d) => {
+          onChange={(_: unknown, d?: Date) => {
             if (Platform.OS !== 'ios') setShowDate(false);
             if (d) setDate(d);
           }}
@@ -182,7 +182,7 @@ export function HourlyBookingSheet({
         <DateTimePicker
           value={time}
           mode="time"
-          onChange={(_, d) => {
+          onChange={(_: unknown, d?: Date) => {
             if (Platform.OS !== 'ios') setShowTime(false);
             if (d) setTime(d);
           }}
@@ -269,8 +269,8 @@ export function HourlyBookingSheet({
           onBlur={() => setEmailFocused(false)}
           style={[
             styles.input,
-            emailFocused && styles.inputFocused,
-            emailError && styles.inputError,
+            emailFocused ? styles.inputFocused : null,
+            emailError ? styles.inputError : null,
           ]}
           accessibilityLabel="Confirmation email"
         />

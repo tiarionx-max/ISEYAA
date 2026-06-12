@@ -185,7 +185,7 @@ export function TimedEventBookingSheet({
           value={date}
           mode="date"
           minimumDate={today}
-          onChange={(_, d) => {
+          onChange={(_: unknown, d?: Date) => {
             if (Platform.OS !== 'ios') setShowDate(false);
             if (d) setDate(d);
           }}
@@ -260,8 +260,8 @@ export function TimedEventBookingSheet({
           onBlur={() => setEmailFocused(false)}
           style={[
             styles.input,
-            emailFocused && styles.inputFocused,
-            emailError && styles.inputError,
+            emailFocused ? styles.inputFocused : null,
+            emailError ? styles.inputError : null,
           ]}
           accessibilityLabel="Confirmation email"
         />

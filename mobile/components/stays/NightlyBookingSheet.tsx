@@ -199,7 +199,7 @@ export function NightlyBookingSheet({
           value={checkIn}
           mode="date"
           minimumDate={today}
-          onChange={(_, d) => {
+          onChange={(_: unknown, d?: Date) => {
             if (Platform.OS !== 'ios') setShowCheckIn(false);
             if (d) {
               setCheckIn(d);
@@ -217,7 +217,7 @@ export function NightlyBookingSheet({
           value={checkOut}
           mode="date"
           minimumDate={new Date(checkIn.getTime() + 86_400_000)}
-          onChange={(_, d) => {
+          onChange={(_: unknown, d?: Date) => {
             if (Platform.OS !== 'ios') setShowCheckOut(false);
             if (d) setCheckOut(d);
           }}
@@ -273,8 +273,8 @@ export function NightlyBookingSheet({
           onBlur={() => setEmailFocused(false)}
           style={[
             styles.input,
-            emailFocused && styles.inputFocused,
-            emailError && styles.inputError,
+            emailFocused ? styles.inputFocused : null,
+            emailError ? styles.inputError : null,
           ]}
           accessibilityLabel="Confirmation email"
         />
