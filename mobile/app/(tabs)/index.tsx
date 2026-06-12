@@ -15,6 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useQuery } from '@tanstack/react-query';
 import { fetcher } from '../../lib/api';
 import { cacheGet, cacheSet, toggleBookmark, getBookmarks } from '../../lib/storage';
+import { NewsTicker } from '../../components/NewsTicker';
 import { useEffect, useRef, useState } from 'react';
 import { router } from 'expo-router';
 import {
@@ -466,6 +467,7 @@ export default function DiscoverScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
+        <NewsTicker />
         {/* ── HERO ──────────────────────────────────────────────────────────── */}
         <View style={styles.heroWrapper}>
           {/* Clipped background layer — gradients + ornament */}
