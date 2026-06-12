@@ -94,15 +94,6 @@ export default function TabsLayout() {
           tabBarLabel: ({ focused }) => <TabLabel label="You" focused={focused} />,
         }}
       />
-
-      {/* ── Hidden legacy tabs ── */}
-      <Tabs.Screen name="events" options={{ href: null }} />
-      <Tabs.Screen name="stays" options={{ href: null }} />
-      <Tabs.Screen name="studio" options={{ href: null }} />
-      <Tabs.Screen name="transport" options={{ href: null }} />
-      <Tabs.Screen name="delivery" options={{ href: null }} />
-      <Tabs.Screen name="driver" options={{ href: null }} />
-      <Tabs.Screen name="rider" options={{ href: null }} />
     </Tabs>
   );
 }
