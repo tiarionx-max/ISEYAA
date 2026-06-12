@@ -1,446 +1,489 @@
-import React, { useState } from 'react';
+/**
+ * Stay Detail Screen — Plan 08-08 (Wave 4)
+ *
+ * Closes MOB-RD-04 (Stay detail mode-aware booking).
+ *
+ * Layout (mirrors web/src/app/stays/[id]/page.tsx, mobile-adapted):
+ *   1. 4-image gallery — horizontal paged FlatList, dot indicators, expo-image
+ *      Source: property.imageUrls (sliced to 4) with coverImageUrl fallback
+ *   2. Title / location / rating row
+ *   3. Highlights — CheckCircle2 + text vertical list
+ *   4. Amenities — wrapped Chip pills
+ *   5. Description
+ *   6. Map placeholder (real maps deferred per CONTEXT §8.3 <deferred>)
+ *   7. Sticky booking sheet at bottom — switches on property.bookingMode across 4 components
+ *
+ * Backend contract (verified):
+ *   POST /api/v1/properties/:id/bookings  body = { checkIn, checkOut, guests, email }
+ *   (NOT /stays/bookings — that path does not exist; H-3.)
+ *
+ * Email default: from `/users/me` session query (mirror checkout.tsx pattern).
+ * Paystack handoff: expo-web-browser openAuthSessionAsync (same as checkout).
+ *
+ * H-4 disjoint ownership: this file does NOT touch _layout.tsx — `stays/[id]` was
+ * already registered pre-Phase 8.
+ */
+
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  ActivityIndicator, Alert, Platform, Share,
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  ScrollView,
+  ActivityIndicator,
+  Alert,
+  Share,
+  StatusBar,
+  Dimensions,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { fetcher, api } from '../../lib/api';
-import {
-  ChevronLeft, Heart, Share2, MapPin,
-  Wifi, Waves, Sparkles, UtensilsCrossed, Wind, Building2,
-} from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Rect, Line, Circle } from 'react-native-svg';
+import { Image as ExpoImage } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as WebBrowser from 'expo-web-browser';
+import {
+  ChevronLeft,
+  Heart,
+  Share2,
+  MapPin,
+  Star,
+  CheckCircle2,
+  Home as HomeIcon,
+} from 'lucide-react-native';
+
+import { api, fetcher } from '../../lib/api';
+import { Chip } from '../../components/ui/Chip';
+import { PressableScale } from '../../components/ui/PressableScale';
+
+import { NightlyBookingSheet } from '../../components/stays/NightlyBookingSheet';
+import { HourlyBookingSheet } from '../../components/stays/HourlyBookingSheet';
+import { TimedEventBookingSheet } from '../../components/stays/TimedEventBookingSheet';
+import { MembershipBookingSheet } from '../../components/stays/MembershipBookingSheet';
+import type {
+  BookingArgs,
+  Property as SheetProperty,
+} from '../../components/stays/NightlyBookingSheet';
 
 import {
-  SURFACE_DEEP, SURFACE_MID, SURFACE_ELEV,
-  FOREST, FOREST_DEEP,
-  GOLD, GOLD_DIM, GOLD_LINE,
-  CREAM, INK, INK_MID, INK_FAINT,
-  BORDER, BORDER_MID,
-  FONT_DISPLAY, FONT_MONO,
+  SURFACE_DEEP,
+  SURFACE_MID,
+  SURFACE_RAISED,
+  GOLD,
+  FOREST_LIGHT,
+  FOREST_DEEP,
+  CREAM,
+  INK,
+  INK_SECONDARY,
+  INK_FAINT,
+  BORDER_SUBTLE,
+  CARD_COLORS,
+  TYPE,
+  FONT_DISPLAY,
+  FONT_MONO,
+  SPACE_2,
+  SPACE_3,
+  SPACE_4,
+  SPACE_5,
+  RADIUS_MD,
+  RADIUS_LG,
 } from '../../lib/tokens';
 
-// ── AdireOrnament ──────────────────────────────────
-function AdireOrnament({ size = 120, opacity = 0.2 }: { size?: number; opacity?: number }) {
-  const s = size;
-  const c = s / 2;
-  return (
-    <Svg width={s} height={s} viewBox={`0 0 ${s} ${s}`} opacity={opacity}>
-      <Rect x={s * 0.1} y={s * 0.1} width={s * 0.8} height={s * 0.8} fill="none" stroke={GOLD} strokeWidth={s * 0.018} />
-      <Rect x={s * 0.2} y={s * 0.2} width={s * 0.6} height={s * 0.6} fill="none" stroke={GOLD} strokeWidth={s * 0.012} />
-      <Line x1={s * 0.1} y1={s * 0.1} x2={s * 0.9} y2={s * 0.9} stroke={GOLD} strokeWidth={s * 0.01} />
-      <Line x1={s * 0.9} y1={s * 0.1} x2={s * 0.1} y2={s * 0.9} stroke={GOLD} strokeWidth={s * 0.01} />
-      <Circle cx={c} cy={c} r={s * 0.12} fill="none" stroke={GOLD} strokeWidth={s * 0.012} />
-      <Circle cx={c} cy={c} r={s * 0.05} fill={GOLD} />
-    </Svg>
-  );
+// ── Types ──────────────────────────────────────────────────────────────────
+type Property = SheetProperty & {
+  description?: string | null;
+  imageUrls?: string[];
+  coverImageUrl?: string | null;
+  highlights?: string[];
+  amenities?: string[];
+  city?: string | null;
+  address?: string | null;
+  rating?: number | null;
+  reviewCount?: number | null;
+  isSuperhost?: boolean | null;
+  lga?: { name?: string } | null;
+};
+
+type Me = { email?: string };
+
+type BookingResponse = {
+  bookingId?: string;
+  reference?: string;
+  payment?: { authorizationUrl?: string; reference?: string };
+  authorizationUrl?: string;
+};
+
+// ── Constants ──────────────────────────────────────────────────────────────
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const GALLERY_HEIGHT = Math.round((SCREEN_WIDTH * 3) / 4); // 4:3
+const GALLERY_COUNT = 4;
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function buildGallery(p: Property): (string | null)[] {
+  const list = (p.imageUrls ?? []).filter(Boolean);
+  if (list.length >= GALLERY_COUNT) return list.slice(0, GALLERY_COUNT);
+  if (list.length > 0) {
+    return [...list, ...Array(GALLERY_COUNT - list.length).fill(p.coverImageUrl ?? null)];
+  }
+  return Array(GALLERY_COUNT).fill(p.coverImageUrl ?? null);
 }
 
-// ── Amenity data ──────────────────────────────────
-const AMENITIES = [
-  { key: 'WiFi', icon: Wifi },
-  { key: 'Pool', icon: Waves },
-  { key: 'Spa', icon: Sparkles },
-  { key: 'Rooftop', icon: Building2 },
-  { key: 'Restaurant', icon: UtensilsCrossed },
-  { key: 'AC', icon: Wind },
-];
-
-// ── Date helpers ──────────────────────────────────
-function addDays(base: Date, n: number) {
-  const d = new Date(base);
-  d.setDate(d.getDate() + n);
-  return d.toISOString().split('T')[0];
-}
-
-function displayDate(iso: string | null) {
-  if (!iso) return 'Pick date';
-  const d = new Date(iso);
-  return d.toLocaleDateString('en-NG', { day: 'numeric', month: 'short' });
-}
-
-// ── Screen ────────────────────────────────────────
-export default function StayDetailScreen() {
+// ── Screen ─────────────────────────────────────────────────────────────────
+export default function StayDetailScreen(): JSX.Element {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
-  const today = new Date();
-  const [isLiked, setIsLiked] = useState(false);
-  const [checkIn, setCheckIn] = useState<string | null>(null);
-  const [checkOut, setCheckOut] = useState<string | null>(null);
-  const [guests, setGuests] = useState(1);
+  const [galleryIndex, setGalleryIndex] = useState(0);
+  const [liked, setLiked] = useState(false);
+  const flatListRef = useRef<FlatList>(null);
 
-  function pickCheckIn() {
-    Alert.alert('Check-in date', 'Select arrival date', [
-      { text: 'Today', onPress: () => setCheckIn(addDays(today, 0)) },
-      { text: 'Tomorrow', onPress: () => setCheckIn(addDays(today, 1)) },
-      { text: 'In 3 days', onPress: () => setCheckIn(addDays(today, 3)) },
-      { text: 'In 7 days', onPress: () => setCheckIn(addDays(today, 7)) },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  }
-
-  function pickCheckOut() {
-    const base = checkIn ? new Date(checkIn) : today;
-    Alert.alert('Check-out date', 'Select departure date', [
-      { text: '+1 night', onPress: () => setCheckOut(addDays(base, 1)) },
-      { text: '+2 nights', onPress: () => setCheckOut(addDays(base, 2)) },
-      { text: '+3 nights', onPress: () => setCheckOut(addDays(base, 3)) },
-      { text: '+7 nights', onPress: () => setCheckOut(addDays(base, 7)) },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  }
-
-  const { data, isLoading } = useQuery({
+  // Property
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['property', id],
     queryFn: () => fetcher(`/properties/${id}`),
     enabled: !!id,
   });
+  const property: Property | undefined = data?.data ?? data;
 
-  const property = data?.data ?? data;
+  // Session (for defaultEmail)
+  const { data: me } = useQuery<Me>({
+    queryKey: ['me'],
+    queryFn: () => fetcher('/users/me'),
+    staleTime: 60_000,
+    retry: false,
+  });
+  const signedIn = !!me?.email; // me query only succeeds for authenticated users
+  const defaultEmail = me?.email ?? null;
 
-  const bookMutation = useMutation({
-    mutationFn: (payload: { checkIn: string; checkOut: string }) =>
-      api.post(`/properties/${id}/bookings`, { propertyId: id, ...payload }),
-    onSuccess: () => Alert.alert('Booking Confirmed!', 'Check your profile for booking details.'),
-    onError: (e: any) => Alert.alert('Booking Failed', e?.response?.data?.message ?? 'Please try again.'),
+  // Booking mutation — POST /api/v1/properties/:id/bookings
+  const bookingMutation = useMutation<BookingResponse, any, BookingArgs>({
+    mutationFn: async (args: BookingArgs) => {
+      const res = await api.post(`/properties/${property?.id}/bookings`, args);
+      return res.data as BookingResponse;
+    },
+    onSuccess: async (resp) => {
+      // Defensive read — mirrors checkout.tsx (08-06)
+      const url = resp.payment?.authorizationUrl ?? resp.authorizationUrl;
+      if (!url) {
+        Alert.alert(
+          'Booking created',
+          'No payment URL returned — check your bookings list.',
+          [{ text: 'OK', onPress: () => router.replace('/(tabs)/profile') }],
+        );
+        return;
+      }
+      try {
+        await WebBrowser.openAuthSessionAsync(url, 'iseyaa://booking-callback');
+      } catch (err: any) {
+        Alert.alert(
+          'Payment opened',
+          err?.message ?? 'Open the payment link from your email to complete.',
+        );
+      }
+    },
+    onError: (err: any) => {
+      const msg =
+        err?.response?.data?.message ??
+        err?.message ??
+        'Booking failed. Please try again.';
+      Alert.alert('Booking failed', Array.isArray(msg) ? msg.join('\n') : String(msg));
+    },
   });
 
-  const handleBook = () => {
-    const today = new Date();
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-    const ci = checkIn ?? today.toISOString().split('T')[0];
-    const co = checkOut ?? tomorrow.toISOString().split('T')[0];
-    bookMutation.mutate({ checkIn: ci, checkOut: co });
+  const handleSubmit = useCallback(
+    (args: BookingArgs) => bookingMutation.mutate(args),
+    [bookingMutation],
+  );
+
+  const handleShare = useCallback(() => {
+    if (!property) return;
+    Share.share({
+      title: property.name ?? 'Stay',
+      message: `Check out ${property.name ?? 'this stay'} on Iṣẹ́yáá!`,
+    }).catch(() => {
+      /* user dismissed */
+    });
+  }, [property]);
+
+  const onGalleryScroll = (e: NativeSyntheticEvent<NativeScrollEvent>): void => {
+    const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+    if (idx !== galleryIndex) setGalleryIndex(idx);
   };
 
+  // ── Loading / Error ──────────────────────────────────────────────────────
   if (isLoading) {
     return (
-      <View style={[s.centered, { backgroundColor: SURFACE_DEEP }]}>
+      <View style={[s.root, s.centered]}>
+        <StatusBar barStyle="light-content" />
         <ActivityIndicator color={GOLD} size="large" />
       </View>
     );
   }
-
-  if (!property) {
+  if (isError || !property) {
     return (
-      <View style={[s.centered, { backgroundColor: SURFACE_DEEP }]}>
-        <Text style={s.errorText}>Property not found.</Text>
+      <View style={[s.root, s.centered]}>
+        <StatusBar barStyle="light-content" />
+        <Text style={s.errorText}>This listing could not be loaded.</Text>
+        <PressableScale onPress={() => router.back()} style={s.errorBtn} hapticStyle="light">
+          <Text style={s.errorBtnText}>Go back</Text>
+        </PressableScale>
       </View>
     );
   }
 
-  const pricePerNight = Number(property.pricePerNight ?? 0);
-  const nights = checkIn && checkOut
-    ? Math.max(1, Math.round((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / 86_400_000))
-    : 1;
-  const serviceFee = Math.round(pricePerNight * 0.05);
-  const tourismLevy = Math.round(pricePerNight * 0.02);
-  const total = pricePerNight * nights + serviceFee + tourismLevy;
+  const gallery = buildGallery(property);
+  const location =
+    property.city ??
+    property.address ??
+    property.lga?.name ??
+    'Ogun State, Nigeria';
+  const highlights = property.highlights ?? [];
+  const amenities = property.amenities ?? [];
 
-  const location = property.location ?? property.address ?? 'Ogun State, Nigeria';
+  const sheetProps = {
+    property,
+    pending: bookingMutation.isPending,
+    signedIn,
+    defaultEmail,
+    onSubmit: handleSubmit,
+  };
 
-  // Initials for avatar
-  const hostName = property.host?.name ?? property.hostName ?? 'Host';
-  const initials = hostName
-    .split(' ')
-    .slice(0, 2)
-    .map((w: string) => w[0] ?? '')
-    .join('')
-    .toUpperCase() || 'H';
+  const renderSheet = () => {
+    switch (property.bookingMode) {
+      case 'HOURLY':
+        return <HourlyBookingSheet {...sheetProps} />;
+      case 'TIMED_EVENT':
+        return <TimedEventBookingSheet {...sheetProps} />;
+      case 'MEMBERSHIP':
+        return <MembershipBookingSheet {...sheetProps} />;
+      case 'NIGHTLY':
+      default:
+        return <NightlyBookingSheet {...sheetProps} />;
+    }
+  };
 
   return (
-    <View style={[s.root, { backgroundColor: SURFACE_DEEP }]}>
+    <View style={s.root}>
+      <StatusBar barStyle="light-content" />
+
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 120 }}
+        contentContainerStyle={{ paddingBottom: 360 }}
       >
-        {/* ── HERO GALLERY ── */}
-        <View style={s.hero}>
-          <LinearGradient
-            colors={['#0E3F23', '#051A10']}
-            style={StyleSheet.absoluteFillObject}
-            start={{ x: 0.3, y: 0 }}
-            end={{ x: 0.7, y: 1 }}
+        {/* ── 4-image gallery — horizontal paged ── */}
+        <View style={{ height: GALLERY_HEIGHT, width: SCREEN_WIDTH }}>
+          <FlatList
+            ref={flatListRef}
+            data={gallery}
+            keyExtractor={(_, i) => `g-${i}`}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onScroll={onGalleryScroll}
+            scrollEventThrottle={16}
+            renderItem={({ item, index }) => (
+              <View style={{ width: SCREEN_WIDTH, height: GALLERY_HEIGHT }}>
+                {item ? (
+                  <ExpoImage
+                    source={{ uri: item }}
+                    style={StyleSheet.absoluteFillObject}
+                    contentFit="cover"
+                    transition={200}
+                  />
+                ) : (
+                  <LinearGradient
+                    colors={CARD_COLORS[index % CARD_COLORS.length]}
+                    style={StyleSheet.absoluteFillObject}
+                  >
+                    <View style={s.galleryFallback}>
+                      <HomeIcon size={48} color={INK_FAINT} strokeWidth={1.5} />
+                    </View>
+                  </LinearGradient>
+                )}
+              </View>
+            )}
           />
 
-          {/* Adire ornament */}
-          <View style={s.ornamentWrap} pointerEvents="none">
-            <AdireOrnament size={180} opacity={0.25} />
-          </View>
-
-          {/* Overlay gradient */}
-          <LinearGradient
-            colors={[
-              'rgba(5,14,14,0.50)',
-              'transparent',
-              'rgba(5,14,14,0.85)',
-            ]}
-            locations={[0, 0.30, 1]}
-            style={StyleSheet.absoluteFillObject}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0, y: 1 }}
-          />
-
-          {/* Top nav */}
-          <View style={[s.heroNav, { top: insets.top + 12 }]}>
-            <TouchableOpacity style={s.glassBtn} onPress={() => router.back()}>
+          {/* Top overlay: back + share + heart */}
+          <View style={[s.heroNav, { top: insets.top + 12 }]} pointerEvents="box-none">
+            <PressableScale
+              onPress={() => router.back()}
+              style={s.overlayBtn}
+              hapticStyle="light"
+            >
               <ChevronLeft size={20} color={INK} strokeWidth={2.2} />
-            </TouchableOpacity>
+            </PressableScale>
             <View style={{ flexDirection: 'row', gap: 8 }}>
-              <TouchableOpacity style={s.glassBtn} onPress={() => setIsLiked(v => !v)} activeOpacity={0.8}>
-                <Heart size={18} color={isLiked ? GOLD : INK} fill={isLiked ? GOLD : 'none'} strokeWidth={2} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={s.glassBtn}
-                activeOpacity={0.8}
-                onPress={() => Share.share({ title: property?.name ?? 'Stay', message: `Check out ${property?.name ?? 'this stay'} on Iṣẹ́yáá!` })}
+              <PressableScale
+                onPress={() => setLiked((v) => !v)}
+                style={s.overlayBtn}
+                hapticStyle="light"
               >
+                <Heart
+                  size={18}
+                  color={liked ? GOLD : INK}
+                  fill={liked ? GOLD : 'none'}
+                  strokeWidth={2}
+                />
+              </PressableScale>
+              <PressableScale onPress={handleShare} style={s.overlayBtn} hapticStyle="light">
                 <Share2 size={18} color={INK} strokeWidth={2} />
-              </TouchableOpacity>
+              </PressableScale>
             </View>
           </View>
 
-          {/* Gallery dots */}
-          <View style={s.galleryDots}>
-            {[0, 1, 2, 3, 4].map((i) => (
-              <View key={i} style={i === 0 ? s.dotActive : s.dotInactive} />
+          {/* Dot indicators */}
+          <View style={s.dotsRow} pointerEvents="none">
+            {gallery.map((_, i) => (
+              <View
+                key={`dot-${i}`}
+                style={i === galleryIndex ? s.dotActive : s.dotInactive}
+              />
             ))}
           </View>
+        </View>
 
-          {/* Photo counter */}
-          {property.images?.length > 0 && (
-            <View style={s.photoCounter}>
-              <Text style={s.photoCounterText}>1 / {property.images.length}</Text>
+        {/* ── Title + location + rating ── */}
+        <View style={s.titleSection}>
+          <Text style={s.title} numberOfLines={2}>
+            {property.name ?? 'Property'}
+          </Text>
+          <View style={s.locationRow}>
+            <MapPin size={14} color={GOLD} strokeWidth={2} />
+            <Text style={s.locationText} numberOfLines={1}>
+              {location}
+            </Text>
+          </View>
+          {property.rating != null && (
+            <View style={s.ratingRow}>
+              <Star size={14} color={GOLD} fill={GOLD} strokeWidth={2} />
+              <Text style={s.ratingText}>
+                {Number(property.rating).toFixed(1)}
+                {property.reviewCount
+                  ? ` · ${property.reviewCount} review${property.reviewCount === 1 ? '' : 's'}`
+                  : ''}
+              </Text>
             </View>
           )}
         </View>
 
-        {/* ── TITLE ── */}
-        <View style={s.titleSection}>
-          <View style={s.chipRow}>
-            {property.rating != null && (
-              <View style={s.chipGold}>
-                <Text style={s.chipGoldText}>★ {Number(property.rating).toFixed(1)}{property.reviewCount ? ` (${property.reviewCount})` : ''}</Text>
+        <View style={s.divider} />
+
+        {/* ── Highlights ── */}
+        {highlights.length > 0 && (
+          <>
+            <View style={s.section}>
+              <Text style={s.kicker}>HIGHLIGHTS</Text>
+              <View style={s.highlightsList}>
+                {highlights.map((h) => (
+                  <View key={h} style={s.highlightRow}>
+                    <CheckCircle2 size={18} color={FOREST_LIGHT} strokeWidth={2} />
+                    <Text style={s.highlightText}>{h}</Text>
+                  </View>
+                ))}
               </View>
-            )}
-            {property.isSuperhost && (
-              <View style={s.chipForest}>
-                <Text style={s.chipForestText}>Superhost</Text>
+            </View>
+            <View style={s.divider} />
+          </>
+        )}
+
+        {/* ── Amenities ── */}
+        {amenities.length > 0 && (
+          <>
+            <View style={s.section}>
+              <Text style={s.kicker}>AMENITIES</Text>
+              <View style={s.amenitiesWrap}>
+                {amenities.map((a) => (
+                  <Chip key={a} label={a} />
+                ))}
               </View>
-            )}
-          </View>
-
-          <Text style={s.title}>
-            {property.name
-              ? property.name.split(' ').slice(0, -1).join(' ') + '\n'
-              : ''}
-            <Text style={s.titleItalic}>
-              {property.name
-                ? property.name.split(' ').slice(-1).join(' ')
-                : property.name ?? 'Property'}
-            </Text>
-          </Text>
-
-          <View style={s.locationRow}>
-            <MapPin size={13} color={INK_MID} />
-            <Text style={s.locationText} numberOfLines={1}>{location}</Text>
-          </View>
-        </View>
-
-        {/* ── AMENITIES ── */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={s.amenitiesScroll}
-          style={s.amenitiesContainer}
-        >
-          {AMENITIES.map(({ key, icon: Icon }) => (
-            <View key={key} style={s.amenityChip}>
-              <Icon size={13} color={GOLD} />
-              <Text style={s.amenityText}>{key}</Text>
             </View>
-          ))}
-        </ScrollView>
+            <View style={s.divider} />
+          </>
+        )}
 
-        {/* ── HOST CARD ── */}
+        {/* ── Description ── */}
+        {property.description ? (
+          <>
+            <View style={s.section}>
+              <Text style={s.kicker}>ABOUT THIS STAY</Text>
+              <Text style={s.description}>{property.description}</Text>
+            </View>
+            <View style={s.divider} />
+          </>
+        ) : null}
+
+        {/* ── Map placeholder (real maps deferred — CONTEXT §8.3) ── */}
         <View style={s.section}>
-          <View style={s.hostCard}>
-            {/* Avatar */}
-            <View style={s.avatar}>
-              <Text style={s.avatarInitials}>{initials}</Text>
-            </View>
-            {/* Info */}
-            <View style={s.hostInfo}>
-              <Text style={s.hostName}>Hosted by {hostName}</Text>
-              <Text style={s.hostSub}>Superhost · English</Text>
-            </View>
-            {/* Message button */}
-            <TouchableOpacity
-              style={s.messageBtn}
-              onPress={() => router.push({ pathname: '/ai-chat', params: { prompt: `I'd like to ask the host of ${property.name} a question` } } as any)}
-              activeOpacity={0.8}
-            >
-              <Text style={s.messageBtnText}>Message</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* ── ABOUT ── */}
-        <View style={s.section}>
-          <Text style={s.kicker}>ABOUT THIS STAY</Text>
-          <Text style={s.body}>
-            {property.description ?? 'Experience the warmth of Ogun State hospitality in this beautifully appointed property, blending modern comfort with rich Yoruba cultural heritage.'}
-          </Text>
-        </View>
-
-        {/* ── DATES / GUESTS SELECTOR ── */}
-        <View style={[s.section, { paddingTop: 20 }]}>
-          <View style={s.datesPanel}>
-            {/* Check-in */}
-            <TouchableOpacity style={s.datesCol} onPress={pickCheckIn} activeOpacity={0.7}>
-              <Text style={s.datesKicker}>CHECK-IN</Text>
-              <Text style={[s.datesValue, !checkIn && { color: GOLD }]}>{displayDate(checkIn)}</Text>
-            </TouchableOpacity>
-            <View style={s.datesDivider} />
-            {/* Check-out */}
-            <TouchableOpacity style={s.datesCol} onPress={pickCheckOut} activeOpacity={0.7}>
-              <Text style={s.datesKicker}>CHECK-OUT</Text>
-              <Text style={[s.datesValue, !checkOut && { color: GOLD }]}>{displayDate(checkOut)}</Text>
-            </TouchableOpacity>
-            <View style={s.datesDivider} />
-            {/* Guests */}
-            <View style={s.datesCol}>
-              <Text style={s.datesKicker}>GUESTS</Text>
-              <Text style={s.datesValue}>{guests}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* ── PRICE BREAKDOWN ── */}
-        <View style={s.section}>
-          <Text style={s.kicker}>PRICE DETAILS</Text>
-          <View style={s.priceCard}>
-            {pricePerNight > 0 ? (
-              <>
-                <View style={s.priceRow}>
-                  <Text style={s.priceLabel}>
-                    ₦{pricePerNight.toLocaleString('en-NG')} × {nights} {nights === 1 ? 'night' : 'nights'}
-                  </Text>
-                  <Text style={s.priceValue}>
-                    ₦{(pricePerNight * nights).toLocaleString('en-NG')}
-                  </Text>
-                </View>
-                <View style={s.priceRow}>
-                  <Text style={s.priceLabel}>Service fee</Text>
-                  <Text style={s.priceValue}>₦{serviceFee.toLocaleString('en-NG')}</Text>
-                </View>
-                <View style={s.priceRow}>
-                  <Text style={s.priceLabel}>Tourism levy (Ogun State)</Text>
-                  <Text style={s.priceValue}>₦{tourismLevy.toLocaleString('en-NG')}</Text>
-                </View>
-                <View style={s.priceDivider} />
-                <View style={s.priceRow}>
-                  <Text style={s.priceTotalLabel}>Total</Text>
-                  <Text style={s.priceTotalValue}>₦{total.toLocaleString('en-NG')}</Text>
-                </View>
-              </>
-            ) : (
-              <View style={s.priceRow}>
-                <Text style={s.priceLabel}>Per night</Text>
-                <Text style={s.priceValue}>₦–</Text>
-              </View>
-            )}
+          <Text style={s.kicker}>WHERE YOU&apos;LL BE</Text>
+          <View style={s.mapPlaceholder}>
+            <MapPin size={32} color={FOREST_LIGHT} strokeWidth={1.5} />
+            <Text style={s.mapPlaceholderTitle}>{location}</Text>
+            {property.lga?.name ? (
+              <Text style={s.mapPlaceholderSub}>{property.lga.name}, Ogun State</Text>
+            ) : null}
           </View>
         </View>
       </ScrollView>
 
-      {/* ── STICKY CTA BAR ── */}
-      <View style={s.ctaOuter} pointerEvents="box-none">
-        <LinearGradient
-          colors={['rgba(5,14,14,0)', 'rgba(5,14,14,0.95)']}
-          style={s.ctaGradientOverlay}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0, y: 1 }}
-          pointerEvents="none"
-        />
-        <View style={[s.ctaPill, { marginBottom: insets.bottom + 10 }]}>
-          <View style={s.ctaPillLeft}>
-            <Text style={s.ctaPrice}>
-              {pricePerNight > 0
-                ? `₦${pricePerNight.toLocaleString('en-NG')}`
-                : '₦–'}
-            </Text>
-            <Text style={s.ctaPriceLabel}>per night</Text>
-          </View>
-          <TouchableOpacity
-            style={[s.ctaButton, bookMutation.isPending && s.ctaButtonDisabled]}
-            onPress={handleBook}
-            disabled={bookMutation.isPending}
-            activeOpacity={0.85}
-          >
-            <Text style={s.ctaButtonText}>
-              {bookMutation.isPending ? 'Booking…' : 'Reserve'}
-            </Text>
-          </TouchableOpacity>
-        </View>
+      {/* ── Sticky booking sheet ── */}
+      <View
+        style={[s.stickyWrap, { paddingBottom: insets.bottom }]}
+        pointerEvents="box-none"
+      >
+        {renderSheet()}
       </View>
     </View>
   );
 }
 
-// ── Styles ────────────────────────────────────────
+// ── Styles ─────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
-  root: { flex: 1 },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  errorText: { color: INK_MID, fontSize: 16 },
+  root: { flex: 1, backgroundColor: SURFACE_DEEP },
+  centered: { alignItems: 'center', justifyContent: 'center', gap: SPACE_3 },
+  errorText: { ...TYPE.body, color: INK_SECONDARY, textAlign: 'center', paddingHorizontal: SPACE_4 },
+  errorBtn: {
+    backgroundColor: SURFACE_RAISED,
+    borderColor: BORDER_SUBTLE,
+    borderWidth: 1,
+    paddingHorizontal: SPACE_5,
+    paddingVertical: SPACE_3,
+    borderRadius: RADIUS_MD,
+  },
+  errorBtnText: { ...TYPE.bodyEmphasis, color: INK },
 
-  // Hero
-  hero: {
-    height: 360,
-    position: 'relative',
-    overflow: 'hidden',
-    justifyContent: 'flex-end',
-  },
-  ornamentWrap: {
-    position: 'absolute',
-    top: 60,
-    right: -20,
-  },
+  // Gallery
+  galleryFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   heroNav: {
     position: 'absolute',
-    left: 16,
-    right: 16,
+    left: SPACE_4,
+    right: SPACE_4,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     zIndex: 10,
   },
-  glassBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.40)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+  overlayBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0,0,0,0.4)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  galleryDots: {
+  dotsRow: {
     position: 'absolute',
-    bottom: 14,
+    bottom: SPACE_4,
     left: 0,
     right: 0,
     flexDirection: 'row',
     justifyContent: 'center',
-    alignItems: 'center',
     gap: 6,
   },
   dotActive: {
-    width: 18,
+    width: 20,
     height: 6,
     borderRadius: 3,
     backgroundColor: GOLD,
@@ -449,320 +492,75 @@ const s = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: 'rgba(255,255,255,0.40)',
-  },
-  photoCounter: {
-    position: 'absolute',
-    bottom: 16,
-    right: 16,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  photoCounterText: {
-    fontFamily: FONT_MONO,
-    fontSize: 10,
-    color: CREAM,
+    backgroundColor: 'rgba(255,255,255,0.4)',
   },
 
   // Title
-  titleSection: {
-    paddingHorizontal: 20,
-    paddingTop: 18,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    gap: 6,
-    marginBottom: 10,
-  },
-  chipGold: {
-    height: 24,
-    paddingHorizontal: 10,
-    borderRadius: 99,
-    backgroundColor: GOLD_DIM,
-    borderWidth: 1,
-    borderColor: GOLD_LINE,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  chipGoldText: {
-    color: GOLD,
-    fontSize: 11,
-    fontFamily: FONT_MONO,
-    fontWeight: '600',
-  },
-  chipForest: {
-    height: 24,
-    paddingHorizontal: 10,
-    borderRadius: 99,
-    backgroundColor: 'rgba(26,107,60,0.30)',
-    borderWidth: 1,
-    borderColor: 'rgba(26,107,60,0.55)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  chipForestText: {
-    color: '#7DD49E',
-    fontSize: 11,
-    fontFamily: FONT_MONO,
-    fontWeight: '600',
-  },
+  titleSection: { paddingHorizontal: SPACE_4, paddingTop: SPACE_5, gap: SPACE_2 },
   title: {
     fontFamily: FONT_DISPLAY,
-    fontSize: 28,
+    fontSize: 26,
     color: CREAM,
     letterSpacing: -0.4,
-    lineHeight: 28 * 1.05,
-    marginBottom: 8,
+    lineHeight: 30,
   },
-  titleItalic: {
-    fontFamily: FONT_DISPLAY,
-    fontSize: 28,
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  locationText: { ...TYPE.body, color: INK_SECONDARY, fontSize: 13, flex: 1 },
+  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  ratingText: {
+    fontFamily: FONT_MONO,
+    fontSize: 12,
+    fontWeight: '700',
     color: GOLD,
-    fontStyle: 'italic',
-    letterSpacing: -0.4,
-  },
-  locationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  locationText: {
-    fontSize: 12.5,
-    color: INK_MID,
-    flex: 1,
+    fontVariant: ['tabular-nums'],
   },
 
-  // Amenities
-  amenitiesContainer: {
-    marginTop: 18,
+  // Sections
+  divider: {
+    height: 1,
+    backgroundColor: BORDER_SUBTLE,
+    marginVertical: SPACE_5,
+    marginHorizontal: SPACE_4,
   },
-  amenitiesScroll: {
-    paddingHorizontal: 20,
-    gap: 8,
-  },
-  amenityChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: SURFACE_MID,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 99,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  amenityText: {
-    fontSize: 11.5,
-    fontWeight: '600',
-    color: INK,
-  },
-
-  // Section
-  section: {
-    paddingHorizontal: 20,
-    paddingTop: 18,
-  },
+  section: { paddingHorizontal: SPACE_4, gap: SPACE_3 },
   kicker: {
     fontFamily: FONT_MONO,
-    fontSize: 9,
-    color: GOLD,
-    textTransform: 'uppercase',
-    letterSpacing: 2,
-    marginBottom: 8,
-  },
-  body: {
-    fontSize: 13.5,
-    color: INK_MID,
-    lineHeight: 13.5 * 1.55,
-  },
-
-  // Host card
-  hostCard: {
-    backgroundColor: SURFACE_MID,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 14,
-    padding: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: SURFACE_ELEV,
-    borderWidth: 2,
-    borderColor: GOLD,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  avatarInitials: {
-    fontFamily: FONT_DISPLAY,
-    fontSize: 22,
-    color: CREAM,
-  },
-  hostInfo: {
-    flex: 1,
-  },
-  hostName: {
-    fontSize: 13.5,
-    fontWeight: '700',
-    color: INK,
-    marginBottom: 2,
-  },
-  hostSub: {
-    fontSize: 10.5,
-    color: INK_MID,
-  },
-  messageBtn: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: GOLD_LINE,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  messageBtnText: {
-    fontSize: 11,
-    color: GOLD,
-    fontWeight: '600',
-  },
-
-  // Dates panel
-  datesPanel: {
-    backgroundColor: SURFACE_MID,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 16,
-    flexDirection: 'row',
-    padding: 4,
-  },
-  datesCol: {
-    flex: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  datesDivider: {
-    width: 1,
-    backgroundColor: BORDER,
-    marginVertical: 8,
-  },
-  datesKicker: {
-    fontFamily: FONT_MONO,
-    fontSize: 9,
-    color: GOLD,
-    textTransform: 'uppercase',
-    letterSpacing: 1.5,
-    marginBottom: 4,
-  },
-  datesValue: {
-    fontSize: 13.5,
-    fontWeight: '700',
-    color: INK,
-  },
-
-  // Price card
-  priceCard: {
-    backgroundColor: SURFACE_MID,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: BORDER,
-    padding: 14,
-    paddingHorizontal: 16,
-  },
-  priceRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 6,
-  },
-  priceLabel: {
-    fontSize: 13,
-    color: INK_MID,
-  },
-  priceValue: {
-    fontSize: 13,
-    color: INK,
-    fontWeight: '500',
-  },
-  priceDivider: {
-    height: 1,
-    backgroundColor: BORDER,
-    marginVertical: 6,
-  },
-  priceTotalLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: INK,
-  },
-  priceTotalValue: {
-    fontFamily: FONT_MONO,
-    fontSize: 17,
-    fontWeight: '700',
-    color: GOLD,
-  },
-
-  // CTA bar
-  ctaOuter: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-  },
-  ctaGradientOverlay: {
-    position: 'absolute',
-    top: -30,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  ctaPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: SURFACE_ELEV,
-    borderWidth: 1,
-    borderColor: BORDER_MID,
-    borderRadius: 18,
-    marginHorizontal: 14,
-    padding: 10,
-    paddingLeft: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  ctaPillLeft: {
-    flex: 1,
-  },
-  ctaPrice: {
-    fontFamily: FONT_MONO,
-    fontSize: 17,
-    fontWeight: '600',
-    color: GOLD,
-    marginBottom: 1,
-  },
-  ctaPriceLabel: {
     fontSize: 10,
-    color: INK_MID,
+    letterSpacing: 1.8,
+    color: GOLD,
+    fontWeight: '700',
+    textTransform: 'uppercase',
   },
-  ctaButton: {
-    flex: 1,
-    height: 46,
-    borderRadius: 12,
-    backgroundColor: GOLD,
+
+  highlightsList: { gap: SPACE_3 },
+  highlightRow: { flexDirection: 'row', alignItems: 'flex-start', gap: SPACE_3 },
+  highlightText: { ...TYPE.body, color: INK, flex: 1 },
+
+  amenitiesWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE_2 },
+
+  description: { ...TYPE.body, color: INK_SECONDARY, lineHeight: 22 },
+
+  // Map placeholder
+  mapPlaceholder: {
+    backgroundColor: SURFACE_MID,
+    borderColor: BORDER_SUBTLE,
+    borderWidth: 1,
+    borderRadius: RADIUS_LG,
+    paddingHorizontal: SPACE_4,
+    paddingVertical: SPACE_5 * 2,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 6,
   },
-  ctaButtonDisabled: {
-    opacity: 0.55,
-  },
-  ctaButtonText: {
-    fontWeight: '700',
-    fontSize: 15,
-    color: '#051A10',
-    letterSpacing: 0.2,
+  mapPlaceholderTitle: { ...TYPE.bodyEmphasis, color: CREAM, fontSize: 13 },
+  mapPlaceholderSub: { ...TYPE.caption, color: INK_FAINT },
+
+  // Sticky sheet wrapper
+  stickyWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'transparent',
   },
 });
