@@ -19,6 +19,7 @@ Sprint 1 is shipped. This roadmap covers the six remaining sprints: infrastructu
 - [ ] **Phase 6: QA, Security & Performance** - Load testing, security audit, query optimisation, and mobile performance
 - [ ] **Phase 7: Deployment & Launch** - Production go-live, app store submissions, and soft launch
 - [ ] **Phase 8: Mobile Redesign** - Bring mobile app in line with the redesigned web (Airbnb-style stays, Temu-style marketplace, host onboarding, news ticker), complete the 5-tab migration, and ship a fresh EAS preview build
+- [ ] **Phase 9: Tour Packages & Tour Guides** - Sell complete Ogun State experiences (curated multi-vendor packages) and onboard certified Tour Guides as a first-class role, with multi-vendor commission splitting on a single buyer payment
 
 ## Phase Details
 
@@ -303,9 +304,39 @@ Plans:
 - Bundle ID unchanged: `ng.gov.ogun.iseyaa`
 **UI hint**: yes
 
+### Phase 9: Tour Packages & Tour Guides
+**Goal**: Tourists, diaspora, corporate groups, families, schools, and churches can browse curated Ogun State tour packages (Abeokuta Heritage / Ijebu Cultural / Adire Experience / Festival / Food & Lifestyle), pick a date, select a certified tour guide, pay ONE price on ISEYAA, and receive a structured itinerary — with each downstream vendor (guide, hotel, transport, attractions, events) automatically credited their share from the single payment via the existing wallet ledger
+**Depends on**: Phase 1 (no infra dependency on 2–8 beyond what Sprint 1 already shipped)
+**Requirements**: TOUR-01, TOUR-02, TOUR-03, TOUR-04, TOUR-05, TOUR-06, TOUR-07, TOUR-08, TOUR-09, TOUR-10
+**Success Criteria** (what must be TRUE):
+  1. A new `TOUR_GUIDE` role exists with onboarding flow: profile (name, photo, bio, years of experience), languages spoken (multi-select), certifications (file upload), Tier-2 KYC (NIN encrypted AES-256-GCM), and availability calendar (block out unavailable days). LGA_ADMIN approval gates first listing.
+  2. Hosts can create `TourPackage` listings that reference 1+ attractions + optional `PropertyId`s (stays) + optional `EventId`s + optional transport leg + 1 `TourGuideId`, with a single tourist-facing `price` and a structured `itinerary[]` template (timeline of activities by hour). Per-package settlement-split table declares each vendor's cut percentage; total must sum to ≤ 100% (the remainder is platform commission).
+  3. A tourist can search packages by category (Heritage / Cultural / Adire / Festival / Food / Family / Faith / School / Corporate), select a date that satisfies guide availability + attraction opening hours + event date constraints, optionally specify group size (1–50), and book.
+  4. On payment success via existing Paystack flow, the wallet ledger writes ONE credit transaction per downstream vendor (guide, hotel, transport, attraction, event) plus ONE platform commission entry — atomically in a single SELECT FOR UPDATE transaction. Failure of any leg rolls back the entire booking and refunds the buyer.
+  5. The booked itinerary is delivered as: (a) in-app structured view in the mobile You tab → Trips section, (b) email PDF via SendGrid, (c) push notification 24h before tour starts. The structured itinerary is distinct from the AI-suggested itinerary in the existing AI module — both can co-exist (AI suggests; tourist converts an AI suggestion into a bookable Package via a "Save as bookable" CTA).
+  6. Group bookings (≥ 10 passengers) support a `groupLeader` user who pays the lump sum AND optional split-bill mode where N passengers each pay their share via a shared booking link; group bookings unlock a configurable bulk-discount tier from `PlatformConfig`.
+  7. After tour completion, the tourist can rate the guide (1–5 stars + photo + text), the package overall (separate rating), and individual venues touched. Guide aggregate rating drives discovery sort. Disputed ratings (≤ 2 stars) trigger an admin review queue.
+  8. Web admin sees: tour package approval queue, tour guide KYC queue, per-package revenue breakdown by downstream vendor, group-booking utilization heatmap.
+  9. Mobile UI: new Book hub sub-section "Tours" (becomes the 5th sub-section alongside Events / Stays / Studio / Marketplace) with category-tabbed grid; tour detail screen with itinerary preview, guide profile card, date picker; trips list on profile tab; rating modal after tour end.
+  10. All existing 282+ tests still pass; wallet ledger invariant test extended to verify multi-vendor split sums match buyer payment exactly (no drift); new TourGuide KYC encryption test verifies NIN never persisted plaintext.
+
+**Plans**: (to be created by gsd-plan-phase)
+
+**Cross-cutting constraints:**
+- Multi-vendor split MUST use the existing wallet `SELECT FOR UPDATE` pattern + idempotency key — no new payment plumbing.
+- Tour guide KYC reuses Phase 5's `EncryptionService` + Dojah NIN verifier — no new KYC vendor.
+- Itinerary delivery (push 24h before tour) reuses existing `NotificationsService` + scheduled cron — no new scheduler.
+- Per-package settlement-split table declares cuts; total must sum to ≤ 100% with the remainder going to platform (enforced by DB constraint + service-layer guard).
+- The existing AI itinerary endpoint is preserved as-is; new structured `Itinerary` model lives alongside it. Reconciliation rule: AI itineraries are *suggestions* (free text + tool-call enriched); structured itineraries are *contracts* (bookings attached, vendors paid).
+- Currency: NGN only for v1 (diaspora pay via Paystack international cards in NGN equivalent). Multi-currency display is deferred.
+- Group booking max: 50 passengers (above that → corporate sales contract handled outside the app).
+- Flights inventory integration is OUT of scope (Tourism module diagram includes "Flights" but that requires a separate Amadeus/Duffel/Travelport phase — track as Phase 10 candidate).
+
+**UI hint**: yes
+
 ## Progress
 
-**Execution Order:** 2 → 3 → 4 → 5 → 6 → 7 → 8
+**Execution Order:** 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -316,4 +347,5 @@ Plans:
 | 5. AI Concierge + KYC | 6/7 | In progress (05-07 human checkpoint deferred) | - |
 | 6. QA, Security & Performance | 5/6 | In Progress|  |
 | 7. Deployment & Launch | 4/5 | In Progress|  |
-| 8. Mobile Redesign | 0/10 | Not Started | - |
+| 8. Mobile Redesign | 10/11 | In Progress (08-09 EAS build queued, 08-10 human verification pending) | - |
+| 9. Tour Packages & Tour Guides | 0/0 | Not Started — roadmap sketch only | - |
