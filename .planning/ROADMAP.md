@@ -320,7 +320,36 @@ Plans:
   9. Mobile UI: new Book hub sub-section "Tours" (becomes the 5th sub-section alongside Events / Stays / Studio / Marketplace) with category-tabbed grid; tour detail screen with itinerary preview, guide profile card, date picker; trips list on profile tab; rating modal after tour end.
   10. All existing 282+ tests still pass; wallet ledger invariant test extended to verify multi-vendor split sums match buyer payment exactly (no drift); new TourGuide KYC encryption test verifies NIN never persisted plaintext.
 
-**Plans**: (to be created by gsd-plan-phase)
+**Plans**: 13 plans
+Plans:
+**Wave 1** *(no dependencies — runs immediately, parallel)*
+- [ ] 09-01-PLAN.md — Schema + migration (TOUR_GUIDE enum + 6 models + CHECK constraint) + 6 PlatformConfig seeds
+- [ ] 09-02-PLAN.md — Shared infra: ReferenceService (ISY-TOUR-<12char>) + RefundService (Paystack chargeback)
+
+**Wave 2** *(blocked on Wave 1, parallel)*
+- [ ] 09-03-PLAN.md — TourGuide module: become-guide, profile CRUD, KYC (AES-256-GCM + bcrypt), availability, LGA_ADMIN approval
+- [ ] 09-04-PLAN.md — TourPackage module: CRUD with 8 service-side guards (guide-approved, attractions, split sum, etc.) + admin approval queue
+
+**Wave 3** *(blocked on Wave 2)*
+- [ ] 09-05-PLAN.md — TourBooking lifecycle: date constraint, bulk discount tiers, split-bill orchestration, snapshot, itinerary materialization (NO wallet writes)
+
+**Wave 4** *(blocked on Wave 3)*
+- [ ] 09-06-PLAN.md — Multi-vendor settlement engine + webhooks dispatch: atomic $transaction, SELECT FOR UPDATE per vendor wallet, idempotency, refund-on-failure, split-bill accumulator
+
+**Wave 5** *(blocked on Wave 4, parallel)*
+- [ ] 09-07-PLAN.md — Itinerary PDF + 3-channel delivery: SendGrid email on confirm, 3 cron jobs (T-24h / T-2h / T+1h), pdfkit, configurable offsets
+- [ ] 09-08-PLAN.md — Review + auto-flag (<=2 stars) + admin review queue + debounced aggregate rating recompute
+
+**Wave 6** *(blocked on Wave 5, parallel)*
+- [ ] 09-09-PLAN.md — Web public surface: /tours browse + /tours/[slug] detail + /become-a-guide + /host/tours/new multi-step creator
+- [ ] 09-10-PLAN.md — Web admin surface: 4 queue pages + revenue chart + utilization heatmap + 2 new backend admin GET endpoints
+
+**Wave 7** *(blocked on Wave 5)*
+- [ ] 09-11-PLAN.md — Mobile: Tours sub-section in Book hub + tours/[id] + trips/index + TourBookingSheet + RatingModal + SplitBillShareSheet
+
+**Wave 8** *(blocked on all preceding waves)*
+- [ ] 09-12-PLAN.md — TOUR-10 regression tests: wallet invariant e2e + KYC encryption e2e + end-to-end happy path
+- [ ] 09-13-PLAN.md — Human verification checkpoint: walk all 10 ROADMAP SCs against live environment + record evidence in 09-VERIFICATION.md
 
 **Cross-cutting constraints:**
 - Multi-vendor split MUST use the existing wallet `SELECT FOR UPDATE` pattern + idempotency key — no new payment plumbing.
