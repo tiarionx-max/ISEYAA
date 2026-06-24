@@ -1,4 +1,4 @@
-import { PrismaClient, AttractionCategory } from '@prisma/client';
+import { PrismaClient, Prisma, AttractionCategory } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
 
 const prisma = new PrismaClient();
@@ -1337,6 +1337,85 @@ async function main() {
       console.error(`  ✗ Failed to upsert ${config.key}:`, (err as Error).message);
     }
   }
+
+  // ─── 5b. Seed Phase 9 Tour PlatformConfig ──────────────────────────────────
+  console.log('\n🗺️  Seeding tour PlatformConfig rows...');
+
+  await prisma.platformConfig.upsert({
+    where: { key: 'tour.bulk_discount_t1' },
+    update: {},
+    create: {
+      key: 'tour.bulk_discount_t1',
+      value: 0.10, // 10% off when passengerCount in [10, 24]
+      isPublic: true,
+      metadata: { module: 'tour', tier: 1, minPassengers: 10, maxPassengers: 24 },
+    },
+  });
+  process.stdout.write('  ✓ tour.bulk_discount_t1 = 0.10\n');
+
+  await prisma.platformConfig.upsert({
+    where: { key: 'tour.bulk_discount_t2' },
+    update: {},
+    create: {
+      key: 'tour.bulk_discount_t2',
+      value: 0.20, // 20% off when passengerCount in [25, 50]
+      isPublic: true,
+      metadata: { module: 'tour', tier: 2, minPassengers: 25, maxPassengers: 50 },
+    },
+  });
+  process.stdout.write('  ✓ tour.bulk_discount_t2 = 0.20\n');
+
+  await prisma.platformConfig.upsert({
+    where: { key: 'tour.platform_commission_pct' },
+    update: {},
+    create: {
+      key: 'tour.platform_commission_pct',
+      value: 0.15, // Platform cut when settlementSplit entries don't reach 100%
+      isPublic: false,
+      metadata: { module: 'tour' },
+    },
+  });
+  process.stdout.write('  ✓ tour.platform_commission_pct = 0.15\n');
+
+  await prisma.platformConfig.upsert({
+    where: { key: 'tour.government_wallet_user_id' },
+    update: {},
+    create: {
+      key: 'tour.government_wallet_user_id',
+      // Operator MUST configure post-deploy. CONTEXT §Specifics: ATTRACTION-type
+      // settlement entries route here because attractions are government-owned
+      // for v1 (no per-attraction vendor onboarding yet — deferred per
+      // CONTEXT §deferred §Attraction-as-vendor wallet).
+      value: Prisma.JsonNull,
+      isPublic: false,
+      metadata: { module: 'tour', requires_operator_setup: true },
+    },
+  });
+  process.stdout.write('  ✓ tour.government_wallet_user_id = null (requires_operator_setup)\n');
+
+  await prisma.platformConfig.upsert({
+    where: { key: 'tour.notify_t_minus_24h_hours' },
+    update: {},
+    create: {
+      key: 'tour.notify_t_minus_24h_hours',
+      value: 24,
+      isPublic: false,
+      metadata: { module: 'tour' },
+    },
+  });
+  process.stdout.write('  ✓ tour.notify_t_minus_24h_hours = 24\n');
+
+  await prisma.platformConfig.upsert({
+    where: { key: 'tour.notify_t_minus_2h_hours' },
+    update: {},
+    create: {
+      key: 'tour.notify_t_minus_2h_hours',
+      value: 2,
+      isPublic: false,
+      metadata: { module: 'tour' },
+    },
+  });
+  process.stdout.write('  ✓ tour.notify_t_minus_2h_hours = 2\n');
 
   // ─── 6. Seed System User (organizer/host for demo events & properties) ──
   console.log('\n👤 Seeding system demo user...');
