@@ -21,6 +21,7 @@ enum UserRole {
   LGA_ADMIN
   STATE_ADMIN
   SUPER_ADMIN
+  TOUR_GUIDE // Phase 9 — additively appended via PG ALTER TYPE ADD VALUE
 }
 
 enum UserStatus {
@@ -78,10 +79,10 @@ enum PropertyType {
 }
 
 enum BookingMode {
-  NIGHTLY       // stays — pricePerNight × nights
-  HOURLY        // lounges / studio-like / club table — pricePerHour × hours
-  TIMED_EVENT   // tour, attraction visit — fixed price × people, fixed start
-  MEMBERSHIP    // social club — monthly / yearly subscription
+  NIGHTLY // stays — pricePerNight × nights
+  HOURLY // lounges / studio-like / club table — pricePerHour × hours
+  TIMED_EVENT // tour, attraction visit — fixed price × people, fixed start
+  MEMBERSHIP // social club — monthly / yearly subscription
 }
 
 enum BookingStatus {
@@ -185,35 +186,68 @@ enum DeliveryOrderStatus {
   EXPIRED
 }
 
+// ─── Phase 9: Tour Packages & Tour Guides enums ──────────────────────────────
+
+enum TourPackageCategory {
+  HERITAGE
+  CULTURAL
+  ADIRE
+  FESTIVAL
+  FOOD
+  FAMILY
+  FAITH
+  SCHOOL
+  CORPORATE
+}
+
+enum TourPackageStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum TourGuideStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ReviewTargetType {
+  GUIDE
+  PACKAGE
+  VENUE
+}
+
 // ─── Models ───────────────────────────────────────────────────────────────────
 
 model User {
-  id              String     @id @default(uuid())
-  email           String?    @unique
-  phone           String?    @unique
-  passwordHash    String?
-  firstName       String
-  lastName        String
-  role            UserRole   @default(CITIZEN)
-  registeredRoles UserRole[]
-  status          UserStatus @default(PENDING)
-  kycStatus       KYCStatus  @default(NONE)
-  lgaId           String?
-  lga             LGA?       @relation(fields: [lgaId], references: [id])
-  avatarUrl       String?
-  nin             String?    @unique
-  bvn             String?    @unique
-  bvnHash               String?    // bcrypt hash of BVN for duplicate lookup
-  ninHash               String?    // bcrypt hash of NIN for duplicate lookup
+  id                    String     @id @default(uuid())
+  email                 String?    @unique
+  phone                 String?    @unique
+  passwordHash          String?
+  firstName             String
+  lastName              String
+  role                  UserRole   @default(CITIZEN)
+  registeredRoles       UserRole[]
+  status                UserStatus @default(PENDING)
+  kycStatus             KYCStatus  @default(NONE)
+  lgaId                 String?
+  lga                   LGA?       @relation(fields: [lgaId], references: [id])
+  avatarUrl             String?
+  nin                   String?    @unique
+  bvn                   String?    @unique
+  bvnHash               String? // bcrypt hash of BVN for duplicate lookup
+  ninHash               String? // bcrypt hash of NIN for duplicate lookup
   kycBvnVerifiedAt      DateTime?
   kycNinVerifiedAt      DateTime?
   kycLivenessVerifiedAt DateTime?
-  ndpaConsent     Boolean    @default(false)
-  ndpaConsentAt   DateTime?
-  metadata        Json?
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
-  deletedAt       DateTime?
+  ndpaConsent           Boolean    @default(false)
+  ndpaConsentAt         DateTime?
+  metadata              Json?
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+  deletedAt             DateTime?
 
   wallet               Wallet?
   tickets              Ticket[]
@@ -227,6 +261,9 @@ model User {
   riderTrips           Trip[]               @relation("RiderTrips")
   deliveryRiderProfile DeliveryRider?
   senderOrders         DeliveryOrder[]      @relation("SenderOrders")
+  tourGuide            TourGuide?
+  tourBookings         TourBooking[]        @relation("TourBuyer")
+  reviews              Review[]
 
   @@index([deletedAt])
   @@index([status])
@@ -248,11 +285,12 @@ model LGA {
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
 
-  users       User[]
-  attractions Attraction[]
-  events      Event[]
-  properties  Property[]
-  vendors     Vendor[]
+  users        User[]
+  attractions  Attraction[]
+  events       Event[]
+  properties   Property[]
+  vendors      Vendor[]
+  tourPackages TourPackage[]
 
   @@map("lgas")
 }
@@ -349,38 +387,38 @@ model Ticket {
 }
 
 model Property {
-  id            String       @id @default(uuid())
-  lgaId         String
-  lga           LGA          @relation(fields: [lgaId], references: [id])
-  hostId        String?
-  vendorId      String?
-  vendor        Vendor?      @relation(fields: [vendorId], references: [id])
-  name          String
-  slug          String       @unique
-  description   String?
-  type          PropertyType
-  bookingMode   BookingMode  @default(NIGHTLY)
-  category      String?      // free-form sub-category, e.g. "rooftop_lounge", "afrobeats_club"
-  imageUrls     String[]
-  coverImageUrl String?      // hero photo for category cards
-  address       String
-  latitude      Decimal?
-  longitude     Decimal?
-  pricePerNight Decimal      // primary price; meaning depends on bookingMode
-  pricePerHour  Decimal?     // for HOURLY (lounges, club tables)
+  id                     String       @id @default(uuid())
+  lgaId                  String
+  lga                    LGA          @relation(fields: [lgaId], references: [id])
+  hostId                 String?
+  vendorId               String?
+  vendor                 Vendor?      @relation(fields: [vendorId], references: [id])
+  name                   String
+  slug                   String       @unique
+  description            String?
+  type                   PropertyType
+  bookingMode            BookingMode  @default(NIGHTLY)
+  category               String? // free-form sub-category, e.g. "rooftop_lounge", "afrobeats_club"
+  imageUrls              String[]
+  coverImageUrl          String? // hero photo for category cards
+  address                String
+  latitude               Decimal?
+  longitude              Decimal?
+  pricePerNight          Decimal // primary price; meaning depends on bookingMode
+  pricePerHour           Decimal? // for HOURLY (lounges, club tables)
   membershipMonthlyPrice Decimal? // for MEMBERSHIP (social clubs)
   membershipBenefits     String[] // bullet points for memberships
-  maxGuests     Int
-  amenities     String[]
-  highlights    String[]     // 3-5 key selling points shown on detail page
-  rating        Decimal?     // average review rating, populated by webhook/cron
-  reviewCount   Int          @default(0)
-  isActive      Boolean      @default(true)
-  isFeatured    Boolean      @default(false)
-  metadata      Json?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-  deletedAt     DateTime?
+  maxGuests              Int
+  amenities              String[]
+  highlights             String[] // 3-5 key selling points shown on detail page
+  rating                 Decimal? // average review rating, populated by webhook/cron
+  reviewCount            Int          @default(0)
+  isActive               Boolean      @default(true)
+  isFeatured             Boolean      @default(false)
+  metadata               Json?
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+  deletedAt              DateTime?
 
   bookings Booking[]
 
@@ -439,25 +477,25 @@ model Vendor {
 }
 
 model Product {
-  id              String    @id @default(uuid())
-  vendorId        String
-  vendor          Vendor    @relation(fields: [vendorId], references: [id])
-  name            String
-  slug            String    @unique
-  description     String?
-  imageUrls       String[]
-  price           Decimal
-  compareAtPrice  Decimal?  // "was ₦X" — for sale strikethrough
-  category        String?   // 'fashion' | 'crafts' | 'food' | 'art' | 'tech' | 'agriculture'
-  stock           Int       @default(0)
-  rating          Decimal?
-  reviewCount     Int       @default(0)
-  isActive        Boolean   @default(true)
-  isFeatured      Boolean   @default(false)
-  metadata        Json?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  deletedAt       DateTime?
+  id             String    @id @default(uuid())
+  vendorId       String
+  vendor         Vendor    @relation(fields: [vendorId], references: [id])
+  name           String
+  slug           String    @unique
+  description    String?
+  imageUrls      String[]
+  price          Decimal
+  compareAtPrice Decimal? // "was ₦X" — for sale strikethrough
+  category       String? // 'fashion' | 'crafts' | 'food' | 'art' | 'tech' | 'agriculture'
+  stock          Int       @default(0)
+  rating         Decimal?
+  reviewCount    Int       @default(0)
+  isActive       Boolean   @default(true)
+  isFeatured     Boolean   @default(false)
+  metadata       Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
 
   orderItems OrderItem[]
 
@@ -831,7 +869,7 @@ model WaitlistEntry {
   email     String?
   phone     String?
   fullName  String?
-  source    String   // 'marketplace_web' | 'marketplace_mobile' | future channels
+  source    String // 'marketplace_web' | 'marketplace_mobile' | future channels
   metadata  Json?
   createdAt DateTime @default(now())
 
@@ -842,20 +880,176 @@ model WaitlistEntry {
 }
 
 model NewsItem {
-  id           String    @id @default(uuid())
-  headline     String
-  summary      String?
-  link         String?   // external URL or internal route
-  source       String?   // "Ogun State Gov", "BBC Pidgin", "Iṣẹ́yáá Desk", etc.
-  category     String?   // 'gov' | 'tourism' | 'business' | 'culture' | 'sport'
-  imageUrl     String?
-  publishedAt  DateTime  @default(now())
-  isLive       Boolean   @default(true)
-  isPriority   Boolean   @default(false)
-  metadata     Json?
-  createdAt    DateTime  @default(now())
-  deletedAt    DateTime?
+  id          String    @id @default(uuid())
+  headline    String
+  summary     String?
+  link        String? // external URL or internal route
+  source      String? // "Ogun State Gov", "BBC Pidgin", "Iṣẹ́yáá Desk", etc.
+  category    String? // 'gov' | 'tourism' | 'business' | 'culture' | 'sport'
+  imageUrl    String?
+  publishedAt DateTime  @default(now())
+  isLive      Boolean   @default(true)
+  isPriority  Boolean   @default(false)
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+  deletedAt   DateTime?
 
   @@index([isLive, publishedAt])
   @@map("news_items")
+}
+
+// ─── Phase 9: Tour Packages & Tour Guides models ─────────────────────────────
+
+model TourGuide {
+  id              String          @id @default(uuid())
+  userId          String          @unique
+  user            User            @relation(fields: [userId], references: [id])
+  bio             String?
+  yearsExperience Int             @default(0)
+  languagesSpoken String[]
+  certifications  String[] // S3 URLs of uploaded certificates
+  ninCiphertext   String? // AES-256-GCM ciphertext (EncryptionService — Phase 5)
+  ninHash         String? // bcrypt hash for duplicate lookup (mirrors users.ninHash)
+  kycTier         Int             @default(0)
+  availability    Json? // { blockedDates: string[] (ISO YYYY-MM-DD), weeklyOffDays: number[] (0-6 UTC) }
+  status          TourGuideStatus @default(PENDING)
+  rating          Decimal?
+  reviewCount     Int             @default(0)
+  metadata        Json?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  deletedAt       DateTime?
+
+  packages TourPackage[]
+
+  @@index([status])
+  @@map("tour_guides")
+}
+
+model TourPackage {
+  id                String              @id @default(uuid())
+  slug              String              @unique
+  // NOTE: lgaId + tourGuideId are NULLABLE to support AI-suggestion DRAFT shape
+  // from 09-04's POST /tour-packages/from-ai-suggestion. Service-layer guard
+  // (09-04) enforces both populated before status can move past DRAFT.
+  lgaId             String?
+  lga               LGA?                @relation(fields: [lgaId], references: [id])
+  tourGuideId       String?
+  tourGuide         TourGuide?          @relation(fields: [tourGuideId], references: [id])
+  name              String
+  description       String?
+  category          TourPackageCategory
+  price             Decimal // NGN, per passenger before bulk discount
+  durationHours     Int
+  maxGroupSize      Int                 @default(50)
+  coverImageUrl     String?
+  imageUrls         String[]
+  attractionIds     String[] // 1+ required (service-layer guard)
+  propertyId        String? // optional FK to Property (no FK enforced — service-layer guard)
+  eventIds          String[] // optional, multi
+  transportNote     String? // optional, no FK
+  itineraryTemplate Json // [{ hour: int, title: string, description: string, location?: string }]
+  settlementSplit   Json // [{ vendorType: 'GUIDE'|'HOST'|'ORGANISER'|'ATTRACTION', vendorId: string, percentage: number }]
+  rating            Decimal?
+  reviewCount       Int                 @default(0)
+  status            TourPackageStatus   @default(DRAFT)
+  isFeatured        Boolean             @default(false)
+  metadata          Json?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  deletedAt         DateTime?
+
+  bookings TourBooking[]
+
+  @@index([status, category])
+  @@index([tourGuideId])
+  @@index([lgaId])
+  @@map("tour_packages")
+}
+
+model TourBooking {
+  id                   String        @id @default(uuid())
+  reference            String        @unique // ISY-TOUR-<12char> — generator lives in 09-02
+  tourPackageId        String
+  tourPackage          TourPackage   @relation(fields: [tourPackageId], references: [id])
+  buyerUserId          String
+  buyer                User          @relation("TourBuyer", fields: [buyerUserId], references: [id])
+  groupLeaderUserId    String?
+  tourDate             DateTime      @db.Date
+  passengerCount       Int
+  passengers           Json? // [{ name: string, phone: string }] for groups
+  unitPrice            Decimal // per passenger after any bulk discount applied
+  totalAmount          Decimal // unitPrice × passengerCount (or sum of paid shares for split-bill)
+  paymentReference     String? // Paystack reference (may differ from `reference` for split-bill child charges)
+  status               BookingStatus @default(PENDING) // REUSE existing BookingStatus enum — see 09-01-PLAN must_haves
+  itineraryId          String?       @unique // materialized at booking time
+  itinerary            Itinerary?    @relation(fields: [itineraryId], references: [id])
+  splitBillEnabled     Boolean       @default(false)
+  splitBillPaidUserIds String[]      @default([])
+  snapshot             Json? // TourPackage snapshot at booking time (lightweight v1 versioning)
+  metadata             Json?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  deletedAt            DateTime?
+
+  reviews Review[]
+
+  @@index([tourPackageId, status])
+  @@index([buyerUserId])
+  @@index([tourDate, status])
+  @@map("tour_bookings")
+}
+
+model Itinerary {
+  id        String   @id @default(uuid())
+  items     Json // [{ hour: int, title: string, description: string, location?: string, datetime: ISO }]
+  notes     String?
+  pdfUrl    String? // populated by 09-07 when SendGrid PDF attachment is generated
+  metadata  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  booking TourBooking?
+
+  @@map("itineraries")
+}
+
+model Review {
+  id            String           @id @default(uuid())
+  targetType    ReviewTargetType
+  targetId      String // foreign id pointed to by targetType (no FK — polymorphic)
+  userId        String
+  user          User             @relation(fields: [userId], references: [id])
+  tourBookingId String? // nullable so future modules can write reviews not tied to a tour
+  tourBooking   TourBooking?     @relation(fields: [tourBookingId], references: [id])
+  rating        Int // 1-5
+  comment       String?
+  photos        String[]
+  flagged       Boolean          @default(false) // auto-set when rating <= 2
+  metadata      Json?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  deletedAt     DateTime?
+
+  flag AdminReviewFlag?
+
+  @@index([targetType, targetId])
+  @@index([userId])
+  @@index([flagged])
+  @@map("reviews")
+}
+
+model AdminReviewFlag {
+  id         String    @id @default(uuid())
+  reviewId   String    @unique
+  review     Review    @relation(fields: [reviewId], references: [id])
+  status     String    @default("OPEN") // OPEN | IN_REVIEW | RESOLVED | DISMISSED
+  assignedTo String? // LGA_ADMIN userId
+  resolution String?
+  resolvedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([status])
+  @@map("admin_review_flags")
 }
