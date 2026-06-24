@@ -10,6 +10,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { LgasModule } from './modules/lgas/lgas.module';
 import { TourismModule } from './modules/tourism/tourism.module';
+import { TourPackagesModule } from './modules/tour-packages/tour-packages.module';
 import { EventsModule } from './modules/events/events.module';
 import { StaysModule } from './modules/stays/stays.module';
 import { MarketplaceModule } from './modules/marketplace/marketplace.module';
@@ -40,6 +41,7 @@ import { KafkaModule } from './kafka/kafka.module';
     UsersModule,
     LgasModule,
     TourismModule,
+    TourPackagesModule,
     EventsModule,
     StaysModule,
     TransportModule,

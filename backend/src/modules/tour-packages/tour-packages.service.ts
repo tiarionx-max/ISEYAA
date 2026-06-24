@@ -380,19 +380,19 @@ export class TourPackageService {
     const pkg = await this.prisma.tourPackage.findFirst({ where: { id, deletedAt: null } });
     if (!pkg) throw new NotFoundException('Tour package not found');
 
-    const guide = pkg.tourGuideId
-      ? await this.prisma.tourGuide.findUnique({ where: { id: pkg.tourGuideId } })
-      : null;
-    if (!guide || guide.userId !== actorUserId) {
-      throw new ForbiddenException('Not your package');
-    }
-
     // Status-transition guard: cannot submit unclaimed AI DRAFT — must have
-    // both tourGuideId and lgaId populated before DRAFT → PENDING.
+    // both tourGuideId and lgaId populated before DRAFT → PENDING. This fires
+    // FIRST so AI-source owners get a useful "claim first" message rather than
+    // a generic ownership failure.
     if (!pkg.tourGuideId || !pkg.lgaId) {
       throw new BadRequestException(
         'Cannot submit package — tourGuideId and lgaId must be populated (claim the AI draft first)',
       );
+    }
+
+    const guide = await this.prisma.tourGuide.findUnique({ where: { id: pkg.tourGuideId } });
+    if (!guide || guide.userId !== actorUserId) {
+      throw new ForbiddenException('Not your package');
     }
 
     if (pkg.status !== 'DRAFT' && pkg.status !== 'REJECTED') {
