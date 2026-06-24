@@ -12,6 +12,7 @@ import { LgasModule } from './modules/lgas/lgas.module';
 import { TourismModule } from './modules/tourism/tourism.module';
 import { TourGuidesModule } from './modules/tour-guides/tour-guides.module';
 import { TourPackagesModule } from './modules/tour-packages/tour-packages.module';
+import { TourBookingsModule } from './modules/tour-bookings/tour-bookings.module';
 import { EventsModule } from './modules/events/events.module';
 import { StaysModule } from './modules/stays/stays.module';
 import { MarketplaceModule } from './modules/marketplace/marketplace.module';
@@ -44,6 +45,7 @@ import { KafkaModule } from './kafka/kafka.module';
     TourismModule,
     TourGuidesModule,
     TourPackagesModule,
+    TourBookingsModule,
     EventsModule,
     StaysModule,
     TransportModule,
