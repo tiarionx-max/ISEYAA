@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 
@@ -85,6 +85,51 @@ export class PaystackService {
       if (err instanceof BadRequestException) throw err;
       this.logger.error('Paystack BVN resolve failed', err?.response?.data ?? err.message);
       throw new BadRequestException('BVN verification failed');
+    }
+  }
+
+  /**
+   * Refund a previously settled Paystack charge.
+   *
+   * Wraps `POST https://api.paystack.co/transaction/refund`.
+   * When `PAYSTACK_SECRET_KEY` is unset (dev / CI), returns a deterministic stub so
+   * RefundService can still write the audit row without hitting the gateway.
+   *
+   * @param reference  The original Paystack charge reference (e.g. `ISY-TOUR-...`).
+   * @param amountKobo Optional partial-refund amount in kobo. Omit for full refund.
+   * @param reason     Optional human-readable note, forwarded as Paystack `customer_note`.
+   */
+  async refundCharge(
+    reference: string,
+    amountKobo?: number,
+    reason?: string,
+  ): Promise<{ id: string; amount: number; status: string }> {
+    const secretKey = this.config.get<string>('PAYSTACK_SECRET_KEY', '');
+    if (!secretKey) {
+      this.logger.warn('[PAYSTACK STUB] PAYSTACK_SECRET_KEY not set — refund stubbed in dev');
+      return { id: `stub_${reference}`, amount: amountKobo ?? 0, status: 'pending' };
+    }
+
+    const body: Record<string, any> = { transaction: reference };
+    if (amountKobo) body.amount = amountKobo;
+    if (reason) body.customer_note = reason;
+
+    try {
+      const { data } = await axios.post(`${this.baseUrl}/transaction/refund`, body, {
+        headers: { Authorization: `Bearer ${secretKey}`, 'Content-Type': 'application/json' },
+        timeout: 10_000,
+      });
+      return {
+        id: String(data.data.id),
+        amount: Number(data.data.amount),
+        status: String(data.data.status),
+      };
+    } catch (err: any) {
+      this.logger.error(
+        `Paystack refund failed for ${reference}`,
+        err?.response?.data ?? err.message,
+      );
+      throw new ServiceUnavailableException('Refund gateway unavailable. Retry queued.');
     }
   }
 }
