@@ -90,4 +90,29 @@ export class S3Service {
       throw err;
     }
   }
+
+  // ── Public accessors ─────────────────────────────────────────────────────
+  // Exposed so other Common services (e.g. UploadService) can sign URLs
+  // against the same S3Client + bucket + CDN configuration this service uses.
+  // Read-only — callers must NOT mutate the returned objects.
+
+  /** Which backend is active: 'aws' | 'r2' | 'unconfigured'. */
+  getMode(): 'aws' | 'r2' | 'unconfigured' {
+    return this.mode;
+  }
+
+  /** The bucket name in use (empty string when unconfigured). */
+  getBucket(): string {
+    return this.bucket;
+  }
+
+  /** The underlying S3 client (for presigner use; do not mutate). */
+  getClient(): S3Client {
+    return this.s3;
+  }
+
+  /** Public CDN base URL (no trailing slash). Empty string when no CDN is configured. */
+  getCdnBase(): string {
+    return this.cdnBase;
+  }
 }
