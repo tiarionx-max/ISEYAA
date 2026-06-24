@@ -128,3 +128,68 @@ COMMIT_AND_PROCEED with the following operator decisions made BEFORE Wave 1 exec
 All other findings are LOW or already mitigated by spec coverage. The architecturally hard plan (09-06) is well-specified and the regression protection in 09-12 is appropriate for TOUR-10 wallet invariant requirement.
 
 Counts: 0 BLOCKER, 6 MEDIUM, 5 LOW
+
+---
+
+## Revision Pass — M1 + M2 addressed
+
+Date: 2026-06-23
+Operator decision: SHIP both M1 (Save-as-bookable CTA) and M2 (presigned URL endpoint). M3-M6 deferred per operator (M3/M4/M6 are advisory/documentation; M5 is an orchestrator-time concern handled at execute time).
+
+### M2 — Presigned URL upload primitive (SHIPPED into 09-02 + 09-03 + 09-08)
+
+**09-02 (Common infra) — Added Task 3: UploadService + UploadController + DTO + spec.**
+- New files: `backend/src/common/services/upload.service.ts`, `backend/src/common/controllers/upload.controller.ts` (new `controllers/` dir), `backend/src/common/dto/create-presigned-upload.dto.ts`, `backend/src/common/services/__tests__/upload.service.spec.ts`.
+- S3Service patched with 4 public read-only accessors (`getMode/getBucket/getClient/getCdnBase`) — UploadService signs URLs against the same S3Client + bucket the existing `upload()` method uses. R2 + AWS modes both supported with no branching (S3-compatible API).
+- New dependency: `@aws-sdk/s3-request-presigner@^3.1045.0` (Task 3 Step 0 npm install). Sibling of installed `@aws-sdk/client-s3` 3.1045.x.
+- Endpoint: `POST /api/v1/uploads/presigned` (JwtAuthGuard, any auth user). Body: `{ keyPrefix: 'tour-certifications' | 'review-photos' | 'tour-covers' | 'avatars' | 'misc', contentType: 'image/jpeg' | 'image/png' | 'image/webp' | 'application/pdf', maxBytes? <= 25MB }`. Returns: `{ uploadUrl, key, publicUrl, expiresIn: 900, maxBytes }`.
+- Security: keyPrefix is an enum (no path traversal). `key = ${prefix}/${userId}/${uuid}.${ext}` — userId from JWT, NEVER from body. 4-contentType allowlist enforced by `@IsIn` + service-layer defense. 5MB default, 25MB hard cap, 15-min expiry. Spec covers 7 scenarios (happy + bad contentType + over-cap + unconfigured S3 + AWS/R2 URL formats).
+- CommonModule (@Global) now declares `controllers: [UploadController]` + adds UploadService to providers + exports — endpoint auto-routes via existing CommonModule import in AppModule.
+
+**09-03 (TourGuide module) — certifications now consume the presigned flow.**
+- `CreateTourGuideDto.certifications` comment + `must_haves.truths` updated: client POSTs `/uploads/presigned` with `keyPrefix='tour-certifications'`, PUTs file to uploadUrl, sends publicUrl back to `POST /tour-guides`. `@IsUrl({}, { each: true })` validates each entry. NO multipart on this endpoint.
+- Added spec scenario #3 — accepts S3/R2 publicUrls verbatim. Renumbered downstream tests to 10 total.
+- New key_link added (client cert-upload flow → 09-02 UploadController). Verification adds an end-to-end smoke (presigned → PUT → POST /tour-guides with publicUrl).
+
+**09-08 (Reviews module) — review photos now consume the presigned flow.**
+- `CreateReviewDto.photos` already used `@IsUrl` per entry — comment + must_haves now make the upstream contract explicit (`keyPrefix='review-photos'`, max 5 photos per `@ArrayMaxSize(5)`).
+- Added spec scenario #2 — happy path with 3 publicUrls persisted verbatim. Renumbered to 14 total.
+- New key_link added (client photo-upload flow → 09-02 UploadController). Verification adds an end-to-end smoke.
+
+### M1 — Save-as-bookable CTA (SHIPPED into 09-04 backend + 09-09 web)
+
+**09-04 (TourPackage module) — new endpoint `POST /tour-packages/from-ai-suggestion`.**
+- New file: `backend/src/modules/tour-packages/dto/create-from-ai-suggestion.dto.ts` (length-bounded title 3-120, description 10-5000, suggestedItinerary 10-10000, optional aiConversationId UUID).
+- Added Task 1: include the new DTO. Task 2 (TourPackageService): added `createFromAiSuggestion(actorUserId, dto)` method — bypasses the 8 standard-create guards (no guide/attraction/split to validate yet). Creates a row with `status='DRAFT'`, `tourGuideId=null`, `lgaId=null`, `settlementSplit=[]`, `attractionIds=[]`, `price=0`, `durationHours=1`, `maxGroupSize=1`, `category='CULTURAL'` defaults, `itineraryTemplate=[{ hour: 0, title: 'AI suggestion', description: <verbatim> }]`, `metadata={ source: 'ai-suggestion', aiSourceConversationId, aiSourceUserId, createdAt }`, slug includes `-ai-` segment.
+- Public-list filter (`findAll`) already enforces `status: 'APPROVED'`, so AI-seeded DRAFTs are NOT searchable until claimed + approved. Spec scenario #11 now asserts the filter; new spec scenario #12 covers the happy-path createFromAiSuggestion.
+- `findOwn(userId)` updated to include AI-seeded DRAFTs the user owns (via `metadata.aiSourceUserId` JSON path filter) so the user sees their saved drafts under `GET /tour-packages/me`.
+- **Schema dependency on 09-01:** TourPackage.tourGuideId + lgaId MUST be `String?` (nullable) for the AI DRAFT shape to land. Plan calls this out and instructs the 09-04 executor to coordinate / patch 09-01's migration if it specified non-null. Future `POST /tour-packages/:id/claim` (out of scope) lets an APPROVED guide adopt the DRAFT.
+- Controller adds `POST /tour-packages/from-ai-suggestion` (JwtAuthGuard, NOT TOUR_GUIDE-restricted — tourists can save).
+
+**09-09 (Web pages) — new Task 4: /ai chat page + SaveAsBookableButton + SaveAsBookableModal.**
+- Confirmed via Glob: NO existing AI/concierge/chat page in `web/src/app/`. This plan ships a minimal `/ai` route as a thin client over the existing backend AI module (CLAUDE.md §AiModule). The new page exists primarily to host the Save-as-bookable CTA on a working chat surface.
+- New files: `web/src/app/ai/page.tsx`, `web/src/components/ai/SaveAsBookableButton.tsx`, `web/src/components/ai/SaveAsBookableModal.tsx`.
+- SaveAsBookableButton: per-assistant-turn inline CTA, BookmarkPlus icon + "Save as bookable tour" label, `min-h-[44px]` touch target.
+- SaveAsBookableModal: react-hook-form form with title (3-120, prefilled from first non-empty line truncated 80 chars), description (10-5000, prefilled from first 240 chars), suggestedItinerary (10-10000, prefilled with full verbatim text). On submit: `POST /tour-packages/from-ai-suggestion` with `{ title, description, suggestedItinerary, aiConversationId }`. Toast "Saved to drafts" + action link to `/host/tours/me` (fallback `/host` if not yet shipped). Submit button `min-h-[44px]`. No inline hex.
+- Auth handling: 401 → redirect to `/login?returnTo=/ai`.
+- Added 4 entries to must_haves.artifacts (page + 2 ai components) + 1 key_link + ai chat truth.
+
+### Files touched in this revision pass (5)
+
+- `.planning/phases/09-tour-packages-tour-guides/09-02-PLAN.md` — added UploadService/Controller/DTO + spec (Task 3) + S3Service accessor patch + CommonModule controller registration (Task 4 renumbered). New dependency `@aws-sdk/s3-request-presigner`.
+- `.planning/phases/09-tour-packages-tour-guides/09-03-PLAN.md` — certifications comment + must_have truth + spec scenario #3 + key_link added; @IsUrl validation enforced.
+- `.planning/phases/09-tour-packages-tour-guides/09-04-PLAN.md` — new CreateFromAiSuggestionDto + createFromAiSuggestion service method + controller route + spec scenarios #11 (filter) + #12 (happy path). Schema-nullability dependency on 09-01 documented.
+- `.planning/phases/09-tour-packages-tour-guides/09-08-PLAN.md` — photos contract + must_have truth + spec scenario #2 + key_link added; @IsUrl + @ArrayMaxSize(5) reaffirmed; `depends_on` now [09-01, 09-02, 09-05, 09-06].
+- `.planning/phases/09-tour-packages-tour-guides/09-09-PLAN.md` — Task 4 added (/ai page + SaveAsBookableButton + SaveAsBookableModal) + 3 new artifacts + 1 new key_link + new truth. `files_modified` extended.
+
+### Not addressed in this revision
+
+- **M3** (CONTEXT misidentifies marketplace.handleOrderPayment as multi-vendor split analog) — deferred. 09-06's actual code template already mirrors wallet.service.ts:272 correctly; only the prose in CONTEXT is misleading. Will be addressed at next CONTEXT revision pass or post-execute retro.
+- **M4** (dense Task 2 content) — advisory only; not a blocker. Carry into Phase 10 hindsight.
+- **M5** (parallel app.module.ts edits) — orchestrator-time concern. Will be handled at execute time via wave serialization.
+- **M6** (rating recompute cluster safety) — flagged in 09-08 SUMMARY template (post-execute); no CONTEXT update.
+- **L1-L5** — low priority; deferred.
+
+### Wave structure unchanged
+
+Still 13 plans across 8 waves. 09-08 adds a new dep on 09-02 (already in Wave 1) — does not move waves. 09-09 still in Wave 6 with new files in `web/src/app/ai/` + `web/src/components/ai/` (no overlap with 09-10 which touches `web/src/app/admin/`).
