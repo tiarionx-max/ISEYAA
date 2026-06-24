@@ -82,6 +82,40 @@ export class UsersService {
     return updated;
   }
 
+  /**
+   * Become a tour guide — adds TOUR_GUIDE to registeredRoles, switches active role,
+   * AND creates an empty TourGuide profile row (status PENDING) so subsequent
+   * /tour-guides endpoints can find a profile to update. Wrapped in a single
+   * transaction so the role flip and profile creation are atomic.
+   */
+  async becomeGuide(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId, deletedAt: null },
+      select: { registeredRoles: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // Upsert empty TourGuide profile row — safe to call repeatedly.
+      await tx.tourGuide.upsert({
+        where: { userId },
+        create: { userId, status: 'PENDING' },
+        update: {},
+      });
+      return tx.user.update({
+        where: { id: userId },
+        data: {
+          registeredRoles: user.registeredRoles.includes('TOUR_GUIDE' as UserRole)
+            ? user.registeredRoles
+            : { set: [...user.registeredRoles, 'TOUR_GUIDE' as UserRole] },
+          role: 'TOUR_GUIDE' as UserRole,
+        },
+        select: USER_SELECT,
+      });
+    });
+    return updated;
+  }
+
   async eraseData(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId, deletedAt: null },
