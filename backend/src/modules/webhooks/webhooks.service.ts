@@ -64,6 +64,13 @@ export class WebhooksService {
           );
           break;
 
+        case 'tour_booking':
+          this.eventEmitter.emit('payment.tour_booking', eventPayload);
+          await this.kafka.emit('payment.tour_booking', eventPayload).catch((err) =>
+            this.logger.error('Kafka emit failed for tour_booking', err),
+          );
+          break;
+
         // M-08: explicit case prevents silent fallback to default for future type mismatches
         case 'wallet_topup':
           if (metadata?.walletId) {
