@@ -3,6 +3,7 @@ import { UploadController } from './controllers/upload.controller';
 import { DojahService } from './services/dojah.service';
 import { EncryptionService } from './services/encryption.service';
 import { ImageService } from './services/image.service';
+import { ItineraryPdfService } from './services/itinerary-pdf.service';
 import { PaystackService } from './services/paystack.service';
 import { QrService } from './services/qr.service';
 import { ReferenceService } from './services/reference.service';
@@ -19,6 +20,7 @@ import { VectorService } from './services/vector.service';
     DojahService,
     EncryptionService,
     ImageService,
+    ItineraryPdfService,
     PaystackService,
     QrService,
     ReferenceService,
@@ -32,6 +34,7 @@ import { VectorService } from './services/vector.service';
     DojahService,
     EncryptionService,
     ImageService,
+    ItineraryPdfService,
     PaystackService,
     QrService,
     ReferenceService,
