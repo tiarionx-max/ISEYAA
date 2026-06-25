@@ -19,7 +19,7 @@ Sprint 1 is shipped. This roadmap covers the six remaining sprints: infrastructu
 - [ ] **Phase 6: QA, Security & Performance** - Load testing, security audit, query optimisation, and mobile performance
 - [ ] **Phase 7: Deployment & Launch** - Production go-live, app store submissions, and soft launch
 - [ ] **Phase 8: Mobile Redesign** - Bring mobile app in line with the redesigned web (Airbnb-style stays, Temu-style marketplace, host onboarding, news ticker), complete the 5-tab migration, and ship a fresh EAS preview build
-- [ ] **Phase 9: Tour Packages & Tour Guides** - Sell complete Ogun State experiences (curated multi-vendor packages) and onboard certified Tour Guides as a first-class role, with multi-vendor commission splitting on a single buyer payment
+- [x] **Phase 9: Tour Packages & Tour Guides** - Sell complete Ogun State experiences (curated multi-vendor packages) and onboard certified Tour Guides as a first-class role, with multi-vendor commission splitting on a single buyer payment
 
 ## Phase Details
 
@@ -323,32 +323,32 @@ Plans:
 **Plans**: 13 plans
 Plans:
 **Wave 1** *(no dependencies — runs immediately, parallel)*
-- [ ] 09-01-PLAN.md — Schema + migration (TOUR_GUIDE enum + 6 models + CHECK constraint) + 6 PlatformConfig seeds
-- [ ] 09-02-PLAN.md — Shared infra: ReferenceService (ISY-TOUR-<12char>) + RefundService (Paystack chargeback)
+- [x] 09-01-PLAN.md — Schema + migration (TOUR_GUIDE enum + 6 models + CHECK constraint) + 6 PlatformConfig seeds
+- [x] 09-02-PLAN.md — Shared infra: ReferenceService (ISY-TOUR-<12char>) + RefundService (Paystack chargeback)
 
 **Wave 2** *(blocked on Wave 1, parallel)*
-- [ ] 09-03-PLAN.md — TourGuide module: become-guide, profile CRUD, KYC (AES-256-GCM + bcrypt), availability, LGA_ADMIN approval
-- [ ] 09-04-PLAN.md — TourPackage module: CRUD with 8 service-side guards (guide-approved, attractions, split sum, etc.) + admin approval queue
+- [x] 09-03-PLAN.md — TourGuide module: become-guide, profile CRUD, KYC (AES-256-GCM + bcrypt), availability, LGA_ADMIN approval
+- [x] 09-04-PLAN.md — TourPackage module: CRUD with 8 service-side guards (guide-approved, attractions, split sum, etc.) + admin approval queue
 
 **Wave 3** *(blocked on Wave 2)*
-- [ ] 09-05-PLAN.md — TourBooking lifecycle: date constraint, bulk discount tiers, split-bill orchestration, snapshot, itinerary materialization (NO wallet writes)
+- [x] 09-05-PLAN.md — TourBooking lifecycle: date constraint, bulk discount tiers, split-bill orchestration, snapshot, itinerary materialization (NO wallet writes)
 
 **Wave 4** *(blocked on Wave 3)*
-- [ ] 09-06-PLAN.md — Multi-vendor settlement engine + webhooks dispatch: atomic $transaction, SELECT FOR UPDATE per vendor wallet, idempotency, refund-on-failure, split-bill accumulator
+- [x] 09-06-PLAN.md — Multi-vendor settlement engine + webhooks dispatch: atomic $transaction, SELECT FOR UPDATE per vendor wallet, idempotency, refund-on-failure, split-bill accumulator
 
 **Wave 5** *(blocked on Wave 4, parallel)*
-- [ ] 09-07-PLAN.md — Itinerary PDF + 3-channel delivery: SendGrid email on confirm, 3 cron jobs (T-24h / T-2h / T+1h), pdfkit, configurable offsets
-- [ ] 09-08-PLAN.md — Review + auto-flag (<=2 stars) + admin review queue + debounced aggregate rating recompute
+- [x] 09-07-PLAN.md — Itinerary PDF + 3-channel delivery: SendGrid email on confirm, 3 cron jobs (T-24h / T-2h / T+1h), pdfkit, configurable offsets
+- [x] 09-08-PLAN.md — Review + auto-flag (<=2 stars) + admin review queue + debounced aggregate rating recompute
 
 **Wave 6** *(blocked on Wave 5, parallel)*
-- [ ] 09-09-PLAN.md — Web public surface: /tours browse + /tours/[slug] detail + /become-a-guide + /host/tours/new multi-step creator
-- [ ] 09-10-PLAN.md — Web admin surface: 4 queue pages + revenue chart + utilization heatmap + 2 new backend admin GET endpoints
+- [x] 09-09-PLAN.md — Web public surface: /tours browse + /tours/[slug] detail + /become-a-guide + /host/tours/new multi-step creator
+- [x] 09-10-PLAN.md — Web admin surface: 4 queue pages + revenue chart + utilization heatmap + 2 new backend admin GET endpoints
 
 **Wave 7** *(blocked on Wave 5)*
-- [ ] 09-11-PLAN.md — Mobile: Tours sub-section in Book hub + tours/[id] + trips/index + TourBookingSheet + RatingModal + SplitBillShareSheet
+- [x] 09-11-PLAN.md — Mobile: Tours sub-section in Book hub + tours/[id] + trips/index + TourBookingSheet + RatingModal + SplitBillShareSheet
 
 **Wave 8** *(blocked on all preceding waves)*
-- [ ] 09-12-PLAN.md — TOUR-10 regression tests: wallet invariant e2e + KYC encryption e2e + end-to-end happy path
+- [x] 09-12-PLAN.md — TOUR-10 regression tests: wallet invariant e2e + KYC encryption e2e + end-to-end happy path
 - [ ] 09-13-PLAN.md — Human verification checkpoint: walk all 10 ROADMAP SCs against live environment + record evidence in 09-VERIFICATION.md
 
 **Cross-cutting constraints:**
