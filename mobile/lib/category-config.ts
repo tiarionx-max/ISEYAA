@@ -1,10 +1,11 @@
 /**
  * Category config — single source of truth shared by the Book hub's
- * Stays + Marketplace sub-sections, their tests, and any downstream
- * filter/search surface.
+ * Stays + Marketplace + Tours sub-sections, their tests, and any
+ * downstream filter/search surface.
  *
- * Mirrors `web/src/app/stays/page.tsx` (10 entries) and
- * `web/src/app/marketplace/page.tsx` (8 entries) exactly — same ids,
+ * Mirrors `web/src/app/stays/page.tsx` (10 entries),
+ * `web/src/app/marketplace/page.tsx` (8 entries), and
+ * `web/src/app/tours/page.tsx` (10 entries) exactly — same ids,
  * same labels, same backend filter contract. If web edits its category
  * list, edit here too.
  *
@@ -27,6 +28,13 @@ import {
   Palette,
   Cpu,
   Wheat,
+  Landmark,
+  Music,
+  PartyPopper,
+  Utensils,
+  Heart,
+  BookOpen,
+  Briefcase,
 } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 
@@ -97,4 +105,32 @@ export function buildMarketplaceQuery(c: MarketplaceCategory): string {
   if (c.category) params.set('category', c.category);
   if (c.featured) params.set('featured', 'true');
   return params.toString();
+}
+
+// ── Tours ─────────────────────────────────────────────────────────────
+export type TourCategory = {
+  id: 'all' | 'heritage' | 'cultural' | 'adire' | 'festival' | 'food' | 'family' | 'faith' | 'school' | 'corporate';
+  label: string;
+  icon: LucideIcon;
+  /** Backend category filter value (undefined = no filter, show all). */
+  category?: string;
+};
+
+export const TOUR_CATEGORIES: TourCategory[] = [
+  { id: 'all',       label: 'All',       icon: Sparkles },
+  { id: 'heritage',  label: 'Heritage',  icon: Landmark,    category: 'HERITAGE' },
+  { id: 'cultural',  label: 'Cultural',  icon: Music,       category: 'CULTURAL' },
+  { id: 'adire',     label: 'Adire',     icon: Palette,     category: 'ADIRE' },
+  { id: 'festival',  label: 'Festival',  icon: PartyPopper, category: 'FESTIVAL' },
+  { id: 'food',      label: 'Food',      icon: Utensils,    category: 'FOOD' },
+  { id: 'family',    label: 'Family',    icon: Heart,       category: 'FAMILY' },
+  { id: 'faith',     label: 'Faith',     icon: Star,        category: 'FAITH' },
+  { id: 'school',    label: 'School',    icon: BookOpen,    category: 'SCHOOL' },
+  { id: 'corporate', label: 'Corporate', icon: Briefcase,   category: 'CORPORATE' },
+];
+
+export function buildTourQuery(c: TourCategory): string {
+  const p = new URLSearchParams({ limit: '48' });
+  if (c.category) p.set('category', c.category);
+  return p.toString();
 }

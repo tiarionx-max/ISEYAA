@@ -45,6 +45,9 @@ export default function RootLayout() {
           <Stack.Screen name="kyc" options={{ title: 'Identity Verification', presentation: 'card' }} />
           <Stack.Screen name="events/[id]" options={{ title: 'Event' }} />
           <Stack.Screen name="stays/[id]" options={{ title: 'Property' }} />
+          <Stack.Screen name="tours/[id]" options={{ title: 'Tour' }} />
+          <Stack.Screen name="trips/index" options={{ title: 'My trips', presentation: 'card' }} />
+          <Stack.Screen name="tours/rate/[bookingId]" options={{ headerShown: false, presentation: 'transparentModal', animation: 'fade' }} />
           <Stack.Screen name="marketplace/[id]" options={{ title: 'Product' }} />
           <Stack.Screen name="cart" options={{ headerShown: false, presentation: 'transparentModal', animation: 'none' }} />
           <Stack.Screen name="checkout" options={{ title: 'Checkout', presentation: 'card' }} />
