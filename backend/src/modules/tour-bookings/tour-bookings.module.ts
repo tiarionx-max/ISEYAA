@@ -2,7 +2,9 @@ import { Module } from '@nestjs/common';
 import { TourBookingService } from './tour-bookings.service';
 import { TourSettlementService } from './tour-settlement.service';
 import { TourNotificationsService } from './tour-notifications.service';
+import { TourAdminService } from './tour-admin.service';
 import { TourBookingsController } from './tour-bookings.controller';
+import { TourAdminController } from './tour-admin.controller';
 import { TourPackagesModule } from '../tour-packages/tour-packages.module';
 import { TourGuidesModule } from '../tour-guides/tour-guides.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -29,11 +31,12 @@ import { NotificationsModule } from '../notifications/notifications.module';
  */
 @Module({
   imports: [TourPackagesModule, TourGuidesModule, NotificationsModule],
-  controllers: [TourBookingsController],
+  controllers: [TourBookingsController, TourAdminController],
   providers: [
     TourBookingService,
     TourSettlementService,
     TourNotificationsService,
+    TourAdminService,
   ],
   exports: [TourBookingService, TourSettlementService],
 })
