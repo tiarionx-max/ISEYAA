@@ -18,7 +18,7 @@ Sprint 1 is shipped. This roadmap covers the six remaining sprints: infrastructu
 - [ ] **Phase 5: AI Concierge + KYC** - GPT-4o concierge with tool calls, vector recommendations, and real identity verification
 - [ ] **Phase 6: QA, Security & Performance** - Load testing, security audit, query optimisation, and mobile performance
 - [ ] **Phase 7: Deployment & Launch** - Production go-live, app store submissions, and soft launch
-- [ ] **Phase 8: Mobile Redesign** - Bring mobile app in line with the redesigned web (Airbnb-style stays, Temu-style marketplace, host onboarding, news ticker), complete the 5-tab migration, and ship a fresh EAS preview build
+- [x] **Phase 8: Mobile Redesign** - Bring mobile app in line with the redesigned web (Airbnb-style stays, Temu-style marketplace, host onboarding, news ticker), complete the 5-tab migration, and ship a fresh EAS preview build
 - [x] **Phase 9: Tour Packages & Tour Guides** - Sell complete Ogun State experiences (curated multi-vendor packages) and onboard certified Tour Guides as a first-class role, with multi-vendor commission splitting on a single buyer payment
 
 ## Phase Details
@@ -271,24 +271,24 @@ Plans:
 **Plans**: 11 plans
 Plans:
 **Wave 1** *(no dependencies — runs immediately, parallel)*
-- [ ] 08-01-PLAN.md — Install expo-image + expo-web-browser + @react-native-community/datetimepicker + create lib/category-config.ts + lib/cart-store.ts (mirrors web/src/lib/cart.ts exactly) + extend tokens.ts with CARD_GRADIENTS.goldHero
-- [ ] 08-02-PLAN.md — NewsTicker component (uses item.link) + shared UI primitives (PressableScale, CategoryStrip with 44pt min, Chip)
+- [x] 08-01-PLAN.md — Install expo-image + expo-web-browser + @react-native-community/datetimepicker + create lib/category-config.ts + lib/cart-store.ts (mirrors web/src/lib/cart.ts exactly) + extend tokens.ts with CARD_GRADIENTS.goldHero
+- [x] 08-02-PLAN.md — NewsTicker component (uses item.link) + shared UI primitives (PressableScale, CategoryStrip with 44pt min, Chip)
 
 **Wave 2** *(blocked on Wave 1)*
-- [ ] 08-03-PLAN.md — Discover tab: insert NewsTicker at top of (tabs)/index.tsx (full Discover hero redesign deferred)
-- [ ] 08-04-PLAN.md — Delete 7 legacy tabs + strip hidden Tabs.Screen registrations from (tabs)/_layout.tsx
-- [ ] 08-04b-PLAN.md — Pre-register 4 new Stack routes (marketplace/[id], cart, checkout, host) in app/_layout.tsx so Wave 3 plans have disjoint file ownership
+- [x] 08-03-PLAN.md — Discover tab: insert NewsTicker at top of (tabs)/index.tsx (full Discover hero redesign deferred)
+- [x] 08-04-PLAN.md — Delete 7 legacy tabs + strip hidden Tabs.Screen registrations from (tabs)/_layout.tsx
+- [x] 08-04b-PLAN.md — Pre-register 4 new Stack routes (marketplace/[id], cart, checkout, host) in app/_layout.tsx so Wave 3 plans have disjoint file ownership
 
 **Wave 3** *(blocked on Wave 2)*
-- [ ] 08-05-PLAN.md — Book hub rewrite: 4 sub-sections (Events / Stays / Studio / Marketplace), Stays (10 categories, /properties grid), Marketplace (8 categories, /products grid with wishlist + 44pt Add button), Events (migrated EventsFeed + QR FAB), Studio (legacy look preserved)
-- [ ] 08-06-PLAN.md — Marketplace product detail + cart drawer modal + checkout screen POSTing to /api/v1/orders with { items, email } (no delivery address — backend forbids extras); does NOT touch _layout.tsx
-- [ ] 08-07-PLAN.md — Host onboarding screen using CARD_GRADIENTS.goldHero + profile-tab "Become a host" card; does NOT touch _layout.tsx
+- [x] 08-05-PLAN.md — Book hub rewrite: 4 sub-sections (Events / Stays / Studio / Marketplace), Stays (10 categories, /properties grid), Marketplace (8 categories, /products grid with wishlist + 44pt Add button), Events (migrated EventsFeed + QR FAB), Studio (legacy look preserved)
+- [x] 08-06-PLAN.md — Marketplace product detail + cart drawer modal + checkout screen POSTing to /api/v1/orders with { items, email } (no delivery address — backend forbids extras); does NOT touch _layout.tsx
+- [x] 08-07-PLAN.md — Host onboarding screen using CARD_GRADIENTS.goldHero + profile-tab "Become a host" card; does NOT touch _layout.tsx
 
 **Wave 4** *(blocked on Wave 3)*
-- [ ] 08-08-PLAN.md — Stay detail redesign: 4-image gallery + highlights + amenity chips + 4 mode-aware booking sheets (NIGHTLY/HOURLY/TIMED_EVENT/MEMBERSHIP) POSTing to /api/v1/properties/:id/bookings with { checkIn, checkOut, guests, email } — TIMED_EVENT uses pricePerHour × slot length
+- [x] 08-08-PLAN.md — Stay detail redesign: 4-image gallery + highlights + amenity chips + 4 mode-aware booking sheets (NIGHTLY/HOURLY/TIMED_EVENT/MEMBERSHIP) POSTing to /api/v1/properties/:id/bookings with { checkIn, checkOut, guests, email } — TIMED_EVENT uses pricePerHour × slot length
 
 **Wave 5** *(blocked on Wave 4)*
-- [ ] 08-09-PLAN.md — EAS preview build: bump android.versionCode + commit + submit `eas build --platform android --profile preview --non-interactive` + capture install URL
+- [x] 08-09-PLAN.md — EAS preview build: bump android.versionCode + commit + submit `eas build --platform android --profile preview --non-interactive` + capture install URL
 
 **Wave 6** *(blocked on Wave 5)*
 - [ ] 08-10-PLAN.md — Human verification checkpoint: walk all 8 MOB-RD success criteria on installed APK + record in 08-VERIFICATION.md + finalize 08-VALIDATION.md
