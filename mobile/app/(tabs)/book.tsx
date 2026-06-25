@@ -1,16 +1,16 @@
 /**
- * Book hub — Plan 08-05
+ * Book hub — Plan 08-05 (extended in 09-11)
  *
- * Top-level 4-pane switcher (CONTEXT §Navigation Architecture, locked):
+ * Top-level 5-pane switcher (CONTEXT §Navigation Architecture, locked):
  *   1. Events       — <EventsSubsection /> (migrated from legacy book.tsx + events.tsx)
- *   2. Stays        — NEW Airbnb-style 10-category strip + 2-col grid -> GET /properties
- *   3. Studio       — legacy look preserved this phase (full redesign deferred)
- *   4. Marketplace  — NEW Temu-style 8-category strip + 2-col product grid -> GET /products
+ *   2. Stays        — Airbnb-style 10-category strip + 2-col grid -> GET /properties
+ *   3. Studio       — legacy look preserved (full redesign deferred)
+ *   4. Marketplace  — Temu-style 8-category strip + 2-col product grid -> GET /products
+ *   5. Tours        — 10-category strip + 2-col grid -> GET /tour-packages (Plan 09-11)
  *
  * Header bag icon -> useCartStore.totalCount() badge, tap -> useCartDrawerStore.openDrawer().
  *
- * Closes MOB-RD-03 (Stays browse) + MOB-RD-05 browse-portion (Marketplace browse).
- * Detail screens (/stays/:id, /marketplace/:id) + cart drawer are 08-06's scope.
+ * Closes MOB-RD-03 + MOB-RD-05 + TOUR-03 (mobile browse).
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -43,11 +43,15 @@ import { useCartStore, useCartDrawerStore } from '../../lib/cart-store';
 import {
   STAY_CATEGORIES,
   MARKETPLACE_CATEGORIES,
+  TOUR_CATEGORIES,
   buildStayQuery,
   buildMarketplaceQuery,
+  buildTourQuery,
   type StayCategory,
   type MarketplaceCategory,
+  type TourCategory,
 } from '../../lib/category-config';
+import { TourCard, type TourPackage } from '../../components/tours/TourCard';
 
 import { CategoryStrip, type CategoryStripItem } from '../../components/ui/CategoryStrip';
 import { Chip } from '../../components/ui/Chip';
@@ -82,12 +86,13 @@ import {
 } from '../../lib/tokens';
 
 // ── Constants ──────────────────────────────────────────────────────────
-type Section = 'events' | 'stays' | 'studio' | 'marketplace';
+type Section = 'events' | 'stays' | 'studio' | 'marketplace' | 'tours';
 const SECTIONS: { id: Section; label: string }[] = [
   { id: 'events', label: 'Events' },
   { id: 'stays', label: 'Stays' },
   { id: 'studio', label: 'Studio' },
   { id: 'marketplace', label: 'Market' },
+  { id: 'tours', label: 'Tours' },
 ];
 
 // Discount badge red — only inline hex allowed per plan (Task 0 GREEN-LIT).
@@ -622,6 +627,72 @@ function MarketplaceSection() {
   );
 }
 
+// ── Tours section ─────────────────────────────────────────────────────
+function ToursSection() {
+  const [activeId, setActiveId] = useState<string>('all');
+
+  const activeCat = useMemo<TourCategory>(
+    () => TOUR_CATEGORIES.find((c) => c.id === activeId) ?? TOUR_CATEGORIES[0],
+    [activeId],
+  );
+
+  const stripItems: CategoryStripItem[] = useMemo(
+    () =>
+      TOUR_CATEGORIES.map((c) => ({
+        id: c.id,
+        label: c.label,
+        icon: c.icon,
+      })),
+    [],
+  );
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['tours-browse', activeId],
+    queryFn: () => fetcher(`/tour-packages?${buildTourQuery(activeCat)}`),
+    staleTime: 30_000,
+  });
+
+  const packages: TourPackage[] = data?.data ?? [];
+
+  const renderItem = ({ item, index }: ListRenderItemInfo<TourPackage>) => (
+    <TourCard
+      pkg={item}
+      index={index}
+      cardWidth={CARD_WIDTH}
+      onPress={(p) => router.push(`/tours/${p.slug}` as never)}
+    />
+  );
+
+  return (
+    <View style={styles.sectionRoot}>
+      <CategoryStrip items={stripItems} activeId={activeId} onChange={setActiveId} />
+      {isLoading ? (
+        <View style={styles.gridPadding}>
+          <GridSkeleton count={4} />
+          <GridSkeleton count={4} />
+        </View>
+      ) : packages.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyText}>
+            No tour packages in this category yet.
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          data={packages}
+          keyExtractor={(p) => p.id}
+          renderItem={renderItem}
+          numColumns={2}
+          columnWrapperStyle={{ gap: GRID_GUTTER, paddingHorizontal: GRID_H_PADDING }}
+          contentContainerStyle={styles.gridContent}
+          showsVerticalScrollIndicator={false}
+          ItemSeparatorComponent={() => <View style={{ height: GRID_GUTTER }} />}
+        />
+      )}
+    </View>
+  );
+}
+
 // ── Header ────────────────────────────────────────────────────────────
 function CartBag() {
   // Subscribe to items length so the badge re-renders on add/remove.
@@ -681,6 +752,7 @@ export default function BookScreen() {
         {activeSection === 'stays' && <StaysSection />}
         {activeSection === 'studio' && <StudioSection />}
         {activeSection === 'marketplace' && <MarketplaceSection />}
+        {activeSection === 'tours' && <ToursSection />}
       </View>
     </SafeAreaView>
   );
