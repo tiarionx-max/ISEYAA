@@ -286,6 +286,40 @@ export class AuthService {
   }
 
   private async sendTermii(phone: string, otp: string) {
+    const termiiKey = this.config.get<string>('TERMII_API_KEY');
+
+    if (termiiKey) {
+      // Prefer WhatsApp channel when a WhatsApp sender ID is configured (bypasses DND/GSM restrictions)
+      const whatsappSender = this.config.get<string>('TERMII_WHATSAPP_SENDER_ID');
+      const smsSender = this.config.get<string>('TERMII_SENDER_ID', '');
+
+      const channel = whatsappSender ? 'whatsapp' : smsSender ? 'generic' : 'dnd';
+      const from = (whatsappSender ?? smsSender) || 'N-Alert';
+
+      try {
+        const response = await fetch('https://v3.api.termii.com/api/sms/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: phone,
+            from,
+            sms: `Your Iṣẹ́yáá verification code is ${otp}. Valid for 5 minutes. Do not share.`,
+            type: 'plain',
+            channel,
+            api_key: termiiKey,
+          }),
+        });
+        if (response.ok) {
+          this.logger.log(`OTP sent via Termii (${channel}) to ${phone}`);
+          return;
+        }
+        this.logger.error(`Termii error: ${response.status} ${await response.text()} — falling back to Twilio`);
+      } catch (err) {
+        this.logger.error('Termii request failed — falling back to Twilio', err);
+      }
+    }
+
+    // Twilio fallback (trial accounts cannot send to unverified Nigerian numbers; use Termii above for NG)
     const twilioSid = this.config.get<string>('TWILIO_ACCOUNT_SID');
     const twilioToken = this.config.get<string>('TWILIO_AUTH_TOKEN');
     const twilioFrom = this.config.get<string>('TWILIO_FROM_NUMBER');
@@ -295,35 +329,7 @@ export class AuthService {
       return;
     }
 
-    const termiiKey = this.config.get<string>('TERMII_API_KEY');
-    if (!termiiKey) {
-      this.logger.warn(`[SMS STUB] OTP ${otp} for ${phone} — configure TWILIO_* or TERMII_API_KEY to send live SMS`);
-      return;
-    }
-
-    const senderId = this.config.get('TERMII_SENDER_ID', '');
-    const channel = senderId ? 'generic' : 'dnd';
-    const from = senderId || 'N-Alert';
-
-    try {
-      const response = await fetch('https://v3.api.termii.com/api/sms/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: phone,
-          from,
-          sms: `Your Iṣẹ́yáá verification code is ${otp}. Valid for 5 minutes. Do not share.`,
-          type: 'plain',
-          channel,
-          api_key: termiiKey,
-        }),
-      });
-      if (!response.ok) {
-        this.logger.error(`Termii error: ${response.status} ${await response.text()}`);
-      }
-    } catch (err) {
-      this.logger.error('Termii request failed', err);
-    }
+    this.logger.warn(`[SMS STUB] OTP ${otp} for ${phone} — configure TERMII_API_KEY or TWILIO_* to send live SMS`);
   }
 
   private async sendTwilio(phone: string, otp: string, sid: string, token: string, from: string) {
