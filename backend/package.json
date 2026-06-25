@@ -14,7 +14,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "prisma:reset": "prisma migrate reset"
+    "prisma:reset": "prisma migrate reset",
+    "test:e2e:tours": "jest --config test/jest-e2e.json --testPathPattern='wallet-invariant|kyc-encryption|e2e-tour-booking'"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",
