@@ -113,7 +113,9 @@ None yet.
 - NIN and BVN stored plaintext in Sprint 1; Phase 5 KYC work must migrate to AES-256-GCM encryption
 - Swagger UI exposed without auth in production — must gate before Phase 7 launch
 - **CRITICAL (found 2026-07-13 E2E audit):** Phase 9 migration `20260623120000_phase9_tour_packages` contained a subquery inside a CHECK constraint — invalid Postgres SQL that rolled back the entire migration on every apply attempt. None of the 6 Phase 9 tables ever existed in any environment where `prisma migrate deploy` ran (very possibly including production/Railway), despite ROADMAP.md marking Phase 9 complete. Fixed via quick task 260713-bx6 (see Quick Tasks Completed below) — verify this reaches the production database before trusting any live Phase 9 data.
-- Web (`web/`) and Mobile (`mobile/`) have **zero test files** — only backend has real test coverage (412 tests, 35 suites, all passing as of 2026-07-13). `mobile/package.json` declares a `test` script but no test files exist to run it against.
+- ~~Web (`web/`) and Mobile (`mobile/`) have **zero test files**~~ — **RESOLVED 2026-07-13 via quick task 260713-daq**: `web/` now has a working `npm test` (next/jest, 4 passing smoke tests) and `mobile/` `npm test` now discovers and runs tests (jest-expo preset, 6 passing smoke tests). Smoke-level coverage only, not comprehensive — cart math + one component render on web, cart math + query-string builders on mobile.
+- **NEW (found 2026-07-13, quick task 260713-daq):** `e2e-tour-booking.e2e-spec.ts` Steps 7-11 (5/17 tests) fail due to a real dependency on live Paystack API network connectivity, which is unreliable from the sandboxed agent environment used to run this task (confirmed via debug logging: intermittent TLS socket disconnects and Paystack-side validation responses, not application bugs). Steps 1-6 were fixed and now pass deterministically (12/17 total, up from 6/17). A human operator with reliable network egress to `api.paystack.co` (e.g. the Railway deployment) should re-run the full suite to confirm true 17/17.
+- **NEW (found 2026-07-13, quick task 260713-daq):** `backend/.env` (and root `.env`) contain a **live** Paystack secret key (`sk_live_...`), not a test-mode key. Local/E2E test runs are hitting Paystack's production API. Predates this quick task; recommend rotating to test-mode keys for local/CI use.
 - Most roadmap-listed human verification checkpoints (02-06, 03-08, 04-08, 05-07, 06-06, 07-05, 08-10) have no corresponding VERIFICATION.md file on disk at all. Phase 9's `09-VERIFICATION.md` exists but is a completely blank, unfilled template despite Phase 9 being marked `[x]` complete in ROADMAP.md.
 
 ### Quick Tasks Completed
@@ -121,6 +123,7 @@ None yet.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260713-bx6 | Fix subquery-in-CHECK-constraint bug in phase9 tour_packages migration | 2026-07-13 | fe75adc | [260713-bx6-fix-subquery-in-check-constraint-bug-in-](./quick/260713-bx6-fix-subquery-in-check-constraint-bug-in-/) |
+| 260713-daq | Fix E2E app.listen bug (+ cascading JWT/fixture bugs) + add web/mobile Jest smoke tests | 2026-07-13 | d972f42, e42cc95, a34ce2b | [260713-daq-fix-e2e-tour-booking-app-listen-bug-and-](./quick/260713-daq-fix-e2e-tour-booking-app-listen-bug-and-/) |
 
 ## Phase History
 
