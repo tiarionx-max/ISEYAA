@@ -120,7 +120,7 @@ None yet.
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
-| 260713-bx6 | Fix subquery-in-CHECK-constraint bug in phase9 tour_packages migration | 2026-07-13 | (pending) | [260713-bx6-fix-subquery-in-check-constraint-bug-in-](./quick/260713-bx6-fix-subquery-in-check-constraint-bug-in-/) |
+| 260713-bx6 | Fix subquery-in-CHECK-constraint bug in phase9 tour_packages migration | 2026-07-13 | fe75adc | [260713-bx6-fix-subquery-in-check-constraint-bug-in-](./quick/260713-bx6-fix-subquery-in-check-constraint-bug-in-/) |
 
 ## Phase History
 
