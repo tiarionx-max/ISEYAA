@@ -18,7 +18,7 @@ interface VendorBreakdownEntry {
   transactionCount: number;
 }
 
-interface RevenueBreakdownResult {
+export interface RevenueBreakdownResult {
   totalAmountNgn: number;
   packageName: string;
   vendorBreakdown: VendorBreakdownEntry[];
@@ -38,7 +38,7 @@ interface UtilizationBucket {
   totalPassengers: number;
 }
 
-interface UtilizationMatrixResult {
+export interface UtilizationMatrixResult {
   buckets: UtilizationBucket[];
 }
 
