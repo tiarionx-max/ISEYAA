@@ -112,6 +112,15 @@ None yet.
 - Admin `getRevenue()` raw SQL references non-existent `vendors.category` column — will 500 until fixed
 - NIN and BVN stored plaintext in Sprint 1; Phase 5 KYC work must migrate to AES-256-GCM encryption
 - Swagger UI exposed without auth in production — must gate before Phase 7 launch
+- **CRITICAL (found 2026-07-13 E2E audit):** Phase 9 migration `20260623120000_phase9_tour_packages` contained a subquery inside a CHECK constraint — invalid Postgres SQL that rolled back the entire migration on every apply attempt. None of the 6 Phase 9 tables ever existed in any environment where `prisma migrate deploy` ran (very possibly including production/Railway), despite ROADMAP.md marking Phase 9 complete. Fixed via quick task 260713-bx6 (see Quick Tasks Completed below) — verify this reaches the production database before trusting any live Phase 9 data.
+- Web (`web/`) and Mobile (`mobile/`) have **zero test files** — only backend has real test coverage (412 tests, 35 suites, all passing as of 2026-07-13). `mobile/package.json` declares a `test` script but no test files exist to run it against.
+- Most roadmap-listed human verification checkpoints (02-06, 03-08, 04-08, 05-07, 06-06, 07-05, 08-10) have no corresponding VERIFICATION.md file on disk at all. Phase 9's `09-VERIFICATION.md` exists but is a completely blank, unfilled template despite Phase 9 being marked `[x]` complete in ROADMAP.md.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260713-bx6 | Fix subquery-in-CHECK-constraint bug in phase9 tour_packages migration | 2026-07-13 | (pending) | [260713-bx6-fix-subquery-in-check-constraint-bug-in-](./quick/260713-bx6-fix-subquery-in-check-constraint-bug-in-/) |
 
 ## Phase History
 
