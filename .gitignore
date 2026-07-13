@@ -41,6 +41,9 @@ coverage/
 # Prisma
 backend/prisma/*.db
 
+# TypeScript incremental build cache
+*.tsbuildinfo
+
 # Expo
 mobile/.expo/
 # Turbo
