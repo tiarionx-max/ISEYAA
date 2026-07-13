@@ -206,13 +206,13 @@ ALTER TABLE "reviews" ADD CONSTRAINT "reviews_tourBookingId_fkey" FOREIGN KEY ("
 ALTER TABLE "admin_review_flags" ADD CONSTRAINT "admin_review_flags_reviewId_fkey" FOREIGN KEY ("reviewId") REFERENCES "reviews"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- ─── CHECK constraint: sum(settlementSplit[].percentage) <= 100 ─────────────
--- If "settlementSplit" is null/empty, COALESCE returns 0 and the row is
--- allowed (DRAFT rows may be created without splits yet — service guard in
--- 09-04 enforces a non-empty split before status moves past DRAFT).
-ALTER TABLE "tour_packages" ADD CONSTRAINT "tour_packages_split_sum_check" CHECK (
-    COALESCE(
-        (SELECT SUM((elem ->> 'percentage')::numeric)
-         FROM jsonb_array_elements("settlementSplit") AS elem),
-        0
-    ) <= 100
-);
+-- REMOVED (2026-07-13, see forward-fix migration 20260713140000): this used
+-- an inline correlated subquery inside a CHECK constraint, which PostgreSQL
+-- unconditionally rejects (error 0A000 "cannot use subquery in check
+-- constraint"). Because DDL migrations run inside a single transaction, this
+-- statement rolled back this ENTIRE migration every time it was applied —
+-- meaning none of the 6 Phase 9 tables ever actually existed in any database
+-- this migration ran against. This statement never successfully committed
+-- anywhere, so removing it here is safe. The equivalent constraint is
+-- re-added correctly (via an IMMUTABLE SQL function instead of an inline
+-- subquery) in 20260713140000_fix_tour_packages_split_sum_check.
