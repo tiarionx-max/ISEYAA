@@ -15,7 +15,7 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
-import { createHmac } from 'crypto';
+import { createHmac, randomUUID } from 'crypto';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 
@@ -36,6 +36,7 @@ export async function bootstrapE2EApp(): Promise<{
   );
   app.setGlobalPrefix('api/v1');
   await app.init();
+  await app.listen(0);
 
   const prisma = moduleRef.get(PrismaService);
   const jwtService = moduleRef.get(JwtService);
@@ -164,13 +165,18 @@ export async function seedBaselineUsers(
 
 // ── JWT helpers ───────────────────────────────────────────────────────────────
 
-/** Mints a signed JWT access token for a test user — mirrors AuthService output shape. */
+/**
+ * Mints a signed JWT access token for a test user — mirrors AuthService's real
+ * token payload shape (`{ sub, role, jti }`, see `auth.service.ts` `generateTokens()`)
+ * so it validates correctly against `JwtStrategy.validate()`, which reads `payload.sub`
+ * (not `payload.userId`) into `req.user.userId`.
+ */
 export function mintJwt(
   jwtService: JwtService,
   userId: string,
   role: string,
 ): string {
-  return jwtService.sign({ userId, role, registeredRoles: [role] });
+  return jwtService.sign({ sub: userId, role, jti: randomUUID() });
 }
 
 // ── Webhook helpers ───────────────────────────────────────────────────────────

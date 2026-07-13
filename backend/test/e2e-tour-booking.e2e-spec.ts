@@ -137,6 +137,8 @@ describeE2E('Tour Booking E2E Happy Path (11 steps)', () => {
   let guideRecordId: string;
   let packageId:     string;
   let bookingId:     string;
+  let lgaId:         string;
+  let attractionId:  string;
   let paystackRef:   string;
 
   // Paystack webhook secret from env (or test fallback)
@@ -156,6 +158,20 @@ describeE2E('Tour Booking E2E Happy Path (11 steps)', () => {
     guideToken   = mintJwt(jwtService, users.guideId,   'TOUR_GUIDE');
     adminToken   = mintJwt(jwtService, users.adminId,   'LGA_ADMIN');
     touristToken = mintJwt(jwtService, users.touristId, 'CITIZEN');
+
+    // CreateTourPackageDto requires a real lgaId + >=1 attractionId — pull the
+    // first available rows from the already-seeded reference data (20 Ogun
+    // State LGAs + attractions) rather than hardcoding IDs that don't exist
+    // in every environment.
+    const lga = await prisma.lGA.findFirst({ select: { id: true } });
+    const attraction = await prisma.attraction.findFirst({ select: { id: true } });
+    if (!lga || !attraction) {
+      throw new Error(
+        'E2E fixture data missing: expected at least one LGA and one Attraction row to be seeded before running this suite.',
+      );
+    }
+    lgaId = lga.id;
+    attractionId = attraction.id;
   }, 60_000);
 
   afterAll(async () => {
@@ -170,8 +186,10 @@ describeE2E('Tour Booking E2E Happy Path (11 steps)', () => {
       {},
       auth(guideToken),
     );
-    // 201 created or 409 if the seeded user already has a guide row
-    expect([201, 409]).toContain(res.status);
+    // Controller sets @HttpCode(HttpStatus.OK); becomeGuide() is an idempotent
+    // upsert so it always returns 200, never 201/409 (fixed from a stale test
+    // assumption during the 260713-daq app.listen bootstrap fix).
+    expect(res.status).toBe(200);
 
     // Fetch own guide profile to capture the guide record id
     const meRes = await http.get('/api/v1/tour-guides/me', auth(guideToken));
@@ -216,6 +234,9 @@ describeE2E('Tour Booking E2E Happy Path (11 steps)', () => {
       {
         name: 'E2E Heritage Walk',
         description: 'Automated E2E test package — Olumo Rock tour',
+        lgaId,
+        tourGuideId: guideRecordId,
+        attractionIds: [attractionId],
         category: 'CULTURAL',
         price: 5000,
         maxGroupSize: 20,
@@ -290,7 +311,7 @@ describeE2E('Tour Booking E2E Happy Path (11 steps)', () => {
         tourPackageId: packageId,
         tourDate: tourDateIso,
         passengerCount: 1,
-        paymentMode: 'SOLO',
+        email: 'e2e.tourist@example.com',
       },
       auth(touristToken),
     );
