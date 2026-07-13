@@ -45,3 +45,6 @@ backend/prisma/*.db
 mobile/.expo/
 # Turbo
 .turbo/
+
+# Claude agent worktrees (ephemeral, may contain build caches with long paths)
+.claude/worktrees/
