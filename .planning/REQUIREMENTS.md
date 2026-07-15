@@ -14,7 +14,7 @@ Requirements for milestone v2.0. Each maps to roadmap phases (Phase 10+, continu
 
 ### Documentation Correction
 
-- [ ] **DOC-01**: ROADMAP.md and PROJECT.md accurately state the real gRPC starting state (scaffolded-but-broken-and-unconsumed in `backend/apps/`, not "8 services extracted complete")
+- [x] **DOC-01**: ROADMAP.md and PROJECT.md accurately state the real gRPC starting state (scaffolded-but-broken-and-unconsumed in `backend/apps/`, not "8 services extracted complete")
 
 ### Resilience
 
@@ -98,7 +98,7 @@ Requirements for milestone v2.0. Each maps to roadmap phases (Phase 10+, continu
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DOC-01 | Phase 10 | Pending |
+| DOC-01 | Phase 10 | Complete |
 | RESIL-01 | Phase 11 | Pending |
 | RESIL-02 | Phase 11 | Pending |
 | GRPC-01 | Phase 10 | Pending |

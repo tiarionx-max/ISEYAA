@@ -395,7 +395,7 @@ Plans:
 **Plans**: 3 plans
 Plans:
 **Wave 1** *(no dependencies — runs immediately, parallel)*
-- [ ] 10-01-PLAN.md — Documentation correction: ROADMAP.md Phase 2 gRPC completion claims corrected, PROJECT.md accuracy audited (DOC-01)
+- [x] 10-01-PLAN.md — Documentation correction: ROADMAP.md Phase 2 gRPC completion claims corrected, PROJECT.md accuracy audited (DOC-01)
 - [ ] 10-02-PLAN.md — gRPC build fix: per-service rootDir widening, Dockerfile error-masking removal + CMD path correction, stray artifact cleanup (GRPC-01)
 - [ ] 10-03-PLAN.md — Proto codegen pipeline fix (grpc-tools) + 7 new .proto contracts for transport/delivery/tour-packages/tour-guides/news/waitlist/reviews (GRPC-02)
 
@@ -507,7 +507,7 @@ Phases 11, 12 (Settlement Foundation), and 15 (WhatsApp OTP) are independent of 
 | 7. Deployment & Launch | 4/5 | In Progress|  |
 | 8. Mobile Redesign | 10/11 | In Progress (08-09 EAS build queued, 08-10 human verification pending) | - |
 | 9. Tour Packages & Tour Guides | 12/13 | In Progress (09-13 human checkpoint pending) | - |
-| 10. Documentation Correction + gRPC Build Fix | 0/0 | Not started | - |
+| 10. Documentation Correction + gRPC Build Fix | 1/3 | In Progress|  |
 | 11. Resilience Wrapping | 0/0 | Not started | - |
 | 12. Settlement Engine Foundation | 0/0 | Not started | - |
 | 13. Settlement Cutover — Transport & Delivery | 0/0 | Not started | - |
