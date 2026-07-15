@@ -392,7 +392,16 @@ Plans:
   2. `nest build <service>` completes with zero TypeScript errors for every one of the 8 existing `backend/apps/*-service` scaffolds, run individually
   3. No Dockerfile under `backend/apps/*-service/` masks a build failure with `2>/dev/null || true` or any equivalent error-swallowing pattern
   4. `.proto` contracts exist under `packages/proto/` for transport, delivery, tour-packages, tour-guides, news, waitlist, and reviews, and `packages/proto/generate.sh` produces TypeScript types for all 15 modules (8 existing + 7 new) with zero codegen errors
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+**Wave 1** *(no dependencies — runs immediately, parallel)*
+- [ ] 10-01-PLAN.md — Documentation correction: ROADMAP.md Phase 2 gRPC completion claims corrected, PROJECT.md accuracy audited (DOC-01)
+- [ ] 10-02-PLAN.md — gRPC build fix: per-service rootDir widening, Dockerfile error-masking removal + CMD path correction, stray artifact cleanup (GRPC-01)
+- [ ] 10-03-PLAN.md — Proto codegen pipeline fix (grpc-tools) + 7 new .proto contracts for transport/delivery/tour-packages/tour-guides/news/waitlist/reviews (GRPC-02)
+
+**Cross-cutting constraints:**
+- No live @GrpcMethod/ClientGrpc wiring is added by this phase — build fix, proto authoring, and documentation correction only
+- The monolith's own build config (backend/tsconfig.json, backend/tsconfig.build.json) is never modified — the rootDir fix is applied per-service only, to avoid any risk to the live Railway monolith deployment
 **UI hint**: no
 
 ### Phase 11: Resilience Wrapping
