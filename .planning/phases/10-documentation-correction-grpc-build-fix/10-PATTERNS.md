@@ -68,7 +68,7 @@ Widen `"rootDir": "./src"` to `"rootDir": "."` at the base `backend/tsconfig.jso
   "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
 }
 ```
-No per-service edit is required here if the `rootDir` fix is applied at the base `backend/tsconfig.json` level (these files inherit via `extends`). If the planner instead chooses to fix `rootDir` per-service (alternative to the base-file fix above), apply the identical `"rootDir": ".."` (two levels up, i.e. `backend/`) override to all 8 files uniformly — they must never diverge from each other.
+No per-service edit is required here if the `rootDir` fix is applied at the base `backend/tsconfig.json` level (these files inherit via `extends`). If the planner instead chooses to fix `rootDir` per-service (alternative to the base-file fix above), apply the identical `"rootDir": "../.."` (two `..` levels up from `backend/apps/<service>/tsconfig.app.json`, resolving to `backend/`) override to all 8 files uniformly — they must never diverge from each other. Note: a single `".."` resolves only to `backend/apps/` and fails the build with TS6059 — `"../.."` is required to reach `backend/` (empirically confirmed: `npx nest build wallet-service` exits 0 with `"../.."`, fails with `".."`).
 
 ---
 

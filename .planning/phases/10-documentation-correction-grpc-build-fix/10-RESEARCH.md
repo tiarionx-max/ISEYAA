@@ -298,17 +298,22 @@ The 7 new proto files (transport, delivery, tour-packages, tour-guides, news, wa
 | A2 | `grpc-tools` (npm-installable, bundles a `protoc` binary) is the recommended fix for the missing `protoc` dependency, over requiring a system-level `protoc` install | Standard Stack — Missing/broken table | If the team prefers a system-level `protoc` (e.g. because it's already pinned in a base CI image), the task would install differently (Dockerfile `apk add protobuf` vs. `npm install -D grpc-tools`). Low risk either way — both are standard, well-documented paths; this is a tooling-choice recommendation, not a verified requirement. |
 | A3 | The 7 new `.proto` files should follow the existing 8 files' "narrow RPC surface" pattern (a handful of RPCs per service) rather than a full CRUD mirror of each module's REST API | Code Examples | If the user wants broader RPC coverage per new proto file, task scope/line-count estimates would need adjustment. This does not block GRPC-02's literal success criterion ("`.proto` contracts exist ... and generate.sh produces TypeScript types ... with zero codegen errors") which is satisfied regardless of RPC count. |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+*Both questions below were resolved during Phase 10 planning (2026-07-15). Resolution markers reference the deciding plan/task.*
+
 
 1. **Should the Dockerfile `CMD` paths be fixed by adjusting `outDir`/output layout to preserve the current `apps/<service>/dist/main.js` path, or by updating `CMD` to match the new `apps/<service>/src/main.js`-nested output?**
    - What we know: Widening `rootDir` to `backend/` shifts the compiled output to include an `apps/<service>/src/` prefix under whatever `outDir` is configured (verified: `dist/apps/wallet-service/src/main.js` when `outDir` stays at the shared `backend/dist`).
    - What's unclear: Whether per-service `outDir` should instead be set to something like `../../dist/<service>` with a path-stripping trick, keeping `CMD` paths unchanged, versus simply updating all 8 `CMD` lines to the new nested path. Both are mechanically valid; this is an implementation-detail choice for the planner, not a research gap that blocks planning.
    - Recommendation: Plan a single task that (a) picks one approach, (b) applies it uniformly across all 8 services (they share an identical `tsconfig.app.json`/Dockerfile shape), (c) verifies with an actual `nest build` + `find dist -name main.js` check per service, not just a `tsc --noEmit` dry run.
+   - **RESOLVED (Plan 10-02, Task 2):** Chose the *update-the-CMD* approach over the outDir-path-stripping trick. All 8 Dockerfile `CMD` lines are updated to the nested output path `./backend/dist/apps/<service>/src/main.js` (empirically confirmed: with per-service `"rootDir": "../.."`, `npx nest build wallet-service` emits `dist/apps/wallet-service/src/main.js`). `outDir` stays at the shared `../../dist` — no path-stripping trick introduced.
 
 2. **Does the user want `grpc-tools` added as a dependency in this phase, or is a documented manual `protoc` install (with a note in a README) acceptable for now?**
    - What we know: Without a working `protoc` toolchain, GRPC-02's literal success criterion ("generate.sh produces TypeScript types for all 15 modules ... with zero codegen errors") cannot be met.
    - What's unclear: Whether the team wants this dependency baked into `package.json`/CI, or whether a manual, documented one-time setup step is acceptable given this repo has never run this script successfully anyway.
    - Recommendation: Default to adding `grpc-tools` as a devDependency (zero-friction, works identically on every contributor machine and in Docker/CI without an `apk add`/`apt-get` step) unless the user's `/gsd-discuss-phase` session surfaces a reason to prefer a system-level install.
+   - **RESOLVED (Plan 10-03, Task 1):** Adopted the recommendation — `grpc-tools` is added as a devDependency to `packages/proto/package.json`, and `generate.sh` is rewritten to invoke its bundled `grpc_tools_node_protoc` as the real protoc front end (no system `protoc` install required). No `/gsd-discuss-phase` session was run for this phase, so the default recommendation stands.
 
 ## Environment Availability
 
