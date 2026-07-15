@@ -15,7 +15,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "prisma:reset": "prisma migrate reset",
-    "test:e2e:tours": "jest --config test/jest-e2e.json --testPathPattern=\"wallet-invariant|kyc-encryption|e2e-tour-booking\""
+    "test:e2e:tours": "jest --config test/jest-e2e.json --testPathPattern=\"wallet-invariant|kyc-encryption|e2e-tour-booking\"",
+    "build:services": "for s in auth-service wallet-service events-service stays-service marketplace-service admin-service ai-service notifications-service; do npx nest build $s || exit 1; done"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",
