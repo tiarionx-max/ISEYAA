@@ -23,7 +23,7 @@ Requirements for milestone v2.0. Each maps to roadmap phases (Phase 10+, continu
 
 ### gRPC Microservice Extraction
 
-- [ ] **GRPC-01**: All 8 existing `backend/apps/*-service` scaffolds build successfully (`nest build <service>` passes; no `2>/dev/null || true` error-masking remains in any Dockerfile)
+- [x] **GRPC-01**: All 8 existing `backend/apps/*-service` scaffolds build successfully (`nest build <service>` passes; no `2>/dev/null || true` error-masking remains in any Dockerfile)
 - [ ] **GRPC-02**: `.proto` contracts exist for the 7 currently-unstubbed modules (transport, delivery, tour-packages, tour-guides, news, waitlist, reviews)
 - [ ] **GRPC-03**: `notifications-service` runs as a genuinely separate deployable process, called via `ClientGrpc` from the monolith, with zero behavior change to REST responses for web/mobile clients
 - [ ] **GRPC-04**: A documented caller-graph audit (every direct injection of the extracted service's class, grepped across the whole monolith) precedes and gates each module's extraction
@@ -101,7 +101,7 @@ Requirements for milestone v2.0. Each maps to roadmap phases (Phase 10+, continu
 | DOC-01 | Phase 10 | Complete |
 | RESIL-01 | Phase 11 | Pending |
 | RESIL-02 | Phase 11 | Pending |
-| GRPC-01 | Phase 10 | Pending |
+| GRPC-01 | Phase 10 | Complete |
 | GRPC-02 | Phase 10 | Pending |
 | GRPC-03 | Phase 17 | Pending |
 | GRPC-04 | Phase 17 | Pending |

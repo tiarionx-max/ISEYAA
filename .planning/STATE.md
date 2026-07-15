@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Microservices, Multi-Channel Auth & Government Partnership
 status: executing
-stopped_at: Completed 10-01-PLAN.md
-last_updated: "2026-07-15T21:52:00.386Z"
+stopped_at: Completed 10-02-PLAN.md
+last_updated: "2026-07-15T22:01:31.056Z"
 last_activity: 2026-07-15
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
-  percent: 33
+  completed_plans: 2
+  percent: 67
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 ## Current Position
 
 Phase: 10 (documentation-correction-grpc-build-fix) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-07-15
 
-Progress: [███░░░░░░░] 33%
+Progress: [███████░░░] 67%
 
 ## Current Status
 
@@ -60,6 +60,7 @@ Progress: [███░░░░░░░] 33%
 
 *Updated after each plan completion*
 | Phase 10 P01 | 3min | 2 tasks | 1 files |
+| Phase 10 P02 | 7min | 3 tasks | 18 files |
 
 ## Accumulated Context
 
@@ -74,6 +75,7 @@ Key decisions logged in PROJECT.md. Decisions affecting current v2.0 work:
 - **cockatiel** chosen for resilience (retry+circuit-breaker+timeout+fallback in one dependency) over Opossum
 - **Termii WhatsApp Token API reuse** preferred over direct Meta Cloud API integration — pending a support-ticket spike to confirm activation status before Phase 15 is planned in detail
 - [Phase 10]: PROJECT.md required zero edits for DOC-01 audit — All four candidate lines already stated the corrected proto-only gRPC reality (zero live @GrpcMethod/ClientGrpc wiring, monolithic NestFactory.create()); only ROADMAP.md's Phase 2 success criterion 2 and 02-07-PLAN.md entry needed correction
+- [Phase 10]: Widened rootDir at the per-service tsconfig.app.json level only (not shared backend/tsconfig.json) to keep the monolith's dist/main.js output path unchanged for the live Railway start:prod command — Avoids a breaking change to production deployment while fixing the TS6059 build failure across all 8 gRPC service scaffolds
 
 ### Pending Todos
 
@@ -106,7 +108,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-15T21:52:00.377Z
-Stopped at: Completed 10-01-PLAN.md
+Last session: 2026-07-15T22:01:31.045Z
+Stopped at: Completed 10-02-PLAN.md
 Resume file: None
 </content>
