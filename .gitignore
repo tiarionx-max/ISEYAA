@@ -9,6 +9,8 @@ build/
 .next/
 out/
 backend/dist/
+backend/apps/*/src/**/*.js
+backend/apps/*/src/**/*.js.map
 
 # Environment files — secrets must go in Infisical, never committed
 .env
