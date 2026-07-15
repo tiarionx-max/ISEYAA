@@ -24,7 +24,7 @@ Sprint 1 is shipped. This roadmap covers the six remaining sprints: infrastructu
 - [ ] **Phase 7: Deployment & Launch** - Production go-live, app store submissions, and soft launch
 - [x] **Phase 8: Mobile Redesign** - Bring mobile app in line with the redesigned web (Airbnb-style stays, Temu-style marketplace, host onboarding, news ticker), complete the 5-tab migration, and ship a fresh EAS preview build
 - [x] **Phase 9: Tour Packages & Tour Guides** - Sell complete Ogun State experiences (curated multi-vendor packages) and onboard certified Tour Guides as a first-class role, with multi-vendor commission splitting on a single buyer payment
-- [ ] **Phase 10: Documentation Correction + gRPC Build Fix** - Correct the false "8 services extracted" claim, make all 8 service scaffolds actually build, and author `.proto` contracts for the 7 never-stubbed modules
+- [x] **Phase 10: Documentation Correction + gRPC Build Fix** - Correct the false "8 services extracted" claim, make all 8 service scaffolds actually build, and author `.proto` contracts for the 7 never-stubbed modules (completed 2026-07-15)
 - [ ] **Phase 11: Resilience Wrapping** - Circuit-breaker + retry + timeout + fallback around every external vendor call (Paystack, Termii, Anthropic, R2/S3, FCM), visible in observability
 - [ ] **Phase 12: Settlement Engine Foundation** - Generalized `SettlementService` + standing Ministry wallet, plus fixing two pre-existing revenue bugs (Stays escrow fee leak, missing Marketplace/Events/Studio webhook consumers)
 - [ ] **Phase 13: Settlement Cutover — Transport & Delivery** - Transport and Delivery's live payouts move onto the three-way settlement engine, shadow-mode verified before cutover
@@ -397,7 +397,7 @@ Plans:
 **Wave 1** *(no dependencies — runs immediately, parallel)*
 - [x] 10-01-PLAN.md — Documentation correction: ROADMAP.md Phase 2 gRPC completion claims corrected, PROJECT.md accuracy audited (DOC-01)
 - [x] 10-02-PLAN.md — gRPC build fix: per-service rootDir widening, Dockerfile error-masking removal + CMD path correction, stray artifact cleanup (GRPC-01)
-- [ ] 10-03-PLAN.md — Proto codegen pipeline fix (grpc-tools) + 7 new .proto contracts for transport/delivery/tour-packages/tour-guides/news/waitlist/reviews (GRPC-02)
+- [x] 10-03-PLAN.md — Proto codegen pipeline fix (grpc-tools) + 7 new .proto contracts for transport/delivery/tour-packages/tour-guides/news/waitlist/reviews (GRPC-02)
 
 **Cross-cutting constraints:**
 - No live @GrpcMethod/ClientGrpc wiring is added by this phase — build fix, proto authoring, and documentation correction only
@@ -507,7 +507,7 @@ Phases 11, 12 (Settlement Foundation), and 15 (WhatsApp OTP) are independent of 
 | 7. Deployment & Launch | 4/5 | In Progress|  |
 | 8. Mobile Redesign | 10/11 | In Progress (08-09 EAS build queued, 08-10 human verification pending) | - |
 | 9. Tour Packages & Tour Guides | 12/13 | In Progress (09-13 human checkpoint pending) | - |
-| 10. Documentation Correction + gRPC Build Fix | 2/3 | In Progress|  |
+| 10. Documentation Correction + gRPC Build Fix | 3/3 | Complete   | 2026-07-15 |
 | 11. Resilience Wrapping | 0/0 | Not started | - |
 | 12. Settlement Engine Foundation | 0/0 | Not started | - |
 | 13. Settlement Cutover — Transport & Delivery | 0/0 | Not started | - |
