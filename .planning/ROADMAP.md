@@ -4,10 +4,14 @@
 
 Sprint 1 is shipped. This roadmap covers the six remaining sprints: infrastructure migration to a free-first cloud stack, two new commercial modules (Transport and Delivery), a full AI concierge with real KYC integrations, a hardening sprint, and production launch. Every phase delivers a coherent, independently verifiable capability.
 
+**v2.0 (Phases 10-17)** converts the monolith into a real, independently-deployable gRPC service (proven via `notifications-service`), wraps every external vendor call in circuit-breaker/retry/fallback resilience, generalizes the settlement engine to a three-way vendor/Ministry/platform split (fixing two pre-existing revenue bugs along the way), adds a read-only Ministry dashboard with CSV/PDF export, and lets users choose WhatsApp/Email/SMS for OTP verification — while correcting the documentation record that previously overstated Phase 2's gRPC extraction as complete.
+
 ## Milestones
 
 - [x] **Sprint 1 (Phase 1)** — Auth, Users, LGAs, Tourism, Events, Stays, Marketplace, Wallet, Admin, Webhooks, AI (basic), Web, Mobile — SHIPPED 2026-05-11
 - [ ] **Sprint 2–7 (Phases 2–7)** — Infrastructure → Transport → Delivery → AI/KYC → QA → Launch
+- [x] **Phase 8-9** — Mobile Redesign, Tour Packages & Tour Guides
+- [ ] **v2.0 (Phases 10–17)** — Microservices, Multi-Channel Auth & Government Partnership
 
 ## Phases
 
@@ -20,6 +24,14 @@ Sprint 1 is shipped. This roadmap covers the six remaining sprints: infrastructu
 - [ ] **Phase 7: Deployment & Launch** - Production go-live, app store submissions, and soft launch
 - [x] **Phase 8: Mobile Redesign** - Bring mobile app in line with the redesigned web (Airbnb-style stays, Temu-style marketplace, host onboarding, news ticker), complete the 5-tab migration, and ship a fresh EAS preview build
 - [x] **Phase 9: Tour Packages & Tour Guides** - Sell complete Ogun State experiences (curated multi-vendor packages) and onboard certified Tour Guides as a first-class role, with multi-vendor commission splitting on a single buyer payment
+- [ ] **Phase 10: Documentation Correction + gRPC Build Fix** - Correct the false "8 services extracted" claim, make all 8 service scaffolds actually build, and author `.proto` contracts for the 7 never-stubbed modules
+- [ ] **Phase 11: Resilience Wrapping** - Circuit-breaker + retry + timeout + fallback around every external vendor call (Paystack, Termii, Anthropic, R2/S3, FCM), visible in observability
+- [ ] **Phase 12: Settlement Engine Foundation** - Generalized `SettlementService` + standing Ministry wallet, plus fixing two pre-existing revenue bugs (Stays escrow fee leak, missing Marketplace/Events/Studio webhook consumers)
+- [ ] **Phase 13: Settlement Cutover — Transport & Delivery** - Transport and Delivery's live payouts move onto the three-way settlement engine, shadow-mode verified before cutover
+- [ ] **Phase 14: Ministry Dashboard** - `MINISTRY_VIEWER` role + read-only dashboard: visitor counts, purpose-of-visit, revenue-to-government-share, CSV/PDF export, zero PII leakage
+- [ ] **Phase 15: Multi-Channel OTP** - Users choose WhatsApp/Email/SMS for OTP verification at registration, with bounded-timeout SMS fallback and identity-scoped brute-force protection
+- [ ] **Phase 16: Connection Pooling Infrastructure** - Every Prisma client on a pooled connection string, combined-topology load test under Neon's connection ceiling
+- [ ] **Phase 17: gRPC Proof-of-Pattern Extraction (notifications-service)** - `notifications-service` runs as a genuinely separate deployable process, called via `ClientGrpc`, proving the extraction pattern with zero REST behavior change
 
 ## Phase Details
 
@@ -205,17 +217,17 @@ Plans:
   5. Mobile cold start on 3G is confirmed below 3 seconds; crash-free rate exceeds 99.5% over a 48-hour test period
 **Plans**: 6 plans
 Plans:
-**Wave 1** *(no dependencies � runs immediately)*
-- [x] 06-01-PLAN.md � Bug fixes: admin v.category SQL, escrow checkOut cutoff, marketplace stock decrement, webhook rawBody verification
-- [x] 06-02-PLAN.md � FK index migration (9 indexes) + WebP image pipeline (ImageService + 2 callers)
+**Wave 1** *(no dependencies — runs immediately)*
+- [x] 06-01-PLAN.md — Bug fixes: admin v.category SQL, escrow checkOut cutoff, marketplace stock decrement, webhook rawBody verification
+- [x] 06-02-PLAN.md — FK index migration (9 indexes) + WebP image pipeline (ImageService + 2 callers)
 
 **Wave 2** *(blocked on Wave 1)*
-- [x] 06-03-PLAN.md � Cross-user isolation test suites (wallet, stays, marketplace) + EXPLAIN ANALYZE audit script
-- [x] 06-04-PLAN.md � k6 HTTP load test scripts (QA-01) + Artillery Socket.IO GPS stress scripts (QA-02)
-- [x] 06-05-PLAN.md � Mobile: Hermes jsEngine + Sentry React Native SDK + Atlas bundle script
+- [x] 06-03-PLAN.md — Cross-user isolation test suites (wallet, stays, marketplace) + EXPLAIN ANALYZE audit script
+- [x] 06-04-PLAN.md — k6 HTTP load test scripts (QA-01) + Artillery Socket.IO GPS stress scripts (QA-02)
+- [x] 06-05-PLAN.md — Mobile: Hermes jsEngine + Sentry React Native SDK + Atlas bundle script
 
 **Wave 6** *(blocked on all preceding waves)*
-- [ ] 06-06-PLAN.md � Human verification checkpoint: QA-01 through QA-07 all confirmed PASS
+- [ ] 06-06-PLAN.md — Human verification checkpoint: QA-01 through QA-07 all confirmed PASS
 
 **Cross-cutting constraints:**
 - All 270+ existing tests continue to pass after every plan
@@ -363,9 +375,117 @@ Plans:
 
 **UI hint**: yes
 
+---
+
+## v2.0 — Microservices, Multi-Channel Auth & Government Partnership (Phases 10-17)
+
+**Milestone Goal:** Convert the monolith into real independently-deployable gRPC services (proven via `notifications-service`), let users pick WhatsApp/Email/SMS for verification, add a read-only Ministry dashboard with export, and generalize the settlement engine to a three-way vendor/Ministry/platform split — while first correcting the documentation record that overstated Phase 2's gRPC extraction as complete.
+
+**Key context:** `backend/apps/*-service` scaffolds exist for 8 services with real `@GrpcMethod` controllers, but the build is broken (`TS6059` per-app `rootDir` issue) and every Dockerfile masks the failure with `2>/dev/null || true`; zero `ClientGrpc`/`ClientProxyFactory` call-sites exist anywhere, so production has run as a single monolith the whole time despite ROADMAP.md previously claiming otherwise. This milestone fixes the build, proves live extraction with one low-risk service (`notifications-service`, not Transport — stakeholder decision), and explicitly keeps Wallet/Transport/Delivery/Events/Stays/Marketplace/Auth/Tour modules in-process (their `SELECT FOR UPDATE` wallet transactions cannot safely span a gRPC boundary without an out-of-scope outbox/saga redesign).
+
+### Phase 10: Documentation Correction + gRPC Build Fix
+**Goal**: The project's documentation accurately reflects the real (scaffolded-but-broken-and-unconsumed) gRPC state, all 8 existing service scaffolds build cleanly, and proto coverage is extended to the 7 previously-unstubbed modules
+**Depends on**: Phase 9
+**Requirements**: DOC-01, GRPC-01, GRPC-02
+**Success Criteria** (what must be TRUE):
+  1. ROADMAP.md's Phase 2 entry and PROJECT.md no longer claim "8 services extracted complete" — both state the corrected reality (proto contracts existed, but zero live `@GrpcMethod`/`ClientGrpc` wiring, single monolithic `NestFactory.create()`)
+  2. `nest build <service>` completes with zero TypeScript errors for every one of the 8 existing `backend/apps/*-service` scaffolds, run individually
+  3. No Dockerfile under `backend/apps/*-service/` masks a build failure with `2>/dev/null || true` or any equivalent error-swallowing pattern
+  4. `.proto` contracts exist under `packages/proto/` for transport, delivery, tour-packages, tour-guides, news, waitlist, and reviews, and `packages/proto/generate.sh` produces TypeScript types for all 15 modules (8 existing + 7 new) with zero codegen errors
+**Plans**: TBD
+**UI hint**: no
+
+### Phase 11: Resilience Wrapping
+**Goal**: A single vendor outage (Paystack, Termii, Anthropic, Cloudflare R2/S3, or Firebase FCM) degrades only the dependent feature, not the whole API, and that degradation is visible in observability
+**Depends on**: Phase 9 (independent of Phase 10; safe to run in parallel)
+**Requirements**: RESIL-01, RESIL-02
+**Success Criteria** (what must be TRUE):
+  1. Every call site to Paystack, Termii, Anthropic, Cloudflare R2/S3, and Firebase FCM is wrapped in a `cockatiel`-based circuit-breaker + retry + timeout + fallback policy
+  2. Simulating a Paystack outage (forced timeout/error injection) causes wallet top-up to fail gracefully via the fallback path while unrelated endpoints (e.g. `GET /api/v1/events`) continue responding normally
+  3. Circuit-breaker state transitions (closed → open → half-open) and vendor-call failures appear as spans/log events in the existing Grafana/Sentry/OpenTelemetry stack
+**Plans**: TBD
+**UI hint**: no
+
+### Phase 12: Settlement Engine Foundation
+**Goal**: A shared, generalized `SettlementService` exists with a standing Ministry wallet, and the two pre-existing revenue bugs (Stays' zero-fee escrow release, Marketplace/Events/Studio's missing webhook consumers) are fixed — so every downstream dashboard/report built on top of settlement data is correct from day one
+**Depends on**: Phase 9 (independent of Phases 10-11; safe to run in parallel)
+**Requirements**: SETTLE-01, SETTLE-02, SETTLE-05, SETTLE-06, SETTLE-07, SETTLE-08
+**Success Criteria** (what must be TRUE):
+  1. A `SettlementService` in `CommonModule` performs an atomic N-way wallet fan-out (single `$transaction`, `SELECT FOR UPDATE` per recipient wallet, idempotency key, drift-tolerance assertion, append-only audit trail), generalized from `TourSettlementService`'s pattern and used by at least one caller
+  2. A standing Ministry wallet exists, reusing the existing `tour.government_wallet_user_id` `PlatformConfig` entity as its recipient wallet
+  3. Marketplace, Events, and Studio payments settle automatically via working `@OnEvent` consumers for `payment.order_payment`, `payment.ticket_purchase`, and `payment.studio_booking` — a wallet credit appears for each payment type after completion, where previously none did
+  4. Stays' `releaseEscrow()` cron reads and applies `Booking.govtLevyPct` — hosts no longer receive 100% of the booking price, confirmed by an automated test
+  5. Each settlement recipient (vendor/rider, Ministry, platform) can retrieve a per-recipient, itemized settlement statement
+  6. An automated test asserts N-way split calculations sum exactly to the buyer's paid amount across a wide range of non-round amounts, with zero rounding/remainder drift
+**Plans**: TBD
+**UI hint**: no
+
+### Phase 13: Settlement Cutover — Transport & Delivery
+**Goal**: Transport and Delivery's live driver/rider payouts move onto the generalized three-way settlement engine, with shadow-mode verification proving no live payout amount changes silently
+**Depends on**: Phase 12
+**Requirements**: SETTLE-03, SETTLE-04, SETTLE-09
+**Success Criteria** (what must be TRUE):
+  1. Transport's settlement runs on a three-way, `PlatformConfig`-driven split (driver/rider, Ministry, platform), replacing the hardcoded 85/15
+  2. Delivery's settlement runs on a three-way, `PlatformConfig`-driven split, replacing the hardcoded 80/20
+  3. A shadow-mode comparison run computes the new engine's payouts alongside the old hardcoded-percentage output for a representative sample of real Transport/Delivery transactions, with zero discrepancy, before cutover is marked complete
+  4. Post-cutover, live driver and rider wallet credits match the shadow-mode-verified amounts exactly — no payout regression observed
+**Plans**: TBD
+**UI hint**: no
+
+### Phase 14: Ministry Dashboard
+**Goal**: A `MINISTRY_VIEWER` role can view aggregate visitor, revenue, and purpose-of-visit analytics and export them as CSV/PDF, with zero row-level citizen PII ever reachable
+**Depends on**: Phase 12 (MIN-04's revenue-to-government-share metric requires the standing Ministry wallet from SETTLE-02)
+**Requirements**: MIN-01, MIN-02, MIN-03, MIN-04, MIN-05, MIN-06, MIN-07
+**Success Criteria** (what must be TRUE):
+  1. A `MINISTRY_VIEWER` role exists, gated by its own `@Roles()` decorator on every route it can reach — never via a controller shared with any mutation endpoint
+  2. Ministry dashboard shows visitor entry counts broken down by LGA and time period
+  3. Ministry dashboard shows a purpose-of-visit breakdown, sourced from a new `VisitorLog` capture point added to the booking/check-in flow
+  4. Ministry dashboard shows revenue-to-government-share, sourced from the standing Ministry wallet's transaction ledger
+  5. Every Ministry dashboard report can be exported as CSV and as a formatted, Forest Green/Tropical Gold branded PDF
+  6. A `MINISTRY_VIEWER` query response never contains row-level PII (BVN, NIN, phone, name) — verified by an automated field-allowlist/schema-shape test, not by ad hoc review
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 15: Multi-Channel OTP
+**Goal**: Users can choose WhatsApp, Email, or SMS as their OTP verification channel at registration, with automatic SMS fallback on delivery failure and brute-force protection that can't be bypassed by switching channels
+**Depends on**: Phase 9 (independent of Phases 10-14; safe to run in parallel)
+**Requirements**: OTP-01, OTP-02, OTP-03, OTP-04
+**Success Criteria** (what must be TRUE):
+  1. At registration, a user can select WhatsApp, Email, or SMS as their OTP channel; SMS is used automatically if no channel is selected
+  2. If the selected channel fails to deliver within a bounded timeout, the same code and expiry are resent via SMS automatically, without the user re-requesting
+  3. OTP rate-limiting/lockout (3 attempts / 15-minute lock) is scoped per-identity (phone/user), confirmed by a test proving that switching verification channels does not reset or bypass an active lock
+  4. WhatsApp OTP messages use a Meta-approved Authentication-category template containing only the verification code and expiry — no marketing content
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 16: Connection Pooling Infrastructure
+**Goal**: Every Prisma client connects through a pooled connection string, and a combined-topology load test confirms the platform stays under Neon's connection ceiling before more than 1-2 services run concurrently
+**Depends on**: Phase 10 (requires the fixed `notifications-service` build to have a second real Prisma client to pool-test against)
+**Requirements**: POOL-01, POOL-02
+**Success Criteria** (what must be TRUE):
+  1. Every Prisma client (monolith + `notifications-service`) connects via a pooled connection string (Neon `-pooler` suffix or PgBouncer) with an explicit, documented `connection_limit`
+  2. A combined-topology load test running the monolith and `notifications-service` concurrently confirms total open Postgres connections stay under Neon's connection ceiling
+  3. Grafana shows a tracked open-Postgres-connections metric with an alert threshold configured
+**Plans**: TBD
+**UI hint**: no
+
+### Phase 17: gRPC Proof-of-Pattern Extraction (notifications-service)
+**Goal**: `notifications-service` runs as a genuinely separate deployable process, called from the monolith exclusively via `ClientGrpc`, proving the extraction pattern end-to-end with zero behavior change to REST clients — while confirming no other payment-path module is extracted this milestone
+**Depends on**: Phase 10 (build must be fixed), Phase 13 (settlement work has confirmed which modules stay in-process), Phase 16 (connection pooling must be in place before a second live service runs concurrently)
+**Requirements**: GRPC-03, GRPC-04, GRPC-05
+**Success Criteria** (what must be TRUE):
+  1. A documented caller-graph audit (every direct injection of `NotificationsService`, grepped across the whole monolith) is completed and precedes the extraction cutover
+  2. `notifications-service` runs as a separately deployed process (its own Railway service and local `docker-compose` block) and is called from the monolith exclusively via `ClientGrpc` — zero remaining in-process direct injections of the notifications class
+  3. Web/mobile REST responses that depend on notifications are unchanged in shape and behavior before and after extraction — no client-visible regression
+  4. Wallet, Transport, Delivery, Events, Stays, Marketplace, Auth, and all Tour Packages/Guides/Bookings modules remain in-process and are not marked "extracted" anywhere in the repo — confirmed by the same caller-graph audit showing zero `ClientGrpc`/`ClientProxyFactory` usage for those modules
+**Plans**: TBD
+**UI hint**: no
+
 ## Progress
 
-**Execution Order:** 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9
+**Execution Order:** 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14 → 15 → 16 → 17
+
+Phases 11, 12 (Settlement Foundation), and 15 (WhatsApp OTP) are independent of the Phase 10 documentation/build-fix track and of each other — safe to execute in parallel. Phase 13 (Settlement Cutover) requires Phase 12. Phase 14 (Ministry Dashboard) requires Phase 12 for its revenue-share metric. Phase 16 (Connection Pooling) requires Phase 10's fixed build. Phase 17 (gRPC Extraction) is the final gate, requiring Phases 10, 13, and 16 all complete.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -377,4 +497,13 @@ Plans:
 | 6. QA, Security & Performance | 5/6 | In Progress|  |
 | 7. Deployment & Launch | 4/5 | In Progress|  |
 | 8. Mobile Redesign | 10/11 | In Progress (08-09 EAS build queued, 08-10 human verification pending) | - |
-| 9. Tour Packages & Tour Guides | 0/0 | Not Started — roadmap sketch only | - |
+| 9. Tour Packages & Tour Guides | 12/13 | In Progress (09-13 human checkpoint pending) | - |
+| 10. Documentation Correction + gRPC Build Fix | 0/0 | Not started | - |
+| 11. Resilience Wrapping | 0/0 | Not started | - |
+| 12. Settlement Engine Foundation | 0/0 | Not started | - |
+| 13. Settlement Cutover — Transport & Delivery | 0/0 | Not started | - |
+| 14. Ministry Dashboard | 0/0 | Not started | - |
+| 15. Multi-Channel OTP | 0/0 | Not started | - |
+| 16. Connection Pooling Infrastructure | 0/0 | Not started | - |
+| 17. gRPC Proof-of-Pattern Extraction (notifications-service) | 0/0 | Not started | - |
+</content>

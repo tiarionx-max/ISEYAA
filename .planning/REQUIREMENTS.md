@@ -96,45 +96,43 @@ Requirements for milestone v2.0. Each maps to roadmap phases (Phase 10+, continu
 
 ## Traceability (v2.0)
 
-Populated during roadmap creation.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DOC-01 | TBD | Pending |
-| RESIL-01 | TBD | Pending |
-| RESIL-02 | TBD | Pending |
-| GRPC-01 | TBD | Pending |
-| GRPC-02 | TBD | Pending |
-| GRPC-03 | TBD | Pending |
-| GRPC-04 | TBD | Pending |
-| GRPC-05 | TBD | Pending |
-| POOL-01 | TBD | Pending |
-| POOL-02 | TBD | Pending |
-| OTP-01 | TBD | Pending |
-| OTP-02 | TBD | Pending |
-| OTP-03 | TBD | Pending |
-| OTP-04 | TBD | Pending |
-| MIN-01 | TBD | Pending |
-| MIN-02 | TBD | Pending |
-| MIN-03 | TBD | Pending |
-| MIN-04 | TBD | Pending |
-| MIN-05 | TBD | Pending |
-| MIN-06 | TBD | Pending |
-| MIN-07 | TBD | Pending |
-| SETTLE-01 | TBD | Pending |
-| SETTLE-02 | TBD | Pending |
-| SETTLE-03 | TBD | Pending |
-| SETTLE-04 | TBD | Pending |
-| SETTLE-05 | TBD | Pending |
-| SETTLE-06 | TBD | Pending |
-| SETTLE-07 | TBD | Pending |
-| SETTLE-08 | TBD | Pending |
-| SETTLE-09 | TBD | Pending |
+| DOC-01 | Phase 10 | Pending |
+| RESIL-01 | Phase 11 | Pending |
+| RESIL-02 | Phase 11 | Pending |
+| GRPC-01 | Phase 10 | Pending |
+| GRPC-02 | Phase 10 | Pending |
+| GRPC-03 | Phase 17 | Pending |
+| GRPC-04 | Phase 17 | Pending |
+| GRPC-05 | Phase 17 | Pending |
+| POOL-01 | Phase 16 | Pending |
+| POOL-02 | Phase 16 | Pending |
+| OTP-01 | Phase 15 | Pending |
+| OTP-02 | Phase 15 | Pending |
+| OTP-03 | Phase 15 | Pending |
+| OTP-04 | Phase 15 | Pending |
+| MIN-01 | Phase 14 | Pending |
+| MIN-02 | Phase 14 | Pending |
+| MIN-03 | Phase 14 | Pending |
+| MIN-04 | Phase 14 | Pending |
+| MIN-05 | Phase 14 | Pending |
+| MIN-06 | Phase 14 | Pending |
+| MIN-07 | Phase 14 | Pending |
+| SETTLE-01 | Phase 12 | Pending |
+| SETTLE-02 | Phase 12 | Pending |
+| SETTLE-03 | Phase 13 | Pending |
+| SETTLE-04 | Phase 13 | Pending |
+| SETTLE-05 | Phase 12 | Pending |
+| SETTLE-06 | Phase 12 | Pending |
+| SETTLE-07 | Phase 12 | Pending |
+| SETTLE-08 | Phase 12 | Pending |
+| SETTLE-09 | Phase 13 | Pending |
 
 **Coverage:**
 - v2.0 requirements: 30 total
-- Mapped to phases: 0 (roadmap not yet created)
-- Unmapped: 30 ⚠️ (expected — roadmapper fills this in next)
+- Mapped to phases: 30 (Phases 10-17)
+- Unmapped: 0 ✓
 
 ---
 
@@ -220,4 +218,5 @@ Phases 8 (MOB-RD-01 through MOB-RD-08) and 9 (TOUR-01 through TOUR-10) were defi
 
 ---
 *Requirements defined: 2025-05-12 (v1.0) · 2026-07-15 (v2.0)*
-*Last updated: 2026-07-15 — v2.0 requirements added; v1.0 section reorganized as historical record; INFRA-07/08 corrected to reflect actual gRPC state*
+*Last updated: 2026-07-15 — v2.0 traceability populated (30/30 requirements mapped to Phases 10-17); ROADMAP.md and STATE.md written*
+</content>
