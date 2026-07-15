@@ -507,7 +507,7 @@ Phases 11, 12 (Settlement Foundation), and 15 (WhatsApp OTP) are independent of 
 | 7. Deployment & Launch | 4/5 | In Progress|  |
 | 8. Mobile Redesign | 10/11 | In Progress (08-09 EAS build queued, 08-10 human verification pending) | - |
 | 9. Tour Packages & Tour Guides | 12/13 | In Progress (09-13 human checkpoint pending) | - |
-| 10. Documentation Correction + gRPC Build Fix | 3/3 | Complete   | 2026-07-15 |
+| 10. Documentation Correction + gRPC Build Fix | 3/3 | Complete    | 2026-07-15 |
 | 11. Resilience Wrapping | 0/0 | Not started | - |
 | 12. Settlement Engine Foundation | 0/0 | Not started | - |
 | 13. Settlement Cutover — Transport & Delivery | 0/0 | Not started | - |

@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Microservices, Multi-Channel Auth & Government Partnership
-status: verifying
+status: ready_to_plan
 stopped_at: Completed 10-03-PLAN.md
 last_updated: "2026-07-15T22:12:09.310Z"
 last_activity: 2026-07-15
 progress:
   total_phases: 8
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 3
   completed_plans: 3
-  percent: 100
+  percent: 25
 ---
 
 # Project State
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 ## Current Position
 
-Phase: 10 (documentation-correction-grpc-build-fix) — EXECUTING
-Plan: 3 of 3
-Status: Phase complete — ready for verification
+Phase: 11
+Plan: Not started
+Status: Ready to plan
 Last activity: 2026-07-15
 
 Progress: [██████████] 100%
@@ -48,7 +48,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 0 (v2.0 not yet started)
+- Total plans completed: 3 (v2.0 not yet started)
 - Average duration: -
 - Total execution time: -
 
@@ -56,7 +56,7 @@ Progress: [██████████] 100%
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 10 | 3 | - | - |
 
 *Updated after each plan completion*
 | Phase 10 P01 | 3min | 2 tasks | 1 files |
@@ -81,7 +81,7 @@ Key decisions logged in PROJECT.md. Decisions affecting current v2.0 work:
 
 ### Pending Todos
 
-None yet.
+- **Docker build fix before Phase 17 (live extraction):** `docker build` fails for all 8 `apps/*-service` images with `TS2307: Cannot find module '@iseyaa/proto'` — `backend/package.json` never declares `@iseyaa/proto`, so the image's scoped `npm ci --workspace=backend --include=workspace=shared` never links it (works locally only via the unscoped repo-root `npm install`). Pre-existing, universal defect surfaced by Phase 10 verification; out of Phase 10's `nest build` scope. Fix: declare `@iseyaa/proto` as a `backend` dependency and widen the Docker `npm ci` workspace scope. See `.planning/phases/10-documentation-correction-grpc-build-fix/10-VERIFICATION.md`.
 
 ### Blockers/Concerns
 
