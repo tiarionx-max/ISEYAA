@@ -2,16 +2,7 @@ import { Controller, Logger } from '@nestjs/common';
 import { GrpcMethod } from '@nestjs/microservices';
 import { PrismaService } from '../../../src/prisma/prisma.service';
 import { WalletService } from '../../../src/modules/wallet/wallet.service';
-import {
-  CreditRequest,
-  CreditResponse,
-  DebitRequest,
-  DebitResponse,
-  BalanceRequest,
-  BalanceResponse,
-  GetTransactionsRequest,
-  GetTransactionsResponse,
-} from '@iseyaa/proto';
+import { wallet } from '@iseyaa/proto';
 
 @Controller()
 export class WalletGrpcController {
@@ -23,14 +14,14 @@ export class WalletGrpcController {
   ) {}
 
   @GrpcMethod('WalletService', 'Credit')
-  async credit(data: CreditRequest): Promise<CreditResponse> {
+  async credit(data: wallet.CreditRequest): Promise<wallet.CreditResponse> {
     await this.walletService.creditWallet(data.walletId, data.amount, data.reference, data.description);
     const wallet = await this.prisma.wallet.findUnique({ where: { id: data.walletId } });
     return { success: true, newBalance: Number(wallet?.balance ?? 0) };
   }
 
   @GrpcMethod('WalletService', 'Debit')
-  async debit(data: DebitRequest): Promise<DebitResponse> {
+  async debit(data: wallet.DebitRequest): Promise<wallet.DebitResponse> {
     const wallet = await this.prisma.wallet.findUnique({ where: { id: data.walletId } });
     if (!wallet || Number(wallet.balance) < data.amount) {
       return { success: false, newBalance: Number(wallet?.balance ?? 0) };
@@ -62,7 +53,7 @@ export class WalletGrpcController {
   }
 
   @GrpcMethod('WalletService', 'GetBalance')
-  async getBalance(data: BalanceRequest): Promise<BalanceResponse> {
+  async getBalance(data: wallet.BalanceRequest): Promise<wallet.BalanceResponse> {
     const wallet = await this.prisma.wallet.findUnique({ where: { id: data.walletId } });
     if (!wallet) return { balance: 0, escrowBalance: 0, kycTier: '0' };
 
@@ -81,7 +72,7 @@ export class WalletGrpcController {
   }
 
   @GrpcMethod('WalletService', 'GetTransactions')
-  async getTransactions(data: GetTransactionsRequest): Promise<GetTransactionsResponse> {
+  async getTransactions(data: wallet.GetTransactionsRequest): Promise<wallet.GetTransactionsResponse> {
     const wallet = await this.prisma.wallet.findUnique({ where: { id: data.walletId } });
     if (!wallet) return { transactions: [], nextCursor: '' };
 

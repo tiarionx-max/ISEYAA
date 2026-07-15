@@ -1,21 +1,14 @@
 import { Controller } from '@nestjs/common';
 import { GrpcMethod } from '@nestjs/microservices';
 import { PrismaService } from '../../../src/prisma/prisma.service';
-import {
-  GetProductRequest,
-  GetProductResponse,
-  ReserveStockRequest,
-  ReserveStockResponse,
-  ConfirmOrderRequest,
-  ConfirmOrderResponse,
-} from '@iseyaa/proto';
+import { marketplace } from '@iseyaa/proto';
 
 @Controller()
 export class MarketplaceGrpcController {
   constructor(private readonly prisma: PrismaService) {}
 
   @GrpcMethod('MarketplaceService', 'GetProduct')
-  async getProduct(data: GetProductRequest): Promise<GetProductResponse> {
+  async getProduct(data: marketplace.GetProductRequest): Promise<marketplace.GetProductResponse> {
     const product = await this.prisma.product.findUnique({
       where: { id: data.productId },
       select: { id: true, name: true, price: true, stock: true },
@@ -30,7 +23,7 @@ export class MarketplaceGrpcController {
   }
 
   @GrpcMethod('MarketplaceService', 'ReserveStock')
-  async reserveStock(data: ReserveStockRequest): Promise<ReserveStockResponse> {
+  async reserveStock(data: marketplace.ReserveStockRequest): Promise<marketplace.ReserveStockResponse> {
     const product = await this.prisma.product.findUnique({ where: { id: data.productId } });
     if (!product || (product.stock ?? 0) < data.quantity) {
       return { success: false, reservedQuantity: 0 };
@@ -43,7 +36,7 @@ export class MarketplaceGrpcController {
   }
 
   @GrpcMethod('MarketplaceService', 'ConfirmOrder')
-  async confirmOrder(data: ConfirmOrderRequest): Promise<ConfirmOrderResponse> {
+  async confirmOrder(data: marketplace.ConfirmOrderRequest): Promise<marketplace.ConfirmOrderResponse> {
     const order = await this.prisma.order.findUnique({ where: { id: data.orderId } });
     if (!order) return { success: false };
     await this.prisma.order.update({

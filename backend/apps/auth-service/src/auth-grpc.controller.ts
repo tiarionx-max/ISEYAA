@@ -4,14 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../src/prisma/prisma.service';
 import { AuthService } from '../../../src/modules/auth/auth.service';
-import {
-  ValidateTokenRequest,
-  ValidateTokenResponse,
-  GetUserRequest,
-  GetUserResponse,
-  RefreshTokenRequest,
-  RefreshTokenResponse,
-} from '@iseyaa/proto';
+import { auth } from '@iseyaa/proto';
 
 @Controller()
 export class AuthGrpcController {
@@ -25,7 +18,7 @@ export class AuthGrpcController {
   ) {}
 
   @GrpcMethod('AuthService', 'ValidateToken')
-  async validateToken(data: ValidateTokenRequest): Promise<ValidateTokenResponse> {
+  async validateToken(data: auth.ValidateTokenRequest): Promise<auth.ValidateTokenResponse> {
     try {
       const payload = this.jwt.verify<{ sub: string; role: string }>(data.token, {
         secret: this.config.get('JWT_SECRET'),
@@ -37,7 +30,7 @@ export class AuthGrpcController {
   }
 
   @GrpcMethod('AuthService', 'GetUser')
-  async getUser(data: GetUserRequest): Promise<GetUserResponse> {
+  async getUser(data: auth.GetUserRequest): Promise<auth.GetUserResponse> {
     const user = await this.prisma.user.findUnique({
       where: { id: data.userId },
       select: { id: true, email: true, phone: true, role: true, status: true },
@@ -53,7 +46,7 @@ export class AuthGrpcController {
   }
 
   @GrpcMethod('AuthService', 'RefreshToken')
-  async refreshToken(data: RefreshTokenRequest): Promise<RefreshTokenResponse> {
+  async refreshToken(data: auth.RefreshTokenRequest): Promise<auth.RefreshTokenResponse> {
     try {
       const tokens = await this.authService.refreshTokens(data.refreshToken);
       return { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };

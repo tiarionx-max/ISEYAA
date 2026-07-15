@@ -1,21 +1,14 @@
 import { Controller } from '@nestjs/common';
 import { GrpcMethod } from '@nestjs/microservices';
 import { PrismaService } from '../../../src/prisma/prisma.service';
-import {
-  GetEventRequest,
-  GetEventResponse,
-  TicketAvailabilityRequest,
-  TicketAvailabilityResponse,
-  ReserveTicketRequest,
-  ReserveTicketResponse,
-} from '@iseyaa/proto';
+import { events } from '@iseyaa/proto';
 
 @Controller()
 export class EventsGrpcController {
   constructor(private readonly prisma: PrismaService) {}
 
   @GrpcMethod('EventsService', 'GetEvent')
-  async getEvent(data: GetEventRequest): Promise<GetEventResponse> {
+  async getEvent(data: events.GetEventRequest): Promise<events.GetEventResponse> {
     const event = await this.prisma.event.findUnique({
       where: { id: data.eventId },
       select: { id: true, title: true, status: true, ticketTypes: { select: { quantity: true, sold: true } } },
@@ -32,7 +25,7 @@ export class EventsGrpcController {
   }
 
   @GrpcMethod('EventsService', 'CheckTicketAvailability')
-  async checkTicketAvailability(data: TicketAvailabilityRequest): Promise<TicketAvailabilityResponse> {
+  async checkTicketAvailability(data: events.TicketAvailabilityRequest): Promise<events.TicketAvailabilityResponse> {
     const ticketType = await this.prisma.ticketType.findUnique({
       where: { id: data.ticketTypeId },
       select: { quantity: true, sold: true },
@@ -43,7 +36,7 @@ export class EventsGrpcController {
   }
 
   @GrpcMethod('EventsService', 'ReserveTicket')
-  async reserveTicket(data: ReserveTicketRequest): Promise<ReserveTicketResponse> {
+  async reserveTicket(data: events.ReserveTicketRequest): Promise<events.ReserveTicketResponse> {
     const ticket = await this.prisma.ticket.findFirst({
       where: { userId: data.userId, ticketTypeId: data.ticketTypeId, status: 'PENDING' },
     });

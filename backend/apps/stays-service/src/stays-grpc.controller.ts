@@ -1,21 +1,14 @@
 import { Controller } from '@nestjs/common';
 import { GrpcMethod } from '@nestjs/microservices';
 import { PrismaService } from '../../../src/prisma/prisma.service';
-import {
-  GetPropertyRequest,
-  GetPropertyResponse,
-  AvailabilityRequest,
-  AvailabilityResponse,
-  CreateBookingRequest,
-  CreateBookingResponse,
-} from '@iseyaa/proto';
+import { stays } from '@iseyaa/proto';
 
 @Controller()
 export class StaysGrpcController {
   constructor(private readonly prisma: PrismaService) {}
 
   @GrpcMethod('StaysService', 'GetProperty')
-  async getProperty(data: GetPropertyRequest): Promise<GetPropertyResponse> {
+  async getProperty(data: stays.GetPropertyRequest): Promise<stays.GetPropertyResponse> {
     const property = await this.prisma.property.findUnique({
       where: { id: data.propertyId },
       select: { id: true, name: true, pricePerNight: true, lgaId: true },
@@ -30,7 +23,7 @@ export class StaysGrpcController {
   }
 
   @GrpcMethod('StaysService', 'CheckAvailability')
-  async checkAvailability(data: AvailabilityRequest): Promise<AvailabilityResponse> {
+  async checkAvailability(data: stays.AvailabilityRequest): Promise<stays.AvailabilityResponse> {
     const conflict = await this.prisma.booking.findFirst({
       where: {
         propertyId: data.propertyId,
@@ -45,7 +38,7 @@ export class StaysGrpcController {
   }
 
   @GrpcMethod('StaysService', 'CreateBooking')
-  async createBooking(data: CreateBookingRequest): Promise<CreateBookingResponse> {
+  async createBooking(data: stays.CreateBookingRequest): Promise<stays.CreateBookingResponse> {
     const booking = await this.prisma.booking.findFirst({
       where: { propertyId: data.propertyId, userId: data.userId, status: 'PENDING' },
     });

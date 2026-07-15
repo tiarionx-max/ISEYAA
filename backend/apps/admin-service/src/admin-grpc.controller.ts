@@ -1,19 +1,14 @@
 import { Controller } from '@nestjs/common';
 import { GrpcMethod } from '@nestjs/microservices';
 import { AdminService } from '../../../src/modules/admin/admin.service';
-import {
-  GetDashboardRequest,
-  GetDashboardResponse,
-  ApproveItemRequest,
-  ApproveItemResponse,
-} from '@iseyaa/proto';
+import { admin } from '@iseyaa/proto';
 
 @Controller()
 export class AdminGrpcController {
   constructor(private readonly adminService: AdminService) {}
 
   @GrpcMethod('AdminService', 'GetDashboard')
-  async getDashboard(_data: GetDashboardRequest): Promise<GetDashboardResponse> {
+  async getDashboard(_data: admin.GetDashboardRequest): Promise<admin.GetDashboardResponse> {
     const dashboard = await this.adminService.getDashboard();
     return {
       totalUsers: dashboard.total_users ?? 0,
@@ -24,7 +19,7 @@ export class AdminGrpcController {
   }
 
   @GrpcMethod('AdminService', 'ApproveItem')
-  async approveItem(_data: ApproveItemRequest): Promise<ApproveItemResponse> {
+  async approveItem(_data: admin.ApproveItemRequest): Promise<admin.ApproveItemResponse> {
     return { success: true };
   }
 }
