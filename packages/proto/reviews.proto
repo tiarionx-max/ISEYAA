@@ -1,0 +1,49 @@
+syntax = "proto3";
+package reviews;
+
+service ReviewsService {
+  rpc CreateReview (CreateReviewRequest) returns (CreateReviewResponse);
+  rpc ListReviews (ListReviewsRequest) returns (ListReviewsResponse);
+  rpc ResolveReviewFlag (ResolveReviewFlagRequest) returns (ResolveReviewFlagResponse);
+}
+
+message CreateReviewRequest {
+  string target_type = 1;
+  string target_id = 2;
+  string user_id = 3;
+  string tour_booking_id = 4;
+  int32 rating = 5;
+  string comment = 6;
+}
+
+message CreateReviewResponse {
+  string id = 1;
+  bool flagged = 2;
+}
+
+message ReviewSummary {
+  string id = 1;
+  string user_id = 2;
+  int32 rating = 3;
+  string comment = 4;
+  bool flagged = 5;
+  string created_at = 6;
+}
+
+message ListReviewsRequest {
+  string target_type = 1;
+  string target_id = 2;
+}
+
+message ListReviewsResponse {
+  repeated ReviewSummary reviews = 1;
+}
+
+message ResolveReviewFlagRequest {
+  string review_id = 1;
+  string resolved_by_id = 2;
+}
+
+message ResolveReviewFlagResponse {
+  bool success = 1;
+}

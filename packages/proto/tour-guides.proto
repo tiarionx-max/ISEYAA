@@ -1,0 +1,60 @@
+syntax = "proto3";
+package tour_guides;
+
+service TourGuidesService {
+  rpc GetTourGuide (GetTourGuideRequest) returns (GetTourGuideResponse);
+  rpc ListTourGuides (ListTourGuidesRequest) returns (ListTourGuidesResponse);
+  rpc SubmitTourGuideKyc (SubmitTourGuideKycRequest) returns (SubmitTourGuideKycResponse);
+  rpc ApproveTourGuide (ApproveTourGuideRequest) returns (ApproveTourGuideResponse);
+}
+
+message GetTourGuideRequest {
+  string id = 1;
+}
+
+message GetTourGuideResponse {
+  string id = 1;
+  string user_id = 2;
+  string bio = 3;
+  int32 years_experience = 4;
+  int32 kyc_tier = 5;
+  string status = 6;
+  double rating = 7;
+}
+
+message TourGuideSummary {
+  string id = 1;
+  string user_id = 2;
+  string bio = 3;
+  double rating = 4;
+  string status = 5;
+}
+
+message ListTourGuidesRequest {
+  string status = 1;
+}
+
+message ListTourGuidesResponse {
+  repeated TourGuideSummary guides = 1;
+}
+
+message SubmitTourGuideKycRequest {
+  string user_id = 1;
+  string nin_ciphertext = 2;
+  string nin_hash = 3;
+}
+
+message SubmitTourGuideKycResponse {
+  bool success = 1;
+  int32 kyc_tier = 2;
+}
+
+message ApproveTourGuideRequest {
+  string id = 1;
+  string approved_by_id = 2;
+}
+
+message ApproveTourGuideResponse {
+  bool success = 1;
+  string status = 2;
+}

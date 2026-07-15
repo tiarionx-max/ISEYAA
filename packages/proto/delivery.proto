@@ -1,0 +1,59 @@
+syntax = "proto3";
+package delivery;
+
+service DeliveryService {
+  rpc RequestDelivery (RequestDeliveryRequest) returns (RequestDeliveryResponse);
+  rpc AcceptDelivery (AcceptDeliveryRequest) returns (AcceptDeliveryResponse);
+  rpc VerifyDeliveryOtp (VerifyDeliveryOtpRequest) returns (VerifyDeliveryOtpResponse);
+  rpc CompleteDelivery (CompleteDeliveryRequest) returns (CompleteDeliveryResponse);
+}
+
+message RequestDeliveryRequest {
+  string sender_id = 1;
+  string pickup_address = 2;
+  double pickup_lat = 3;
+  double pickup_lng = 4;
+  string dropoff_address = 5;
+  double dropoff_lat = 6;
+  double dropoff_lng = 7;
+  string item_description = 8;
+  double weight_kg = 9;
+  string recipient_phone = 10;
+}
+
+message RequestDeliveryResponse {
+  string order_id = 1;
+  string status = 2;
+  double fee = 3;
+}
+
+message AcceptDeliveryRequest {
+  string order_id = 1;
+  string rider_id = 2;
+}
+
+message AcceptDeliveryResponse {
+  bool success = 1;
+  string status = 2;
+}
+
+message VerifyDeliveryOtpRequest {
+  string order_id = 1;
+  string otp = 2;
+}
+
+message VerifyDeliveryOtpResponse {
+  bool success = 1;
+}
+
+message CompleteDeliveryRequest {
+  string order_id = 1;
+  string proof_photo_url = 2;
+}
+
+message CompleteDeliveryResponse {
+  bool success = 1;
+  double fee = 2;
+  double rider_earnings = 3;
+  double platform_fee = 4;
+}

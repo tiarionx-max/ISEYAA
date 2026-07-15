@@ -1,0 +1,67 @@
+syntax = "proto3";
+package tour_packages;
+
+service TourPackagesService {
+  rpc GetTourPackage (GetTourPackageRequest) returns (GetTourPackageResponse);
+  rpc ListTourPackages (ListTourPackagesRequest) returns (ListTourPackagesResponse);
+  rpc CreateTourPackage (CreateTourPackageRequest) returns (CreateTourPackageResponse);
+  rpc SubmitTourPackage (SubmitTourPackageRequest) returns (SubmitTourPackageResponse);
+}
+
+message GetTourPackageRequest {
+  string slug = 1;
+}
+
+message GetTourPackageResponse {
+  string id = 1;
+  string slug = 2;
+  string name = 3;
+  string category = 4;
+  double price = 5;
+  int32 duration_hours = 6;
+  int32 max_group_size = 7;
+  string status = 8;
+  string tour_guide_id = 9;
+  string lga_id = 10;
+}
+
+message TourPackageSummary {
+  string id = 1;
+  string slug = 2;
+  string name = 3;
+  string category = 4;
+  double price = 5;
+  string status = 6;
+}
+
+message ListTourPackagesRequest {
+  string category = 1;
+  string status = 2;
+}
+
+message ListTourPackagesResponse {
+  repeated TourPackageSummary packages = 1;
+}
+
+message CreateTourPackageRequest {
+  string name = 1;
+  string category = 2;
+  double price = 3;
+  int32 duration_hours = 4;
+  string tour_guide_id = 5;
+  string lga_id = 6;
+}
+
+message CreateTourPackageResponse {
+  string id = 1;
+  string status = 2;
+}
+
+message SubmitTourPackageRequest {
+  string id = 1;
+}
+
+message SubmitTourPackageResponse {
+  bool success = 1;
+  string status = 2;
+}

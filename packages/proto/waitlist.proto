@@ -1,0 +1,27 @@
+syntax = "proto3";
+package waitlist;
+
+service WaitlistService {
+  rpc JoinWaitlist (JoinWaitlistRequest) returns (JoinWaitlistResponse);
+  rpc GetWaitlistStats (GetWaitlistStatsRequest) returns (GetWaitlistStatsResponse);
+}
+
+message JoinWaitlistRequest {
+  string email = 1;
+  string phone = 2;
+  string full_name = 3;
+  string source = 4;
+}
+
+message JoinWaitlistResponse {
+  string id = 1;
+  bool success = 2;
+}
+
+message GetWaitlistStatsRequest {
+  string source = 1;
+}
+
+message GetWaitlistStatsResponse {
+  int32 total_count = 1;
+}
