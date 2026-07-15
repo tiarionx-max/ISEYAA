@@ -55,9 +55,13 @@ Phases 2-9 — Substantially shipped (per ROADMAP.md; several phases have plans 
 - ✓ Mobile Redesign — 5-tab nav, Airbnb-style stays, Temu-style marketplace, host onboarding, news ticker — Phase 8 (10/11 plans)
 - ✓ Tour Packages & Tour Guides — TOUR_GUIDE role, curated multi-vendor packages, atomic multi-vendor settlement engine, group/split-bill bookings, ratings, web + mobile surfaces — Phase 9 (12/13 plans). **Caveat:** a subquery-in-CHECK-constraint bug silently rolled back the Phase 9 migration in every environment where it ran until fixed 2026-07-13 (commit `fe75adc`) — confirm this reached production before trusting live Phase 9 data.
 
+v2.0 — Microservices, Multi-Channel Auth & Government Partnership (current milestone):
+
+- ✓ Documentation Correction + gRPC Build Fix — corrected the false "8 services extracted" ROADMAP claim (DOC-01); made all 8 `apps/*-service` gRPC scaffolds build cleanly (`nest build` exit 0, Dockerfile error-masking removed); authored `.proto` contracts for the 7 never-stubbed modules so `generate.sh` produces working TypeScript for all 15 modules (GRPC-01, GRPC-02) — Phase 10 (3/3 plans). **Follow-up:** `docker build` still fails (`@iseyaa/proto` undeclared in `backend/package.json`) — address before Phase 17 live extraction (see STATE.md pending todos).
+
 ### Active
 
-v2.0 — Microservices, Multi-Channel Auth & Government Partnership (current milestone): requirements to be defined next in this workflow.
+v2.0 — Microservices, Multi-Channel Auth & Government Partnership: Phases 11-17 remain (Resilience, Settlement, Ministry Dashboard, Multi-Channel OTP, Connection Pooling, gRPC Proof-of-Pattern).
 
 ### Out of Scope
 
@@ -127,4 +131,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-15 — v2.0 milestone started; reconciled Validated section against actual Phase 2-9 build state (previously stale since 2026-05-12 init)*
+*Last updated: 2026-07-15 — Phase 10 complete (documentation correction + gRPC build fix); DOC-01, GRPC-01, GRPC-02 validated*
