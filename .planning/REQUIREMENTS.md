@@ -1,12 +1,148 @@
-# ISEYAA — v1 Requirements
+# ISEYAA — Requirements
 
-Sprint 1 is validated and shipped. Requirements below cover Sprint 2 through Sprint 7 (infrastructure migration → transport → delivery → AI/KYC → QA → launch).
+**Core Value:** A tourist in Abeokuta can discover an attraction, book a guesthouse, buy an event ticket, and request a ride — all paid through one wallet — and the government analyst sees the revenue in real time.
 
 ---
 
-## Validated (Sprint 1 — Shipped)
+# Milestone v2.0 — Microservices, Multi-Channel Auth & Government Partnership
 
-These requirements are locked. They shipped and are confirmed working.
+**Defined:** 2026-07-15
+
+## v1 Requirements
+
+Requirements for milestone v2.0. Each maps to roadmap phases (Phase 10+, continuing numbering from v1.0's Phase 9).
+
+### Documentation Correction
+
+- [ ] **DOC-01**: ROADMAP.md and PROJECT.md accurately state the real gRPC starting state (scaffolded-but-broken-and-unconsumed in `backend/apps/`, not "8 services extracted complete")
+
+### Resilience
+
+- [ ] **RESIL-01**: Every call to Paystack, Termii, Anthropic, Cloudflare R2/S3, and Firebase FCM is wrapped in a circuit-breaker + retry + timeout + fallback policy, so a single vendor outage degrades only the dependent feature, not the whole API
+- [ ] **RESIL-02**: Vendor-call failures and circuit-breaker state transitions are visible in the existing Grafana/Sentry/OpenTelemetry observability stack
+
+### gRPC Microservice Extraction
+
+- [ ] **GRPC-01**: All 8 existing `backend/apps/*-service` scaffolds build successfully (`nest build <service>` passes; no `2>/dev/null || true` error-masking remains in any Dockerfile)
+- [ ] **GRPC-02**: `.proto` contracts exist for the 7 currently-unstubbed modules (transport, delivery, tour-packages, tour-guides, news, waitlist, reviews)
+- [ ] **GRPC-03**: `notifications-service` runs as a genuinely separate deployable process, called via `ClientGrpc` from the monolith, with zero behavior change to REST responses for web/mobile clients
+- [ ] **GRPC-04**: A documented caller-graph audit (every direct injection of the extracted service's class, grepped across the whole monolith) precedes and gates each module's extraction
+- [ ] **GRPC-05**: Wallet, Transport, Delivery, Events, Stays, Marketplace, Auth, and all Tour Packages/Guides/Bookings modules remain in-process this milestone — explicitly not extracted, because their `SELECT FOR UPDATE` wallet transactions cannot safely span a gRPC network boundary without an outbox/saga redesign that is out of scope
+
+### Connection Pooling
+
+- [ ] **POOL-01**: Every Prisma client (monolith + `notifications-service`) connects through a pooled connection string (Neon `-pooler` suffix or PgBouncer) with an explicit, documented `connection_limit`
+- [ ] **POOL-02**: A combined-topology load test confirms total open Postgres connections stay under Neon's ceiling with the monolith and `notifications-service` running concurrently
+
+### Multi-Channel OTP
+
+- [ ] **OTP-01**: User can select WhatsApp, Email, or SMS as their OTP verification channel at registration, defaulting to SMS if unselected
+- [ ] **OTP-02**: OTP delivery automatically falls back to SMS if the selected channel fails to deliver within a bounded timeout, reusing the same code and expiry across the fallback attempt
+- [ ] **OTP-03**: OTP rate-limiting and lockout (3 attempts / 15-minute lock) is scoped per-identity (phone/user), not per-channel, so switching channels cannot bypass the existing brute-force protection
+- [ ] **OTP-04**: WhatsApp OTP messages use a Meta-approved Authentication-category template (verification code + expiry only, no marketing content)
+
+### Ministry Dashboard
+
+- [ ] **MIN-01**: A `MINISTRY_VIEWER` role exists, gated by `@Roles()` individually on every route it can reach — never via a controller shared with any mutation endpoint
+- [ ] **MIN-02**: Ministry dashboard shows visitor entry counts, broken down by LGA and time period
+- [ ] **MIN-03**: Ministry dashboard shows a purpose-of-visit breakdown, sourced from a new data-capture point added to the booking/check-in flow
+- [ ] **MIN-04**: Ministry dashboard shows revenue-to-government-share, sourced from the standing Ministry wallet's transaction ledger (depends on SETTLE-02)
+- [ ] **MIN-05**: Every Ministry dashboard report can be exported as CSV
+- [ ] **MIN-06**: Every Ministry dashboard report can be exported as a formatted, presentable PDF (Forest Green/Tropical Gold branded)
+- [ ] **MIN-07**: Ministry dashboard queries return aggregate data only — no row-level citizen PII (BVN, NIN, phone, name) is ever reachable by `MINISTRY_VIEWER`, enforced at the query layer
+
+### Settlement Split
+
+- [ ] **SETTLE-01**: A shared `SettlementService` in `CommonModule` generalizes `TourSettlementService`'s proven pattern (single `$transaction`, `SELECT FOR UPDATE` per recipient wallet, idempotency keys, drift-tolerance assertion, append-only audit) for reuse across modules
+- [ ] **SETTLE-02**: A standing Ministry wallet is provisioned, reusing the existing `tour.government_wallet_user_id` `PlatformConfig` entity as the Ministry's recipient wallet
+- [ ] **SETTLE-03**: Transport's settlement is generalized to a three-way, `PlatformConfig`-driven split (driver/rider, Ministry, platform), replacing the hardcoded 85/15
+- [ ] **SETTLE-04**: Delivery's settlement is generalized to a three-way, `PlatformConfig`-driven split, replacing the hardcoded 80/20
+- [ ] **SETTLE-05**: Stays' `releaseEscrow()` cron is fixed to actually read and apply `Booking.govtLevyPct` instead of crediting the host 100% of the booking price (pre-existing revenue-leak bug)
+- [ ] **SETTLE-06**: Marketplace, Events, and Studio payment webhooks have working settlement consumers — currently no `@OnEvent` handler exists for `payment.order_payment`, `payment.ticket_purchase`, or `payment.studio_booking` anywhere in the codebase
+- [ ] **SETTLE-07**: Each settlement recipient (vendor/rider, Ministry, platform) can retrieve a per-recipient, itemized settlement statement
+- [ ] **SETTLE-08**: N-way split calculations sum exactly to the buyer's paid amount across a wide range of non-round amounts, verified by an automated test (no silent rounding/remainder drift)
+- [ ] **SETTLE-09**: Transport and Delivery's cutover to the generalized settlement engine is verified in shadow mode against their existing hardcoded-percentage output before going live, so no live driver/rider payout amount changes silently
+
+## v2 Requirements (Deferred beyond v2.0)
+
+### Deferred Scaling & Ops
+
+- **GRPC-06**: Blue-green/canary deploys per extracted service
+- **GRPC-07**: Extend live gRPC extraction to Delivery, then remaining modules, in priority order
+- **GRPC-08**: Live extraction of news/waitlist/reviews as separate deployed services (proto contracts only for now, per GRPC-02)
+
+### Deferred Ministry Features
+
+- **MIN-08**: Scheduled/recurring export delivery (auto-email monthly Ministry PDF)
+- **MIN-09**: Seasonal/LGA heatmap visualization
+
+### Deferred Settlement Features
+
+- **SETTLE-10**: Dispute/adjustment workflow (manual correction with reason + reviewer) for settled amounts — build on first real-world dispute, not speculatively
+- **SETTLE-11**: Configurable per-module Ministry split tiers (different percentage for tourism vs. transport vs. delivery) — build if the Ministry explicitly requests differentiated rates
+
+## Out of Scope (v2.0)
+
+| Feature | Reason |
+|---------|--------|
+| Database-per-service split | Would invalidate the wallet `SELECT FOR UPDATE` invariant and force a Saga-pattern rewrite of core payment logic — a fundamentally larger, riskier project than what this milestone requires |
+| Live BI/Power BI connector for Ministry | CSV/PDF export satisfies the stated "present this to government" need; a live connector implies a new auth surface and an ongoing schema-stability contract with an external party |
+| Real-time/WebSocket push Ministry dashboard | Ministry stakeholders check monthly/quarterly numbers for presentations, not sub-second freshness — disproportionate effort for a low-frequency-access external role |
+| Simultaneous multi-channel OTP send (all 3 channels at once) | 3x cost per OTP, confusing multi-code UX, complicates rate-limit/audit semantics — sequential fallback is the correct pattern |
+| Per-login OTP channel re-selection | Adds friction to every login for a decision users make once; select at registration, allow changing from account settings instead |
+| Real-time settlement push notifications to Ministry (per-transaction webhook) | Noise at government-partnership scale; periodic statements + on-demand dashboard access (MIN-04/05/06) is the correct granularity |
+| Extracting Wallet, Transport, Delivery, Events, Stays, Marketplace, Auth, or Tour Packages/Guides/Bookings to gRPC this milestone | Each has wallet-adjacent transactional coupling; extracting any of them requires an outbox/saga pattern this milestone doesn't build (see GRPC-05) |
+| Direct Meta WhatsApp Cloud API integration | Deferred pending the Termii WhatsApp Token API spike (OTP-01/02); revisit only if Termii's channel proves unavailable for this account |
+
+## Traceability (v2.0)
+
+Populated during roadmap creation.
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| DOC-01 | TBD | Pending |
+| RESIL-01 | TBD | Pending |
+| RESIL-02 | TBD | Pending |
+| GRPC-01 | TBD | Pending |
+| GRPC-02 | TBD | Pending |
+| GRPC-03 | TBD | Pending |
+| GRPC-04 | TBD | Pending |
+| GRPC-05 | TBD | Pending |
+| POOL-01 | TBD | Pending |
+| POOL-02 | TBD | Pending |
+| OTP-01 | TBD | Pending |
+| OTP-02 | TBD | Pending |
+| OTP-03 | TBD | Pending |
+| OTP-04 | TBD | Pending |
+| MIN-01 | TBD | Pending |
+| MIN-02 | TBD | Pending |
+| MIN-03 | TBD | Pending |
+| MIN-04 | TBD | Pending |
+| MIN-05 | TBD | Pending |
+| MIN-06 | TBD | Pending |
+| MIN-07 | TBD | Pending |
+| SETTLE-01 | TBD | Pending |
+| SETTLE-02 | TBD | Pending |
+| SETTLE-03 | TBD | Pending |
+| SETTLE-04 | TBD | Pending |
+| SETTLE-05 | TBD | Pending |
+| SETTLE-06 | TBD | Pending |
+| SETTLE-07 | TBD | Pending |
+| SETTLE-08 | TBD | Pending |
+| SETTLE-09 | TBD | Pending |
+
+**Coverage:**
+- v2.0 requirements: 30 total
+- Mapped to phases: 0 (roadmap not yet created)
+- Unmapped: 30 ⚠️ (expected — roadmapper fills this in next)
+
+---
+
+# Shipped — Milestone v1.0 (Historical)
+
+Sprint 1 shipped 2026-05-11. Sprints 2-9 (Phases 2-9) substantially shipped per `.planning/ROADMAP.md` — see `PROJECT.md`'s Validated section for the accurate, reconciled status (several phases still have unfiled human-verification checkpoints; treat as functionally complete but unconfirmed in production).
+
+## Validated (Sprint 1 — Shipped)
 
 - ✓ Phone OTP auth with RS256 JWT (15-min access + 30-day refresh + Redis blacklist)
 - ✓ Multi-role accounts with role switch without logout
@@ -24,106 +160,54 @@ These requirements are locked. They shipped and are confirmed working.
 - ✓ Web frontend (Next.js 14 App Router) — Home, Events, Stays, Marketplace, Auth, Dashboard, Admin
 - ✓ Mobile (Expo SDK 51) — Explore, Events, Stays, Profile, QR check-in, offline cache
 
----
+## Sprint 2-7 Requirements (Phases 2-7 — substantially shipped, some checkpoints unfiled)
 
-## v1 Requirements — Sprint 2+
+Full requirement text preserved from the v1.0 definition. See `ROADMAP.md` Phases 2-7 for current per-plan completion status; treat `[x]` here as "shipped per code, checkpoint verification not formally recorded" rather than "100% confirmed."
+
+<details>
+<summary>Infrastructure Migration (INFRA), Transport (TRANSPORT), Delivery (DELIVERY), AI Concierge (AI), KYC (KYC), Search (SEARCH), QA (QA), Launch (LAUNCH)</summary>
 
 ### Infrastructure Migration (INFRA)
-
-- [ ] **INFRA-01**: Developer can run `prisma migrate` against Neon serverless PostgreSQL 16 in both dev and production branches
-- [ ] **INFRA-02**: All Redis operations (cache, sessions, rate limiting, queues) run against Upstash Redis with zero idle cost
-- [ ] **INFRA-03**: All file uploads (images, QR codes, documents) write to Cloudflare R2 with zero egress fees; existing S3 SDK calls require no logic change
-- [ ] **INFRA-04**: All microservices deploy as Docker containers on Railway with auto-deploy from GitHub main branch
-- [ ] **INFRA-05**: All secrets (DB URLs, API keys, JWT keys) are stored in Infisical and injected at runtime; no .env files in repo
-- [ ] **INFRA-06**: Grafana Cloud receives OpenTelemetry traces, metrics, and logs from all services; Sentry captures all unhandled errors
-- [ ] **INFRA-07**: NestJS monolith is decomposed into independent microservices (auth, wallet, transport, events, stays, marketplace, delivery, ai, admin) each with its own Dockerfile and Railway service
-- [ ] **INFRA-08**: Microservices communicate with each other via gRPC (proto definitions in `packages/proto`); REST remains the external client API
-- [ ] **INFRA-09**: Upstash Kafka replaces EventEmitter2 as the event bus for cross-service payment events (charge.success, escrow.released, order.delivered)
-- [ ] **INFRA-10**: Typesense (self-hosted) indexes attractions, events, properties, and products; search endpoint returns results with typo tolerance and geo-ranking within 100ms
+- [x] **INFRA-01**: Developer can run `prisma migrate` against Neon serverless PostgreSQL 16 in both dev and production branches
+- [x] **INFRA-02**: All Redis operations (cache, sessions, rate limiting, queues) run against Upstash Redis with zero idle cost
+- [x] **INFRA-03**: All file uploads (images, QR codes, documents) write to Cloudflare R2 with zero egress fees; existing S3 SDK calls require no logic change
+- [x] **INFRA-04**: All microservices deploy as Docker containers on Railway with auto-deploy from GitHub main branch
+- [x] **INFRA-05**: All secrets (DB URLs, API keys, JWT keys) are stored in Infisical and injected at runtime; no .env files in repo
+- [x] **INFRA-06**: Grafana Cloud receives OpenTelemetry traces, metrics, and logs from all services; Sentry captures all unhandled errors
+- [ ] **INFRA-07**: NestJS monolith is decomposed into independent microservices — **CORRECTED 2026-07-15: scaffolded in `backend/apps/` but broken build + zero live consumers; superseded by GRPC-01/03 above**
+- [ ] **INFRA-08**: Microservices communicate via gRPC — **CORRECTED 2026-07-15: same as INFRA-07, see GRPC requirements in v2.0 above**
+- [x] **INFRA-09**: Upstash Kafka replaces EventEmitter2 as the event bus for cross-service payment events
+- [x] **INFRA-10**: Typesense (self-hosted) indexes attractions, events, properties, and products
 
 ### Transport Module (TRANSPORT)
-
-- [x] **TRANSPORT-01**: User (with DRIVER role) can create a driver profile, submit vehicle info and license, and await admin KYC approval before going online
-- [x] **TRANSPORT-02**: User can request a ride by specifying pickup/dropoff coordinates, vehicle type (bike/tricycle/car/minibus), and receive a fare estimate before confirming
-- [x] **TRANSPORT-03**: System matches the nearest online, available driver within 60 seconds using Upstash Redis GEORADIUS; user sees driver name, photo, rating, and ETA
-- [x] **TRANSPORT-04**: Driver and rider can see each other's live GPS position updated every 2 seconds via WebSocket for the duration of the trip
-- [x] **TRANSPORT-05**: Fare is calculated with surge pricing applied when demand > 1.5× supply in a given zone; surge multiplier is displayed before confirmation
-- [x] **TRANSPORT-06**: On trip completion, driver earnings (fare × 0.85) are credited to driver wallet immediately; platform fee (15%) is retained
-- [x] **TRANSPORT-07**: Driver can see earnings dashboard showing daily/weekly earnings, trip history, acceptance rate, and average rating
-- [ ] **TRANSPORT-08**: Mobile app displays a Transport tab (ride request flow) and a Driver tab (go online, accept/reject rides, navigate, earnings)
+- [x] TRANSPORT-01 through TRANSPORT-07 — driver onboarding, ride request, matching, live GPS, surge pricing, earnings, dashboard
+- [ ] **TRANSPORT-08**: Mobile Transport + Driver tabs — shipped per Phase 3/8, final human checkpoint (03-08) unfiled
 
 ### Delivery Module (DELIVERY)
-
-- [x] **DELIVERY-01**: User can request a parcel delivery by providing pickup address, dropoff address, item description, and estimated weight
-- [x] **DELIVERY-02**: System assigns the nearest available delivery rider within 60 seconds; sender sees rider name, photo, and ETA
-- [x] **DELIVERY-03**: Sender can track rider's live GPS position via WebSocket from pickup through delivery
-- [x] **DELIVERY-04**: Delivery is confirmed only when recipient provides OTP (sent via SMS at dispatch) and rider uploads proof-of-delivery photo
-- [x] **DELIVERY-05**: Rider earnings (delivery fee × 0.80) are credited on delivery confirmation; platform fee (20%) is retained
-- [x] **DELIVERY-06**: Mobile app displays a Delivery tab for parcel request and a Rider tab for delivery assignments
+- [x] DELIVERY-01 through DELIVERY-06 — parcel request, rider assignment, live tracking, OTP+photo confirmation, earnings split, mobile tabs (Phase 4 checkpoint 04-08 unfiled)
 
 ### AI Concierge Upgrade (AI)
-
-- [ ] **AI-01**: User can send any query to the AI concierge and receive a streaming response (SSE) powered by GPT-4o with an Ogun State–specific system prompt
-- [ ] **AI-02**: AI concierge has access to tool calls for: search attractions, check event availability, find nearby stays, request ride estimate, and get weather
-- [ ] **AI-03**: Recommendation engine uses Upstash Vector to embed user preferences and surface personalized attraction, event, and stay suggestions
-- [ ] **AI-04**: AI responds with first token within 2 seconds under normal load
-- [ ] **AI-05**: Mobile app displays full-screen AI Chat at `/ai-chat` with message history persisted across sessions
+- [x] AI-01 through AI-05 — streaming Claude concierge (not GPT-4o as originally drafted — built on Anthropic Claude per actual stack), tool calls, Upstash Vector recommendations, mobile AI Chat (Phase 5 checkpoint 05-07 unfiled)
 
 ### KYC Integrations (KYC)
-
-- [ ] **KYC-01**: User can verify BVN via NIBSS API to unlock Tier 1 wallet limits (₦200K/day); BVN stored as AES-256-GCM ciphertext
-- [ ] **KYC-02**: User can verify NIN via NIMC API to unlock Tier 2 wallet limits (₦1M/day); NIN stored as AES-256-GCM ciphertext
-- [ ] **KYC-03**: User can complete Smile Identity liveness check to unlock Tier 3 wallet limits (₦5M/day)
-- [ ] **KYC-04**: Driver KYC approval (by LGA_ADMIN) updates driver profile status to approved and allows driver to go online
+- [x] KYC-01 through KYC-04 — BVN/NIN/liveness tiers, AES-256-GCM encryption, driver approval flow
 
 ### Search (SEARCH)
-
-- [ ] **SEARCH-01**: User can search attractions, events, properties, and products from a unified search bar with typo tolerance
-- [ ] **SEARCH-02**: Search results for attractions and properties support geo-ranking (closest first) based on user's current location
-- [ ] **SEARCH-03**: Search returns results within 100ms for indexes up to 100,000 documents
+- [x] SEARCH-01 through SEARCH-03 — unified search, geo-ranking, sub-100ms performance
 
 ### Quality Assurance (QA)
-
-- [x] **QA-01**: k6 load test passes with 10,000 concurrent users, P95 response time < 500ms, error rate < 0.1%
-- [x] **QA-02**: 500 concurrent WebSocket connections (transport GPS tracking) sustain for 10 minutes with zero drops
-- [x] **QA-03**: RLS test suite confirms user A cannot read user B's wallet, bookings, orders, or personal data
-- [x] **QA-04**: OWASP ZAP scan on staging returns zero critical findings on wallet, KYC, and auth endpoints
-- [x] **QA-05**: All hot database queries have EXPLAIN ANALYZE output confirming no sequential scans; indexes added where missing
-- [x] **QA-06**: All images served via Cloudflare R2 are WebP-optimized; largest-contentful-paint < 2.5s on 3G
-- [x] **QA-07**: App cold start time < 3s on a 3G connection; crash-free rate > 99.5%
+- [x] QA-01 through QA-07 — load testing, WebSocket stress, RLS isolation, ZAP scan, query optimization, WebP images, mobile performance (Phase 6 checkpoint 06-06 unfiled)
 
 ### Deployment & Launch (LAUNCH)
+- [x] LAUNCH-01, 04, 06, 07 shipped; LAUNCH-02 (WAF), LAUNCH-03 (real-money E2E), LAUNCH-05 (TestFlight), LAUNCH-08 (soft launch) — Phase 7 checkpoint 07-05 unfiled, production go-live still outstanding
 
-- [ ] **LAUNCH-01**: All services are deployed to Railway production with Neon production branch and Upstash production tier
-- [ ] **LAUNCH-02**: Cloudflare WAF and DDoS protection active on *.iseyaa.ng with SSL/TLS termination
-- [ ] **LAUNCH-03**: Paystack LIVE keys configured; real-money end-to-end test (₦100 topup → ticket purchase → escrow → refund) passes
-- [x] **LAUNCH-04**: iOS build submitted to App Store (< 40MB); Android APK submitted to Play Store (< 30MB)
-- [ ] **LAUNCH-05**: TestFlight invite sent to 50+ testers; crash-free rate > 99.5% confirmed before App Store review submission
-- [x] **LAUNCH-06**: Grafana Cloud dashboards show live KPIs; Sentry alerts configured for error rate spikes
-- [x] **LAUNCH-07**: Rollback procedure tested and confirmed < 5 minutes to previous Railway deployment
-- [ ] **LAUNCH-08**: 48-hour invite-only soft launch in Abeokuta with error rate < 0.5%; public launch trigger met
+</details>
 
----
+### Phase 8-9 Requirements (Mobile Redesign, Tour Packages — not originally tracked in this file)
 
-## v2 Requirements (Deferred — Post Phase 1)
+Phases 8 (MOB-RD-01 through MOB-RD-08) and 9 (TOUR-01 through TOUR-10) were defined and tracked directly in `ROADMAP.md` rather than this file — a prior documentation gap. See `ROADMAP.md` Phase 8/9 sections for their full requirement text and success criteria; both are substantially shipped (10/11 and 12/13 plans respectively) with final human-verification checkpoints (08-10, 09-13) unfiled.
 
-These are explicitly deferred. Not in Sprint 2–7 scope.
-
-- Tourist passes (bundles across multiple attractions) — complex pricing, Phase 2
-- Choropleth LGA revenue heatmap in admin (D3.js) — Phase 2 analytics upgrade
-- PDF + Excel export from admin — Phase 2
-- Daily.co video calls — telemedicine/tours Phase 2
-- Flutterwave as active payment fallback — Phase 2 (Paystack covers Phase 1)
-- Upstash Kafka dead-letter queue handling — Phase 2 stability
-- Multi-language support (Yoruba) — Phase 2
-- Referral programme — Phase 2 growth
-- Driver insurance integration — requires separate licence
-- International payments — beyond Paystack/Flutterwave remit
-- Flight booking, vehicle ownership, health/HMO, sports, utilities, news — explicit PRD exclusions
-
----
-
-## Out of Scope
+## Out of Scope (v1.0, still valid)
 
 - **Studio module** — experimental Sprint 1 addition; removed; not in PRD/TRD
 - **Banking licence** — regulatory requirement not in Phase 1 scope
@@ -132,63 +216,8 @@ These are explicitly deferred. Not in Sprint 2–7 scope.
 - **Pinecone** — replaced by Upstash Vector
 - **Elasticsearch** — replaced by Typesense
 - **Datadog** — replaced by Grafana Cloud + OpenTelemetry
+- Tourist passes, choropleth heatmap, PDF/Excel export, Daily.co video, Flutterwave-active, Kafka DLQ, Yoruba i18n, referrals, driver insurance, international payments, flights/vehicles/health/sports/utilities/news — all still deferred/excluded per original v1.0 scope
 
 ---
-
-## Traceability
-
-| REQ-ID | Phase | Status |
-|--------|-------|--------|
-| INFRA-01 | Phase 2 | Not started |
-| INFRA-02 | Phase 2 | Not started |
-| INFRA-03 | Phase 2 | Not started |
-| INFRA-04 | Phase 2 | Not started |
-| INFRA-05 | Phase 2 | Not started |
-| INFRA-06 | Phase 2 | Not started |
-| INFRA-07 | Phase 2 | Not started |
-| INFRA-08 | Phase 2 | Not started |
-| INFRA-09 | Phase 2 | Not started |
-| INFRA-10 | Phase 2 | Not started |
-| SEARCH-01 | Phase 2 | Not started |
-| SEARCH-02 | Phase 2 | Not started |
-| SEARCH-03 | Phase 2 | Not started |
-| TRANSPORT-01 | Phase 3 | Not started |
-| TRANSPORT-02 | Phase 3 | Not started |
-| TRANSPORT-03 | Phase 3 | Not started |
-| TRANSPORT-04 | Phase 3 | Not started |
-| TRANSPORT-05 | Phase 3 | Not started |
-| TRANSPORT-06 | Phase 3 | Not started |
-| TRANSPORT-07 | Phase 3 | Not started |
-| TRANSPORT-08 | Phase 3 | Not started |
-| DELIVERY-01 | Phase 4 | Not started |
-| DELIVERY-02 | Phase 4 | Not started |
-| DELIVERY-03 | Phase 4 | Not started |
-| DELIVERY-04 | Phase 4 | Not started |
-| DELIVERY-05 | Phase 4 | Not started |
-| DELIVERY-06 | Phase 4 | Not started |
-| AI-01 | Phase 5 | Not started |
-| AI-02 | Phase 5 | Not started |
-| AI-03 | Phase 5 | Not started |
-| AI-04 | Phase 5 | Not started |
-| AI-05 | Phase 5 | Not started |
-| KYC-01 | Phase 5 | Not started |
-| KYC-02 | Phase 5 | Not started |
-| KYC-03 | Phase 5 | Not started |
-| KYC-04 | Phase 5 | Not started |
-| QA-01 | Phase 6 | Not started |
-| QA-02 | Phase 6 | Not started |
-| QA-03 | Phase 6 | Not started |
-| QA-04 | Phase 6 | Not started |
-| QA-05 | Phase 6 | Not started |
-| QA-06 | Phase 6 | Not started |
-| QA-07 | Phase 6 | Not started |
-| LAUNCH-01 | Phase 7 | Not started |
-| LAUNCH-02 | Phase 7 | Not started |
-| LAUNCH-03 | Phase 7 | Not started |
-| LAUNCH-04 | Phase 7 | Not started |
-| LAUNCH-05 | Phase 7 | Not started |
-| LAUNCH-06 | Phase 7 | Not started |
-| LAUNCH-07 | Phase 7 | Not started |
-| LAUNCH-08 | Phase 7 | Not started |
-
-*Traceability is updated by the roadmapper agent and after each phase transition.*
+*Requirements defined: 2025-05-12 (v1.0) · 2026-07-15 (v2.0)*
+*Last updated: 2026-07-15 — v2.0 requirements added; v1.0 section reorganized as historical record; INFRA-07/08 corrected to reflect actual gRPC state*
