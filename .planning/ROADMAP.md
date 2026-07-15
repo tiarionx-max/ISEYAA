@@ -51,7 +51,7 @@ Sprint 1 is shipped. This roadmap covers the six remaining sprints: infrastructu
 **Requirements**: INFRA-01, INFRA-02, INFRA-03, INFRA-04, INFRA-05, INFRA-06, INFRA-07, INFRA-08, INFRA-09, INFRA-10, SEARCH-01, SEARCH-02, SEARCH-03
 **Success Criteria** (what must be TRUE):
   1. `prisma migrate deploy` runs cleanly against Neon serverless PostgreSQL 16 in both dev and production branches with no data loss
-  2. Every microservice (auth, wallet, transport, events, stays, marketplace, delivery, ai, admin) deploys as a separate Railway service and auto-deploys on push to main
+  2. Proto contracts (`packages/proto/*.proto`) existed for 8 services, but zero live `@GrpcMethod`/`ClientGrpc` wiring was ever implemented — the platform ran (and still runs, pending Phase 17) as a single monolithic `NestFactory.create()` process, not as separate Railway services (claim corrected 2026-07-15 — see Phase 10 for the build-fix work and Phase 17 for the first live extraction)
   3. A unified search query returns attractions, events, properties, and products with typo tolerance and geo-ranking within 100ms against a 100,000-document Typesense index
   4. Kafka consumers process charge.success, escrow.released, order.delivered events — EventEmitter2 @OnEvent handlers removed from all feature services (stays.service.ts, marketplace.service.ts, events.service.ts, webhooks.service.ts); EventEmitterModule registration kept as no-op until Phase 6 cleanup
   5. Grafana Cloud shows live traces, metrics, and logs from all services; zero secrets exist in any `.env` file committed to the repo
@@ -68,7 +68,7 @@ Plans:
 - [ ] 02-06-PLAN.md — Human verification checkpoint: Railway deployment health check *(pending: commit + push + Railway verify)*
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [x] 02-07-PLAN.md — gRPC proto definitions (all 8 services) + ts-proto TypeScript generation
+- [x] 02-07-PLAN.md — gRPC proto definitions authored for 8 services (`packages/proto/*.proto`); the `ts-proto` TypeScript generation pipeline (`generate.sh`) was broken and never produced real generated output — corrected 2026-07-15 in Phase 10 (10-03-PLAN.md fixed the codegen pipeline)
 - [x] 02-08-PLAN.md — auth-service + wallet-service gRPC microservice extraction
 - [x] 02-09-PLAN.md — events-service gRPC extraction
 - [x] 02-09b-PLAN.md — stays-service + marketplace-service gRPC extraction
