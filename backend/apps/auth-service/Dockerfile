@@ -15,8 +15,8 @@ RUN npm ci --workspace=backend --include=workspace=shared
 
 COPY backend/ ./backend/
 RUN cd backend && npx prisma generate
-RUN cd backend && npx nest build auth-service 2>/dev/null || npx tsc -p apps/auth-service/tsconfig.json 2>/dev/null || true
+RUN cd backend && npx nest build auth-service
 
 EXPOSE 5001
 
-CMD ["sh", "-c", "infisical run --projectId $INFISICAL_PROJECT_ID --env ${APP_ENV:-production} -- node --require ./backend/apps/auth-service/dist/main.js"]
+CMD ["sh", "-c", "infisical run --projectId $INFISICAL_PROJECT_ID --env ${APP_ENV:-production} -- node ./backend/dist/apps/auth-service/src/main.js"]

@@ -15,8 +15,8 @@ RUN npm ci --workspace=backend --include=workspace=shared
 
 COPY backend/ ./backend/
 RUN cd backend && npx prisma generate
-RUN cd backend && npx nest build wallet-service 2>/dev/null || true
+RUN cd backend && npx nest build wallet-service
 
 EXPOSE 5002
 
-CMD ["sh", "-c", "infisical run --projectId $INFISICAL_PROJECT_ID --env ${APP_ENV:-production} -- node ./backend/apps/wallet-service/dist/main.js"]
+CMD ["sh", "-c", "infisical run --projectId $INFISICAL_PROJECT_ID --env ${APP_ENV:-production} -- node ./backend/dist/apps/wallet-service/src/main.js"]

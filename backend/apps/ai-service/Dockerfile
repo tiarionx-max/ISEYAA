@@ -5,6 +5,7 @@ RUN curl -1sLf 'https://dl.cloudsmith.io/public/infisical/infisical-cli/setup.al
 COPY package*.json ./ && COPY backend/package*.json ./backend/ && COPY shared/ ./shared/ && COPY packages/proto/ ./packages/proto/
 RUN npm ci --workspace=backend --include=workspace=shared
 COPY backend/ ./backend/
-RUN cd backend && npx prisma generate && (npx nest build ai-service 2>/dev/null || true)
+RUN cd backend && npx prisma generate
+RUN cd backend && npx nest build ai-service
 EXPOSE 5007
-CMD ["sh", "-c", "infisical run --projectId $INFISICAL_PROJECT_ID --env ${APP_ENV:-production} -- node ./backend/apps/ai-service/dist/main.js"]
+CMD ["sh", "-c", "infisical run --projectId $INFISICAL_PROJECT_ID --env ${APP_ENV:-production} -- node ./backend/dist/apps/ai-service/src/main.js"]
