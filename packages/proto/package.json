@@ -6,5 +6,8 @@
   "types": "generated/index.d.ts",
   "scripts": {
     "generate": "bash generate.sh"
+  },
+  "devDependencies": {
+    "grpc-tools": "^1.13.0"
   }
 }
