@@ -1,36 +1,33 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: executing
-stopped_at: Wave 4 blocked — Anthropic rate limit on subagent dispatch (resets 2026-06-09 13:40 America/Chicago). 08-08 (Stay detail rewrite) is next.
-last_updated: "2026-06-09T19:35:00.000Z"
-last_activity: 2026-06-09
+milestone: v2.0
+milestone_name: Microservices, Multi-Channel Auth & Government Partnership
+status: planning
+last_updated: "2026-07-15T20:02:03.696Z"
+last_activity: 2026-07-15
 progress:
-  total_phases: 8
-  completed_phases: 3
-  total_plans: 58
-  completed_plans: 52
-  percent: 90
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-05-12)
+See: .planning/PROJECT.md (updated 2026-07-15)
 
 **Core value:** A tourist in Abeokuta can discover an attraction, book a guesthouse, buy an event ticket, and request a ride — all paid through one wallet — and the government analyst sees the revenue in real time.
-**Current focus:** Phase 8 — Mobile Redesign (Wave 4 blocked on rate limit)
+**Current focus:** v2.0 milestone — defining requirements (Microservices, Multi-Channel Auth & Government Partnership)
 
 ## Current Position
 
-Phase: 8 of 8 (Mobile Redesign)
-Plan: 8 of 11 plans complete; 08-08 next, then 08-09 (EAS build, human) + 08-10 (verification checkpoint, human)
-Status: Wave 4 blocked — Anthropic subagent quota resets 2026-06-09 13:40 America/Chicago
-Last activity: 2026-06-09
-
-Progress: [█████████░] 90%
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-07-15 — Milestone v2.0 started
 
 ## Current Status
 
@@ -44,6 +41,7 @@ Progress: [█████████░] 90%
 - Phase 8: IN PROGRESS — 8/11 plans done. Waves 1+2+3 complete & pushed to origin (commit 56ba553). 08-08 (Wave 4, stay detail) blocked on rate limit. 08-09 (EAS build) + 08-10 (verification) are human checkpoints.
 
 ### Phase 8 plan ledger
+
 - [x] 08-01 — Foundations (deps + tokens + category-config + cart-store mirroring web/src/lib/cart.ts)
 - [x] 08-02 — UI primitives (NewsTicker + PressableScale + CategoryStrip + Chip)
 - [x] 08-03 — Discover NewsTicker insertion (slim additive edit)
@@ -57,6 +55,7 @@ Progress: [█████████░] 90%
 - [ ] 08-10 — Phase 8 human verification checkpoint (8 SCs)
 
 ### Known pre-existing deferred items (tracked in .planning/phases/08-mobile-redesign/deferred-items.md)
+
 - `@sentry/react-native` typecheck error in `mobile/app/_layout.tsx` (unrelated to Phase 8, pre-existed before plan dispatch)
 - Worktree-side `expo-image` / `expo-web-browser` typecheck noise is `node_modules`-related, not project-code (verified)
 
@@ -117,6 +116,8 @@ None yet.
 - **NEW (found 2026-07-13, quick task 260713-daq):** `e2e-tour-booking.e2e-spec.ts` Steps 7-11 (5/17 tests) fail due to a real dependency on live Paystack API network connectivity, which is unreliable from the sandboxed agent environment used to run this task (confirmed via debug logging: intermittent TLS socket disconnects and Paystack-side validation responses, not application bugs). Steps 1-6 were fixed and now pass deterministically (12/17 total, up from 6/17). A human operator with reliable network egress to `api.paystack.co` (e.g. the Railway deployment) should re-run the full suite to confirm true 17/17.
 - **NEW (found 2026-07-13, quick task 260713-daq):** `backend/.env` (and root `.env`) contain a **live** Paystack secret key (`sk_live_...`), not a test-mode key. Local/E2E test runs are hitting Paystack's production API. Predates this quick task; recommend rotating to test-mode keys for local/CI use.
 - Most roadmap-listed human verification checkpoints (02-06, 03-08, 04-08, 05-07, 06-06, 07-05, 08-10) have no corresponding VERIFICATION.md file on disk at all. Phase 9's `09-VERIFICATION.md` exists but is a completely blank, unfilled template despite Phase 9 being marked `[x]` complete in ROADMAP.md.
+- **DEFERRED (2026-07-15, milestone v2.0 kickoff):** v1.0 was never formally closed via `/gsd-complete-milestone` — by decision, its 8 outstanding human-verification checkpoints (02-06, 03-08, 04-08, 05-07, 06-06, 07-05, 08-09, 08-10) are being treated as known debt and deferred rather than blocking v2.0 work. Phase directories 02-09 remain on disk under `.planning/phases/` (not archived) — do not run `phases.clear` / any milestone-archival step against them without re-confirming with the user first, since v1.0 is still technically open.
+- **CORRECTED (2026-07-15):** ROADMAP.md Phase 2 marks gRPC service extraction `[x]` complete for 8 services (02-07 through 02-10b). Code audit found zero `@GrpcMethod`/`ClientGrpc` usage in `backend/src`, a single `NestFactory.create()` in `main.ts`, and only one `backend` container in `docker-compose.yml`/`railway.toml`. The `.proto` contracts under `packages/proto/` were written but never wired up — production has run as a single monolith the whole time. This is being corrected for real in milestone v2.0.
 
 ### Quick Tasks Completed
 
