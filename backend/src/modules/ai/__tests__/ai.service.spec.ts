@@ -76,7 +76,9 @@ const mockVector = {
 };
 
 const mockResilience = {
-  execute: jest.fn((_vendor: string, fn: () => any) => fn()),
+  execute: jest.fn((_vendor: string, fn: (context: { signal: AbortSignal | undefined }) => any) =>
+    fn({ signal: undefined }),
+  ),
 };
 
 const LGA_STUB = {
@@ -96,7 +98,10 @@ describe('AiService', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     mockStreamFactory = () => mockItineraryStream;
-    mockResilience.execute.mockImplementation((_vendor: string, fn: () => any) => fn());
+    mockResilience.execute.mockImplementation(
+      (_vendor: string, fn: (context: { signal: AbortSignal | undefined }) => any) =>
+        fn({ signal: undefined }),
+    );
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AiService,

@@ -276,14 +276,17 @@ Be concise, helpful, and culturally aware. Respond in the user's language (Engli
       for (let turn = 0; turn < 3; turn++) {
         // Connection-only retry boundary: resilience wraps only establishing the stream.
         // A mid-stream failure (after the first token) is never retried (RESEARCH.md).
-        const stream = await this.resilience.execute('anthropic', async () =>
-          this.anthropic.messages.stream({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 1024,
-            system: systemPrompt,
-            tools: this.TOOLS,
-            messages: messageHistory,
-          }),
+        const stream = await this.resilience.execute('anthropic', async ({ signal }) =>
+          this.anthropic.messages.stream(
+            {
+              model: 'claude-sonnet-4-20250514',
+              max_tokens: 1024,
+              system: systemPrompt,
+              tools: this.TOOLS,
+              messages: messageHistory,
+            },
+            { signal },
+          ),
         );
 
         for await (const chunk of stream) {
@@ -488,12 +491,15 @@ Respond with ONLY valid JSON matching this exact structure — no markdown, no e
 
       let fullText = '';
       // Connection-only retry boundary — see streamChatWithTools comment above.
-      const stream = await this.resilience.execute('anthropic', async () =>
-        this.anthropic.messages.stream({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 4096,
-          messages: [{ role: 'user', content: prompt }],
-        }),
+      const stream = await this.resilience.execute('anthropic', async ({ signal }) =>
+        this.anthropic.messages.stream(
+          {
+            model: 'claude-sonnet-4-20250514',
+            max_tokens: 4096,
+            messages: [{ role: 'user', content: prompt }],
+          },
+          { signal },
+        ),
       );
 
       for await (const chunk of stream) {
@@ -529,17 +535,20 @@ Respond with ONLY valid JSON matching this exact structure — no markdown, no e
     if (!lga) throw new NotFoundException(`LGA not found: ${lgaId}`);
 
     try {
-      const response = await this.resilience.execute('anthropic', () =>
-        this.anthropic.messages.create({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 512,
-          messages: [
-            {
-              role: 'user',
-              content: `LGA: ${lga.name}\nQuestion: ${question}\nProvide a concise intelligence brief for Ogun State officials.`,
-            },
-          ],
-        }),
+      const response = await this.resilience.execute('anthropic', ({ signal }) =>
+        this.anthropic.messages.create(
+          {
+            model: 'claude-sonnet-4-20250514',
+            max_tokens: 512,
+            messages: [
+              {
+                role: 'user',
+                content: `LGA: ${lga.name}\nQuestion: ${question}\nProvide a concise intelligence brief for Ogun State officials.`,
+              },
+            ],
+          },
+          { signal },
+        ),
       );
 
       return { answer: (response.content[0] as any).text, lgaId };
