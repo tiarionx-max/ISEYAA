@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AuthService } from '../auth.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { RedisService } from '../../../redis/redis.service';
+import { ResilienceService } from '../../../resilience/resilience.service';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { ConflictException, UnauthorizedException, BadRequestException, ForbiddenException } from '@nestjs/common';
@@ -35,9 +36,14 @@ const mockConfig = {
     const vals: Record<string, string> = {
       JWT_SECRET: 'test_secret',
       JWT_REFRESH_SECRET: 'test_refresh_secret',
+      TERMII_API_KEY: 'test-termii-key',
     };
     return vals[key] ?? def;
   }),
+};
+
+const mockResilience = {
+  execute: jest.fn((vendor: string, fn: () => any) => fn()),
 };
 
 describe('AuthService', () => {
@@ -45,6 +51,10 @@ describe('AuthService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    // Guard against live network calls: TERMII_API_KEY is now present in mockConfig
+    // (needed for the resilience-wrapping tests below), which means sendOtp's
+    // sendTermii() would otherwise issue a real fetch() to Termii's API on every test.
+    jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true } as any);
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
@@ -52,6 +62,7 @@ describe('AuthService', () => {
         { provide: RedisService, useValue: mockRedis },
         { provide: JwtService, useValue: mockJwt },
         { provide: ConfigService, useValue: mockConfig },
+        { provide: ResilienceService, useValue: mockResilience },
       ],
     }).compile();
     service = module.get<AuthService>(AuthService);
@@ -159,6 +170,25 @@ describe('AuthService', () => {
         expect.stringMatching(/^\d{6}:0$/),
         300,
       );
+    });
+
+    it('routes the Termii fetch call through resilience.execute with the termiiAuth vendor key', async () => {
+      mockRedis.exists.mockResolvedValue(false);
+      mockRedis.set.mockResolvedValue(undefined);
+      jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true } as any);
+
+      await service.sendOtp({ phone: '+2348012345678' });
+
+      expect(mockResilience.execute).toHaveBeenCalledWith('termiiAuth', expect.any(Function));
+    });
+
+    it('still resolves sendOtp with an "OTP sent" success message when resilience.execute rejects (circuit open) — D-03 fallback chain preserved', async () => {
+      mockRedis.exists.mockResolvedValue(false);
+      mockRedis.set.mockResolvedValue(undefined);
+      mockResilience.execute.mockRejectedValueOnce(new Error('circuit open'));
+
+      const result = await service.sendOtp({ phone: '+2348012345678' });
+      expect(result.message).toContain('OTP sent');
     });
   });
 
