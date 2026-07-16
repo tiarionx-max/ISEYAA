@@ -15,14 +15,14 @@ Sentry.init({
 });
 
 async function bootstrap() {
-  const missing = ['DATABASE_URL', 'JWT_SECRET', 'JWT_REFRESH_SECRET'].filter(k => !process.env[k]);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, new ExpressAdapter(), { rawBody: true });
+  const config = app.get(ConfigService);
+
+  const missing = ['DATABASE_URL', 'JWT_SECRET', 'JWT_REFRESH_SECRET'].filter(k => !config.get<string>(k));
   if (missing.length) {
     console.error(`FATAL: missing required environment variables: ${missing.join(', ')}`);
     process.exit(1);
   }
-
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, new ExpressAdapter(), { rawBody: true });
-  const config = app.get(ConfigService);
 
   app.use(helmet());
   app.use(compression());
