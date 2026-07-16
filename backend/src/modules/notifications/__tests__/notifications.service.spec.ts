@@ -38,7 +38,9 @@ const mockConfig = {
 };
 
 const mockResilience = {
-  execute: jest.fn((_vendor: string, fn: () => any) => fn()),
+  execute: jest.fn((_vendor: string, fn: (context: { signal: AbortSignal | undefined }) => any) =>
+    fn({ signal: undefined }),
+  ),
 };
 
 describe('NotificationsService.sendPush', () => {
@@ -50,7 +52,9 @@ describe('NotificationsService.sendPush', () => {
       if (key === 'FIREBASE_SERVICE_ACCOUNT_JSON') return SERVICE_ACCOUNT_JSON;
       return def;
     });
-    mockResilience.execute.mockImplementation((_vendor: string, fn: () => any) => fn());
+    mockResilience.execute.mockImplementation(
+      (_vendor: string, fn: (context: { signal: AbortSignal | undefined }) => any) => fn({ signal: undefined }),
+    );
     mockedAxios.post.mockResolvedValue({ data: {} });
 
     const module: TestingModule = await Test.createTestingModule({
