@@ -1,8 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ServiceUnavailableException } from '@nestjs/common';
 import { AiService } from '../ai.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { VectorService } from '../../../common/services/vector.service';
+import { ResilienceService } from '../../../resilience/resilience.service';
 
 // ── Mock helpers ──────────────────────────────────────────────────────────────
 
@@ -73,6 +75,10 @@ const mockVector = {
   getPersonalisedContext: jest.fn().mockResolvedValue(''),
 };
 
+const mockResilience = {
+  execute: jest.fn((_vendor: string, fn: () => any) => fn()),
+};
+
 const LGA_STUB = {
   id: 'lga-1',
   name: 'Abeokuta South',
@@ -90,12 +96,14 @@ describe('AiService', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     mockStreamFactory = () => mockItineraryStream;
+    mockResilience.execute.mockImplementation((_vendor: string, fn: () => any) => fn());
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AiService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: ConfigService, useValue: mockConfig },
         { provide: VectorService, useValue: mockVector },
+        { provide: ResilienceService, useValue: mockResilience },
       ],
     }).compile();
     service = module.get<AiService>(AiService);
@@ -242,6 +250,22 @@ describe('AiService', () => {
 
       expect(mockVector.getPersonalisedContext).toHaveBeenCalledWith('user-1', 'What is there to see?');
     });
+
+    it('emits the existing AI-unavailable SSE error and never retries mid-stream when the connection call itself is rejected by resilience.execute', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(USER_STUB);
+      mockResilience.execute.mockRejectedValue(new Error('circuit open'));
+
+      const res = makeSimpleRes();
+      await service.streamChatWithTools(
+        'user-1',
+        { messages: [{ role: 'user', content: 'Hi' }] } as any,
+        res as any,
+      );
+
+      expect(res.chunks.some((c: string) => c.includes('"error":"AI service unavailable"'))).toBe(true);
+      expect(res.end).toHaveBeenCalled();
+      expect(mockVector.upsertInteraction).not.toHaveBeenCalled();
+    });
   });
 
   describe('streamChatWithTools — tool_use dispatch', () => {
@@ -308,6 +332,26 @@ describe('AiService', () => {
     it('get_ride_estimate returns stub object', async () => {
       const result = await (service as any).executeTool('get_ride_estimate', { pickup: 'A', dropoff: 'B' });
       expect(result).toMatchObject({ estimateNgn: 1500, stub: true });
+    });
+  });
+
+  describe('getLgaIntelligence', () => {
+    it('returns {answer, lgaId} on success, routed through resilience.execute("anthropic", ...)', async () => {
+      mockPrisma.lGA.findUnique.mockResolvedValue(LGA_STUB);
+
+      const result = await service.getLgaIntelligence('lga-1', 'What is the tourism outlook?');
+
+      expect(result).toEqual({ answer: 'LGA intelligence answer.', lgaId: 'lga-1' });
+      expect(mockResilience.execute).toHaveBeenCalledWith('anthropic', expect.any(Function));
+    });
+
+    it('throws ServiceUnavailableException with a static message when resilience.execute rejects', async () => {
+      mockPrisma.lGA.findUnique.mockResolvedValue(LGA_STUB);
+      mockResilience.execute.mockRejectedValue(new Error('circuit open'));
+
+      await expect(service.getLgaIntelligence('lga-1', 'What is the tourism outlook?')).rejects.toThrow(
+        ServiceUnavailableException,
+      );
     });
   });
 });

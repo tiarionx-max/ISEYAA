@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { GoogleAuth, JWT } from 'google-auth-library';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ResilienceService } from '../../resilience/resilience.service';
 
 interface ServiceAccountJson {
   project_id: string;
@@ -19,6 +20,7 @@ export class NotificationsService {
   constructor(
     private prisma: PrismaService,
     private config: ConfigService,
+    private resilience: ResilienceService,
   ) {
     this.initFcm();
   }
@@ -88,21 +90,23 @@ export class NotificationsService {
         ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)]))
         : undefined;
 
-      await axios.post(
-        `https://fcm.googleapis.com/v1/projects/${this.fcmProjectId}/messages:send`,
-        {
-          message: {
-            token,
-            notification: { title, body },
-            ...(stringData && { data: stringData }),
+      await this.resilience.execute('fcm', () =>
+        axios.post(
+          `https://fcm.googleapis.com/v1/projects/${this.fcmProjectId}/messages:send`,
+          {
+            message: {
+              token,
+              notification: { title, body },
+              ...(stringData && { data: stringData }),
+            },
           },
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
           },
-        },
+        ),
       );
       return { sent: true };
     } catch (err: any) {
