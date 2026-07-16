@@ -3,19 +3,19 @@ status: testing
 phase: 11-resilience-wrapping
 source: 11-01-SUMMARY.md, 11-02-SUMMARY.md, 11-03-SUMMARY.md, 11-04-SUMMARY.md, 11-05-SUMMARY.md, 11-06-SUMMARY.md, 11-07-SUMMARY.md, 11-08-SUMMARY.md, 11-09-SUMMARY.md, 11-10-SUMMARY.md, 11-11-SUMMARY.md
 started: 2026-07-16T20:30:00Z
-updated: 2026-07-16T20:30:00Z
+updated: 2026-07-16T21:25:00Z
 ---
 
 ## Current Test
 <!-- OVERWRITE each test - shows where we are -->
 
-number: 2
-name: Single Vendor Outage Is Isolated
+number: 3
+name: Circuit-Breaker Open Event Does NOT Leak Vendor Secrets to Logs
 expected: |
-  Simulate a Paystack outage (e.g. point PAYSTACK_SECRET_KEY at an unreachable host, or
-  trigger 5+ consecutive failures) — wallet top-up/payment calls fail fast with a
-  "Paystack is temporarily unavailable" message, while unrelated features (browsing
-  events, tourism attractions, S3 uploads) continue working normally.
+  When a vendor breaker opens (e.g. after simulated Paystack failures), the application
+  log line for "Circuit breaker OPEN for paystack" contains only the vendor name and a
+  generic error message — it must NOT print the raw vendor error object, and specifically
+  must never show an Authorization header or bearer token value in the log output.
 awaiting: user response
 
 ## Tests
@@ -26,7 +26,52 @@ result: PASSED (initially only after workarounds; both root-cause bugs have sinc
 
 ### 2. Single Vendor Outage Is Isolated
 expected: Simulate a Paystack outage (e.g. point PAYSTACK_SECRET_KEY at an unreachable host, or trigger 5+ consecutive failures) — wallet top-up/payment calls fail fast with a "Paystack is temporarily unavailable" message, while unrelated features (browsing events, tourism attractions, S3 uploads) continue working normally.
-result: [pending]
+result: |
+  PASSED, via two complementary checks (see note on methodology below).
+
+  Live E2E (isolated backend instance on port 3098, real DB, `PAYSTACK_SECRET_KEY`
+  overridden to a garbage value for that one process launch only — root `.env` untouched,
+  the existing dev instance on port 3001 was left running undisturbed): registered a test
+  user, then fired 7 consecutive `POST /wallet/topup` calls. All 7 returned `503` with
+  exactly `"Paystack is temporarily unavailable, please try again shortly"` in ~150-350ms
+  each (no hang). In the same run, unrelated endpoints stayed fully healthy on 200s with
+  live data: `GET /lgas`, `GET /attractions`, `GET /events`, `GET /users/me`, and
+  `GET /wallet/balance` (wallet *reads* are unaffected — only the Paystack-backed write
+  path fails). Confirmed via backend log that every one of the 7 calls made a real live
+  HTTP round-trip to `api.paystack.co` and got a genuine `401 Invalid key` back each time.
+
+  Automated (`backend/src/resilience/__tests__/vendor-outage-isolation.spec.ts`, all 4
+  tests passing): proves the other half of the criterion that the live 401 method above
+  cannot — the actual circuit-breaker fail-fast behavior. Using the real `ResilienceService`
+  (only Prisma mocked) fed 5 consecutive *transient* (HTTP 500) failures, confirms the
+  paystack breaker opens at exactly `failureThreshold` (5), that calls 6+ reject
+  immediately WITHOUT invoking the vendor function again, and that the S3 policy on the
+  same `ResilienceService` instance is completely unaffected and keeps succeeding
+  throughout — direct proof of cross-vendor isolation.
+
+  Methodology note: the UAT wording's first suggested method ("point PAYSTACK_SECRET_KEY
+  at an unreachable host") isn't actually possible as written —
+  `backend/src/common/services/paystack.service.ts` hardcodes
+  `baseUrl = 'https://api.paystack.co'`; the secret key and the target host are
+  independent, and there's no env var for the URL. Separately, `isTransientError()` in
+  `resilience.service.ts` deliberately excludes HTTP 401 (bad credentials) from breaker
+  accounting — by design, only 408/429/5xx and network-level errors count, so credential
+  errors alone never open the breaker or prove the fail-fast-without-network-call
+  behavior. Used the two checks above together instead of one live call that couldn't
+  cover both halves.
+
+  Skipped a live S3 upload as the "unrelated feature" proof for S3 specifically, to avoid
+  writing a real object to the AWS bucket configured in `.env` without explicit
+  authorization (that `.env` has previously-flagged live-looking credentials — see the
+  Note below). S3 isolation is instead covered by the automated test above, which proves
+  cross-vendor isolation at the `ResilienceService` layer without any real AWS call.
+
+  Side observation for Test 3: while running the automated test, `ResilienceService`'s
+  `onBreak` handler logged the raw `reason.error` object as the second arg to
+  `logger.error()` (visible in test output as `Object(1) { response: { status: 500 } }`).
+  Worth checking directly with a realistic axios-error shape (which includes
+  `config.headers.Authorization`) when Test 3 runs, rather than assuming the mocked
+  `{ response: { status: 500 } }` shape used here is representative.
 
 ### 3. Circuit-Breaker Open Event Does NOT Leak Vendor Secrets to Logs
 expected: When a vendor breaker opens (e.g. after simulated Paystack failures), the application log line for "Circuit breaker OPEN for paystack" contains only the vendor name and a generic error message — it must NOT print the raw vendor error object, and specifically must never show an Authorization header or bearer token value in the log output.
@@ -47,9 +92,9 @@ result: [pending]
 ## Summary
 
 total: 6
-passed: 1
+passed: 2
 issues: 0
-pending: 5
+pending: 4
 skipped: 0
 blocked: 0
 
