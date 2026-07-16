@@ -1,9 +1,10 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
 import { Response } from 'express';
 import { PrismaService } from '../../prisma/prisma.service';
 import { VectorService } from '../../common/services/vector.service';
+import { ResilienceService } from '../../resilience/resilience.service';
 import { ItineraryDto } from './dto/itinerary.dto';
 import { ChatDto } from './dto/chat.dto';
 
@@ -89,8 +90,11 @@ export class AiService {
     private prisma: PrismaService,
     private config: ConfigService,
     private vector: VectorService, // injected from CommonModule (@Global)
+    private resilience: ResilienceService,
   ) {
-    this.anthropic = new Anthropic({ apiKey: config.get('ANTHROPIC_API_KEY') ?? 'dummy' });
+    // maxRetries: 0 — cockatiel is the single source of retry truth for this vendor
+    // (RESEARCH.md Pitfall 3: avoid compounding SDK retries with cockatiel retries).
+    this.anthropic = new Anthropic({ apiKey: config.get('ANTHROPIC_API_KEY') ?? 'dummy', maxRetries: 0 });
   }
 
   // ── System prompt ──────────────────────────────────────────────────────────
@@ -270,13 +274,17 @@ Be concise, helpful, and culturally aware. Respond in the user's language (Engli
       let accumulatedText = '';
 
       for (let turn = 0; turn < 3; turn++) {
-        const stream = await this.anthropic.messages.stream({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1024,
-          system: systemPrompt,
-          tools: this.TOOLS,
-          messages: messageHistory,
-        });
+        // Connection-only retry boundary: resilience wraps only establishing the stream.
+        // A mid-stream failure (after the first token) is never retried (RESEARCH.md).
+        const stream = await this.resilience.execute('anthropic', async () =>
+          this.anthropic.messages.stream({
+            model: 'claude-sonnet-4-20250514',
+            max_tokens: 1024,
+            system: systemPrompt,
+            tools: this.TOOLS,
+            messages: messageHistory,
+          }),
+        );
 
         for await (const chunk of stream) {
           if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
@@ -479,11 +487,14 @@ Respond with ONLY valid JSON matching this exact structure — no markdown, no e
       sendEvent('status', { message: 'Generating your itinerary…' });
 
       let fullText = '';
-      const stream = await this.anthropic.messages.stream({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4096,
-        messages: [{ role: 'user', content: prompt }],
-      });
+      // Connection-only retry boundary — see streamChatWithTools comment above.
+      const stream = await this.resilience.execute('anthropic', async () =>
+        this.anthropic.messages.stream({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 4096,
+          messages: [{ role: 'user', content: prompt }],
+        }),
+      );
 
       for await (const chunk of stream) {
         if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
@@ -517,17 +528,25 @@ Respond with ONLY valid JSON matching this exact structure — no markdown, no e
     // M-06: throw 404 instead of silently substituting lgaId as the name
     if (!lga) throw new NotFoundException(`LGA not found: ${lgaId}`);
 
-    const response = await this.anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 512,
-      messages: [
-        {
-          role: 'user',
-          content: `LGA: ${lga.name}\nQuestion: ${question}\nProvide a concise intelligence brief for Ogun State officials.`,
-        },
-      ],
-    });
+    try {
+      const response = await this.resilience.execute('anthropic', () =>
+        this.anthropic.messages.create({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 512,
+          messages: [
+            {
+              role: 'user',
+              content: `LGA: ${lga.name}\nQuestion: ${question}\nProvide a concise intelligence brief for Ogun State officials.`,
+            },
+          ],
+        }),
+      );
 
-    return { answer: (response.content[0] as any).text, lgaId };
+      return { answer: (response.content[0] as any).text, lgaId };
+    } catch (err) {
+      // T-11-01: never surface raw Anthropic error body/message — static string only.
+      this.logger.error('LGA intelligence request failed', err);
+      throw new ServiceUnavailableException('AI service is temporarily unavailable, please try again shortly');
+    }
   }
 }
