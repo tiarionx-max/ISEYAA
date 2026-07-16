@@ -25,7 +25,7 @@ Sprint 1 is shipped. This roadmap covers the six remaining sprints: infrastructu
 - [x] **Phase 8: Mobile Redesign** - Bring mobile app in line with the redesigned web (Airbnb-style stays, Temu-style marketplace, host onboarding, news ticker), complete the 5-tab migration, and ship a fresh EAS preview build
 - [x] **Phase 9: Tour Packages & Tour Guides** - Sell complete Ogun State experiences (curated multi-vendor packages) and onboard certified Tour Guides as a first-class role, with multi-vendor commission splitting on a single buyer payment
 - [x] **Phase 10: Documentation Correction + gRPC Build Fix** - Correct the false "8 services extracted" claim, make all 8 service scaffolds actually build, and author `.proto` contracts for the 7 never-stubbed modules (completed 2026-07-15)
-- [ ] **Phase 11: Resilience Wrapping** - Circuit-breaker + retry + timeout + fallback around every external vendor call (Paystack, Termii, Anthropic, R2/S3, FCM), visible in observability
+- [x] **Phase 11: Resilience Wrapping** - Circuit-breaker + retry + timeout + fallback around every external vendor call (Paystack, Termii, Anthropic, R2/S3, FCM), visible in observability (completed 2026-07-16)
 - [ ] **Phase 12: Settlement Engine Foundation** - Generalized `SettlementService` + standing Ministry wallet, plus fixing two pre-existing revenue bugs (Stays escrow fee leak, missing Marketplace/Events/Studio webhook consumers)
 - [ ] **Phase 13: Settlement Cutover — Transport & Delivery** - Transport and Delivery's live payouts move onto the three-way settlement engine, shadow-mode verified before cutover
 - [ ] **Phase 14: Ministry Dashboard** - `MINISTRY_VIEWER` role + read-only dashboard: visitor counts, purpose-of-visit, revenue-to-government-share, CSV/PDF export, zero PII leakage
@@ -423,7 +423,7 @@ Plans:
 - [x] 11-04-PLAN.md — Termii wrapped independently in auth.service.ts and delivery.service.ts (D-08, no consolidation)
 
 **Wave 3** *(blocked on Wave 2)*
-- [ ] 11-05-PLAN.md — Cross-vendor circuit isolation test (success criterion 2 proof) + full-suite regression gate
+- [x] 11-05-PLAN.md — Cross-vendor circuit isolation test (success criterion 2 proof) + full-suite regression gate
 
 **Cross-cutting constraints:**
 - `cockatiel@^3.2.1` pinned exactly — never the unpinned `4.0.0` (Node>=22/ESM-only)
@@ -525,7 +525,7 @@ Phases 11, 12 (Settlement Foundation), and 15 (WhatsApp OTP) are independent of 
 | 8. Mobile Redesign | 10/11 | In Progress (08-09 EAS build queued, 08-10 human verification pending) | - |
 | 9. Tour Packages & Tour Guides | 12/13 | In Progress (09-13 human checkpoint pending) | - |
 | 10. Documentation Correction + gRPC Build Fix | 3/3 | Complete    | 2026-07-15 |
-| 11. Resilience Wrapping | 4/5 | In Progress|  |
+| 11. Resilience Wrapping | 5/5 | Complete   | 2026-07-16 |
 | 12. Settlement Engine Foundation | 0/0 | Not started | - |
 | 13. Settlement Cutover — Transport & Delivery | 0/0 | Not started | - |
 | 14. Ministry Dashboard | 0/0 | Not started | - |
