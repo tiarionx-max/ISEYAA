@@ -52,14 +52,17 @@ export class ResilienceService implements OnModuleInit {
 
       const composed = wrap(
         breaker,
-        timeout(cfg.timeoutMs, TimeoutStrategy.Aggressive),
         retry(handleWhen(isTransientError), {
+          // CR-01 fix (11-REVIEW.md / 11-VERIFICATION.md): retry MUST be passed before
+          // timeout in wrap(...) so timeout is the innermost policy, applied fresh to
+          // EACH individual attempt — not once around the whole retry+backoff sequence.
           // cockatiel maxAttempts = retries AFTER the first call; total calls = 1 + retryCount.
           // paystackRefund's retryCount: 0 naturally makes this a zero-attempt no-op —
           // no special-case code needed (RESEARCH.md Pitfall 6).
           maxAttempts: cfg.retryCount,
           backoff: new ExponentialBackoff({ initialDelay: 200, maxDelay: 3_000 }),
         }),
+        timeout(cfg.timeoutMs, TimeoutStrategy.Aggressive),
       );
 
       this.policies.set(vendor, { execute: composed.execute.bind(composed), breaker });
