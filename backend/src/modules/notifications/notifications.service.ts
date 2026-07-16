@@ -90,7 +90,7 @@ export class NotificationsService {
         ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)]))
         : undefined;
 
-      await this.resilience.execute('fcm', () =>
+      await this.resilience.execute('fcm', ({ signal }) =>
         axios.post(
           `https://fcm.googleapis.com/v1/projects/${this.fcmProjectId}/messages:send`,
           {
@@ -105,6 +105,7 @@ export class NotificationsService {
               Authorization: `Bearer ${accessToken}`,
               'Content-Type': 'application/json',
             },
+            signal,
           },
         ),
       );

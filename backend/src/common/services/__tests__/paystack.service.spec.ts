@@ -12,7 +12,9 @@ const mockedAxios = axios as jest.Mocked<typeof axios>;
 // resilience.service.spec.ts; this file tests PaystackService's own error-mapping
 // and vendor-key routing.
 const mockResilience = {
-  execute: jest.fn((vendor: string, fn: () => any) => fn()),
+  execute: jest.fn((vendor: string, fn: (context: { signal: AbortSignal | undefined }) => any) =>
+    fn({ signal: undefined }),
+  ),
 };
 
 const mockConfig = {
@@ -26,7 +28,9 @@ describe('PaystackService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    mockResilience.execute.mockImplementation((vendor: string, fn: () => any) => fn());
+    mockResilience.execute.mockImplementation(
+      (vendor: string, fn: (context: { signal: AbortSignal | undefined }) => any) => fn({ signal: undefined }),
+    );
     mockConfig.get.mockImplementation(
       (key: string, def?: unknown) => ({ PAYSTACK_SECRET_KEY: 'sk_test_xxx' } as Record<string, unknown>)[key] ?? def,
     );
@@ -69,6 +73,22 @@ describe('PaystackService', () => {
       await service.initiatePayment({ email: 'a@b.com', amountKobo: 1000, reference: 'ref123' });
 
       expect(mockResilience.execute).toHaveBeenCalledWith('paystack', expect.any(Function));
+    });
+
+    it('Test 7: forwards the EXACT AbortSignal instance cockatiel provides into axios.post config (reference-identity, not just presence)', async () => {
+      mockedAxios.post.mockResolvedValue({
+        data: { data: { authorization_url: 'https://paystack.co/pay/xyz', access_code: 'code123', reference: 'ref123' } },
+      });
+
+      const controller = new AbortController();
+      mockResilience.execute.mockImplementationOnce(
+        (vendor: string, fn: (context: { signal: AbortSignal | undefined }) => any) =>
+          fn({ signal: controller.signal }),
+      );
+
+      await service.initiatePayment({ email: 'a@b.com', amountKobo: 1000, reference: 'ref123' });
+
+      expect(mockedAxios.post.mock.calls[0][2]?.signal).toBe(controller.signal);
     });
   });
 

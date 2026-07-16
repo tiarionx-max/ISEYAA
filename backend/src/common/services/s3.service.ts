@@ -72,7 +72,7 @@ export class S3Service {
     }
 
     try {
-      await this.resilience.execute('s3', () =>
+      await this.resilience.execute('s3', ({ signal }) =>
         this.s3.send(
           new PutObjectCommand({
             Bucket: this.bucket,
@@ -81,6 +81,7 @@ export class S3Service {
             ContentType: contentType,
             ...(this.mode === 'aws' && { ACL: 'public-read' as const }),
           }),
+          { abortSignal: signal },
         ),
       );
 

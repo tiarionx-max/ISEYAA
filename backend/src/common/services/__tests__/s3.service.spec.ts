@@ -35,7 +35,9 @@ const mockConfig = {
 // Default pass-through resilience mock — circuit-breaker mechanics are tested in
 // resilience.service.spec.ts; this file tests S3Service's own error-mapping.
 const mockResilience = {
-  execute: jest.fn((vendor: string, fn: () => any) => fn()),
+  execute: jest.fn((vendor: string, fn: (context: { signal: AbortSignal | undefined }) => any) =>
+    fn({ signal: undefined }),
+  ),
 };
 
 describe('S3Service', () => {
@@ -44,7 +46,9 @@ describe('S3Service', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     capturedS3Config = {};
-    mockResilience.execute.mockImplementation((vendor: string, fn: () => any) => fn());
+    mockResilience.execute.mockImplementation(
+      (vendor: string, fn: (context: { signal: AbortSignal | undefined }) => any) => fn({ signal: undefined }),
+    );
     // Reset mock to re-capture constructor args on each test
     const { S3Client } = jest.requireMock('@aws-sdk/client-s3');
     S3Client.mockImplementation((config: Record<string, unknown>) => {
