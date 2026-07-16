@@ -184,6 +184,22 @@ describe('AuthService', () => {
       expect(mockResilience.execute).toHaveBeenCalledWith('termiiAuth', expect.any(Function));
     });
 
+    it("forwards the exact AbortSignal instance into fetch()'s init object (reference-identity, mirrors paystack.service.spec.ts Test 7)", async () => {
+      mockRedis.exists.mockResolvedValue(false);
+      mockRedis.set.mockResolvedValue(undefined);
+
+      const controller = new AbortController();
+      mockResilience.execute.mockImplementationOnce(
+        (vendor: string, fn: (context: { signal: AbortSignal | undefined }) => any) =>
+          fn({ signal: controller.signal }),
+      );
+      jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true } as any);
+
+      await service.sendOtp({ phone: '+2348012345678' });
+
+      expect((global.fetch as jest.Mock).mock.calls[0][1]?.signal).toBe(controller.signal);
+    });
+
     it('still resolves sendOtp with an "OTP sent" success message when resilience.execute rejects (circuit open) — D-03 fallback chain preserved', async () => {
       mockRedis.exists.mockResolvedValue(false);
       mockRedis.set.mockResolvedValue(undefined);
