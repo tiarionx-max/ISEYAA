@@ -21,6 +21,7 @@ const mockedAxios = axios as jest.Mocked<typeof axios>;
 const mockPrisma = {
   user: {
     findUnique: jest.fn(),
+    update: jest.fn(),
   },
 };
 
@@ -116,5 +117,59 @@ describe('NotificationsService.sendPush', () => {
       sent: false,
       reason: 'send_failed',
     });
+  });
+
+});
+
+describe('NotificationsService.registerToken', () => {
+  let service: NotificationsService;
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    mockConfig.get.mockImplementation((key: string, def?: unknown) => {
+      if (key === 'FIREBASE_SERVICE_ACCOUNT_JSON') return SERVICE_ACCOUNT_JSON;
+      return def;
+    });
+    mockResilience.execute.mockImplementation(
+      (_vendor: string, fn: (context: { signal: AbortSignal | undefined }) => any) => fn({ signal: undefined }),
+    );
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        NotificationsService,
+        { provide: PrismaService, useValue: mockPrisma },
+        { provide: ConfigService, useValue: mockConfig },
+        { provide: ResilienceService, useValue: mockResilience },
+      ],
+    }).compile();
+
+    service = module.get<NotificationsService>(NotificationsService);
+  });
+
+  it('Test 1: merges the new fcmToken into existing metadata, preserving pre-existing keys', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: 'user-1',
+      metadata: { preferences: { theme: 'dark' } },
+    });
+
+    await service.registerToken('user-1', 'new-fcm-token');
+
+    expect(mockPrisma.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { metadata: { preferences: { theme: 'dark' }, fcmToken: 'new-fcm-token' } },
+      }),
+    );
+  });
+
+  it('Test 2: writes just { fcmToken } when there is no prior metadata (null), without crashing', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'user-1', metadata: null });
+
+    await service.registerToken('user-1', 'new-fcm-token');
+
+    expect(mockPrisma.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { metadata: { fcmToken: 'new-fcm-token' } },
+      }),
+    );
   });
 });
