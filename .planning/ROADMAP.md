@@ -415,7 +415,7 @@ Plans:
 **Plans**: 5 plans
 Plans:
 **Wave 1**
-- [ ] 11-01-PLAN.md — ResilienceService foundation: cockatiel@3.2.1 pinned install, per-vendor cached policy registry (7 vendors incl. paystackRefund), PlatformConfig thresholds, Sentry+OTel wiring, global module registration
+- [x] 11-01-PLAN.md — ResilienceService foundation: cockatiel@3.2.1 pinned install, per-vendor cached policy registry (7 vendors incl. paystackRefund), PlatformConfig thresholds, Sentry+OTel wiring, global module registration
 
 **Wave 2** *(blocked on Wave 1, parallel)*
 - [ ] 11-02-PLAN.md — Paystack (initiatePayment/resolveBvn/refundCharge) + S3/R2 upload wrapped
@@ -525,7 +525,7 @@ Phases 11, 12 (Settlement Foundation), and 15 (WhatsApp OTP) are independent of 
 | 8. Mobile Redesign | 10/11 | In Progress (08-09 EAS build queued, 08-10 human verification pending) | - |
 | 9. Tour Packages & Tour Guides | 12/13 | In Progress (09-13 human checkpoint pending) | - |
 | 10. Documentation Correction + gRPC Build Fix | 3/3 | Complete    | 2026-07-15 |
-| 11. Resilience Wrapping | 0/5 | Planned | - |
+| 11. Resilience Wrapping | 1/5 | In Progress|  |
 | 12. Settlement Engine Foundation | 0/0 | Not started | - |
 | 13. Settlement Cutover — Transport & Delivery | 0/0 | Not started | - |
 | 14. Ministry Dashboard | 0/0 | Not started | - |
