@@ -99,3 +99,7 @@ None - no external service configuration required.
 ---
 *Phase: 11-resilience-wrapping*
 *Completed: 2026-07-16*
+
+## Self-Check: PASSED
+
+All 6 modified source/spec files and the SUMMARY.md confirmed present on disk. All 3 task/summary commit hashes (`e5f107c`, `1f5f623`, `44c5d24`) confirmed present in `git log --all`.
