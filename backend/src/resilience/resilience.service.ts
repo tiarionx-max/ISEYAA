@@ -111,23 +111,27 @@ export class ResilienceService implements OnModuleInit {
   // ── Observability: breaker state transitions → OTel span + Sentry (D-09/D-10/D-11) ──────
 
   private onBreak(vendor: Vendor, reason: { error?: unknown; value?: unknown; isolated?: boolean }): void {
+    const safeReason = reason.isolated ? 'isolated' : reason.error ? summarizeVendorError(reason.error) : 'bad_result';
+
     // acquire the tracer at call-time (not module load) per OTel manual-instrumentation guidance
     const tracer = trace.getTracer('iseyaa-resilience');
     const span = tracer.startSpan('resilience.circuit_breaker.state_change', {
       attributes: {
         'resilience.vendor': vendor,
         'resilience.breaker.state': 'open',
-        'resilience.breaker.reason': reason.isolated
-          ? 'isolated'
-          : reason.error
-            ? String((reason.error as Error)?.message ?? reason.error)
-            : 'bad_result',
+        'resilience.breaker.reason': safeReason,
       },
     });
     span.setStatus({ code: SpanStatusCode.ERROR, message: `${vendor} circuit breaker opened` });
     span.end(); // short-lived "event" span — state transitions are instantaneous
 
-    this.logger.error(`Circuit breaker OPEN for ${vendor}`, reason.error as any);
+    // T-11-03 / D-09: log the vendor name + a safe reason summary only. The raw
+    // vendor error (an axios error, when the vendor is HTTP-backed) carries
+    // `error.config.headers.Authorization` and full request/response bodies —
+    // passing it directly to Logger.error() would print the vendor's bearer
+    // token/API key to stdout/stderr and any log aggregator. NEVER pass
+    // `reason.error` itself here.
+    this.logger.error(`Circuit breaker OPEN for ${vendor}: ${safeReason}`);
 
     // D-09: circuit-open is alert-worthy; captured explicitly since no global exception
     // filter is registered (D-11). Never interpolate raw request/response payloads here —
@@ -175,6 +179,20 @@ function positiveInt(raw: unknown, fallback: number): number {
 function nonNegativeInt(raw: unknown, fallback: number): number {
   const n = Number(raw);
   return Number.isFinite(n) && Number.isInteger(n) && n >= 0 ? n : fallback;
+}
+
+/**
+ * Reduces any vendor error (axios error, network error, plain Error, or an
+ * unknown thrown value) to a short safe string for logs/spans: an HTTP status
+ * code and/or error code/message class, never headers, request/response
+ * bodies, or anything that could carry a secret (T-11-03).
+ */
+function summarizeVendorError(err: unknown): string {
+  const status = (err as any)?.response?.status;
+  const code = (err as any)?.code;
+  const message = typeof (err as Error)?.message === 'string' ? (err as Error).message : null;
+  const parts = [status ? `status=${status}` : null, code ? `code=${code}` : null, message].filter(Boolean);
+  return parts.length > 0 ? parts.join(' ') : 'vendor error (no further detail)';
 }
 
 /**

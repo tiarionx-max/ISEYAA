@@ -3,19 +3,15 @@ status: testing
 phase: 11-resilience-wrapping
 source: 11-01-SUMMARY.md, 11-02-SUMMARY.md, 11-03-SUMMARY.md, 11-04-SUMMARY.md, 11-05-SUMMARY.md, 11-06-SUMMARY.md, 11-07-SUMMARY.md, 11-08-SUMMARY.md, 11-09-SUMMARY.md, 11-10-SUMMARY.md, 11-11-SUMMARY.md
 started: 2026-07-16T20:30:00Z
-updated: 2026-07-16T21:25:00Z
+updated: 2026-07-16T21:49:03Z
 ---
 
 ## Current Test
 <!-- OVERWRITE each test - shows where we are -->
 
-number: 3
-name: Circuit-Breaker Open Event Does NOT Leak Vendor Secrets to Logs
-expected: |
-  When a vendor breaker opens (e.g. after simulated Paystack failures), the application
-  log line for "Circuit breaker OPEN for paystack" contains only the vendor name and a
-  generic error message — it must NOT print the raw vendor error object, and specifically
-  must never show an Authorization header or bearer token value in the log output.
+number: 4
+name: FCM Token Registration Preserves Existing Profile Data
+expected: A user with existing metadata (e.g. saved preferences) registers a new FCM push token. After registration, the previously-saved preference data is still present on the user record — not wiped out by the token write.
 awaiting: user response
 
 ## Tests
@@ -75,7 +71,37 @@ result: |
 
 ### 3. Circuit-Breaker Open Event Does NOT Leak Vendor Secrets to Logs
 expected: When a vendor breaker opens (e.g. after simulated Paystack failures), the application log line for "Circuit breaker OPEN for paystack" contains only the vendor name and a generic error message — it must NOT print the raw vendor error object, and specifically must never show an Authorization header or bearer token value in the log output.
-result: [pending]
+result: |
+  ISSUE FOUND, then FIXED (commit pending). This was the exact bug flagged as a side
+  observation during Test 2: `ResilienceService.onBreak()` at `resilience.service.ts:130`
+  called `this.logger.error(\`Circuit breaker OPEN for ${vendor}\`, reason.error as any)` —
+  passing the *raw* vendor error object as the second arg to NestJS's `Logger.error()`.
+
+  Reproduced with a realistic axios-error shape (matching exactly what
+  `paystack.service.ts` throws on a real HTTP failure: `error.config.headers.Authorization
+  = 'Bearer <secret>'`, plus `error.config.data` with the request body). Confirmed via a
+  spied `Logger.prototype.error` and the real `ConsoleLogger` stderr output that NestJS's
+  default logger prints the ENTIRE object on a second line — `Authorization: Bearer
+  sk_live_...` in full, plus the request body (customer email + amount). This would have
+  put every vendor's live secret key into stdout/stderr and any downstream log aggregator
+  the first time a breaker opened in production.
+
+  Fix applied in `backend/src/resilience/resilience.service.ts`: added a
+  `summarizeVendorError()` helper that reduces any vendor error to `status=<n>
+  code=<code> <message>` — never headers, request/response bodies, or the raw object —
+  and reused it for both the OTel span attribute (previously only inlined for the span,
+  now shared) and the log line, which now reads `Circuit breaker OPEN for paystack:
+  status=500 code=ERR_BAD_RESPONSE Request failed with status code 500` with zero secret
+  material. `logger.error()` no longer receives `reason.error` as an argument at all.
+
+  Added a permanent regression test in `resilience.service.spec.ts` ("never logs the raw
+  vendor error — a realistic axios error with an Authorization header must not reach
+  Logger.error (UAT Test 3)") that feeds the same realistic axios-error shape and asserts
+  the bearer token, the literal string "Authorization", and the request body never appear
+  anywhere in the arguments passed to `Logger.error()`. Full resilience suite (19 tests)
+  and full backend suite (444 tests) pass after the fix; one unrelated pre-existing
+  failure (`tour-guides.service.spec.ts` fails to even load due to a missing native
+  `detect-libc` module for `bcrypt` in this environment) is untouched by this change.
 
 ### 4. FCM Token Registration Preserves Existing Profile Data
 expected: A user with existing metadata (e.g. saved preferences) registers a new FCM push token. After registration, the previously-saved preference data is still present on the user record — not wiped out by the token write.
@@ -92,13 +118,38 @@ result: [pending]
 ## Summary
 
 total: 6
-passed: 2
+passed: 3
 issues: 0
-pending: 4
+pending: 3
 skipped: 0
 blocked: 0
 
 ## Gaps
+
+### Gap 3 (RESOLVED): Circuit-breaker open events logged the raw vendor error, including Authorization headers and request bodies
+found_in: Test 3 (Circuit-Breaker Open Event Does NOT Leak Vendor Secrets to Logs)
+description: |
+  `ResilienceService.onBreak()` in `backend/src/resilience/resilience.service.ts` called
+  `this.logger.error(\`Circuit breaker OPEN for ${vendor}\`, reason.error as any)` — the
+  raw vendor error object was passed directly as the second argument to NestJS's
+  `Logger.error()`. Reproduced with a realistic axios-error shape matching what
+  `paystack.service.ts` actually throws (`error.config.headers.Authorization` set to a
+  bearer secret), plus the request body. NestJS's default `ConsoleLogger` prints that entire
+  object on a second output line, so the vendor's live bearer token/API key and the
+  request payload would be written to stdout/stderr — and any log aggregator ingesting
+  it — the first time any vendor's breaker opened in production. This was foreshadowed as
+  a side observation during Test 2 (mocked error shape hid the leak; the realistic shape
+  exposed it).
+resolution: |
+  Added `summarizeVendorError()` to `resilience.service.ts`, reducing any vendor error to
+  a plain `status=... code=... message` string only — never headers, request/response
+  bodies, or the raw object. Reused it for both the OTel span's `resilience.breaker.reason`
+  attribute and the log line; `Logger.error()` no longer receives `reason.error` at all.
+  Added a permanent regression test in `resilience.service.spec.ts` that feeds the same
+  realistic axios-error shape and asserts the bearer token, the literal string
+  "Authorization", and the request body never appear in any argument passed to
+  `Logger.error()`. Full resilience suite (19 tests) and full backend suite (444 tests)
+  pass after the fix.
 
 ### Gap 1 (RESOLVED): deleteOutDir + stale TypeScript incremental cache crashes every backend restart
 found_in: Test 1 (Cold Start Smoke Test)

@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RESILIENCE_DEFAULTS } from '../resilience.types';
 
@@ -292,6 +293,51 @@ describe('ResilienceService', () => {
       );
       expect(spanOptions.attributes['resilience.vendor']).toBe('paystack');
       expect(spanOptions.attributes['resilience.breaker.state']).toBe('open');
+    });
+
+    it('never logs the raw vendor error — a realistic axios error with an Authorization header must not reach Logger.error (UAT Test 3)', async () => {
+      await service.onModuleInit();
+
+      const errorSpy = jest.spyOn(Logger.prototype, 'error');
+
+      const realisticAxiosError = {
+        message: 'Request failed with status code 500',
+        name: 'AxiosError',
+        code: 'ERR_BAD_RESPONSE',
+        config: {
+          url: 'https://api.paystack.co/transaction/initialize',
+          method: 'post',
+          headers: { Authorization: 'Bearer sk_live_SECRET_TOKEN', 'Content-Type': 'application/json' },
+          data: JSON.stringify({ email: 'user@test.com', amount: 5000 }),
+        },
+        request: {},
+        response: { status: 500, data: { message: 'Internal Server Error' }, headers: {} },
+        isAxiosError: true,
+      };
+
+      const fn = jest.fn().mockRejectedValue(realisticAxiosError);
+      const { failureThreshold } = RESILIENCE_DEFAULTS.paystack;
+
+      for (let i = 0; i < failureThreshold + 1; i++) {
+        try {
+          await service.execute('paystack', fn);
+        } catch {
+          // expected
+        }
+      }
+
+      const breakCall = errorSpy.mock.calls.find((c) => String(c[0]).includes('Circuit breaker OPEN'));
+      expect(breakCall).toBeDefined();
+
+      // The message itself must name the vendor and stay generic — no secrets, ever.
+      expect(breakCall![0]).toContain('paystack');
+
+      // Every argument passed to logger.error, stringified, must never contain the
+      // bearer token, the raw Authorization header, or the request body.
+      const serializedArgs = JSON.stringify(breakCall);
+      expect(serializedArgs).not.toContain('sk_live_SECRET_TOKEN');
+      expect(serializedArgs).not.toContain('Authorization');
+      expect(serializedArgs).not.toContain('user@test.com');
     });
   });
 });
