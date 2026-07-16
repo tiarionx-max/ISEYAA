@@ -43,7 +43,9 @@ const mockConfig = {
 };
 
 const mockResilience = {
-  execute: jest.fn((vendor: string, fn: () => any) => fn()),
+  execute: jest.fn((vendor: string, fn: (context: { signal: AbortSignal | undefined }) => any) =>
+    fn({ signal: undefined }),
+  ),
 };
 
 describe('AuthService', () => {

@@ -299,7 +299,7 @@ export class AuthService {
       const from = (whatsappSender ?? smsSender) || 'N-Alert';
 
       try {
-        const response = await this.resilience.execute('termiiAuth', () =>
+        const response = await this.resilience.execute('termiiAuth', ({ signal }) =>
           fetch('https://v3.api.termii.com/api/sms/send', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -311,6 +311,7 @@ export class AuthService {
               channel,
               api_key: termiiKey,
             }),
+            signal,
           }),
         );
         if (response.ok) {
