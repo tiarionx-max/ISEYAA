@@ -38,7 +38,7 @@ export class PaystackService {
     this.logger.log(`Paystack initiate: ref=${reference} amount=${amountKobo} keyPrefix=${secretKey.slice(0, 8)}…`);
 
     try {
-      const response = await this.resilience.execute('paystack', () =>
+      const response = await this.resilience.execute('paystack', ({ signal }) =>
         axios.post(
           `${this.baseUrl}/transaction/initialize`,
           {
@@ -48,7 +48,7 @@ export class PaystackService {
             metadata,
             ...(callbackUrl && { callback_url: callbackUrl }),
           },
-          { headers: { Authorization: `Bearer ${secretKey}` } },
+          { headers: { Authorization: `Bearer ${secretKey}` }, signal },
         ),
       );
 
@@ -72,9 +72,10 @@ export class PaystackService {
 
     try {
       // Never log the BVN value — only log errors
-      const response = await this.resilience.execute('paystack', () =>
+      const response = await this.resilience.execute('paystack', ({ signal }) =>
         axios.get(`${this.baseUrl}/bank/resolve_bvn/${bvn}`, {
           headers: { Authorization: `Bearer ${secretKey}` },
+          signal,
         }),
       );
 
@@ -123,9 +124,10 @@ export class PaystackService {
     if (reason) body.customer_note = reason;
 
     try {
-      const { data } = await this.resilience.execute('paystackRefund', () =>
+      const { data } = await this.resilience.execute('paystackRefund', ({ signal }) =>
         axios.post(`${this.baseUrl}/transaction/refund`, body, {
           headers: { Authorization: `Bearer ${secretKey}`, 'Content-Type': 'application/json' },
+          signal,
         }),
       );
       return {
