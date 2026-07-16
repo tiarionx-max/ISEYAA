@@ -1,15 +1,35 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ServiceUnavailableException } from '@nestjs/common';
+import Anthropic from '@anthropic-ai/sdk';
 import { AiService } from '../ai.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { VectorService } from '../../../common/services/vector.service';
 import { ResilienceService } from '../../../resilience/resilience.service';
 
+// Real ResilienceService (used by the CR-01 gap-closure regression describe below)
+// pulls in Sentry/OTel — mock both so the real-instance test module below can
+// construct ResilienceService without side effects (mirrors
+// retry-timeout-composition.spec.ts / resilience.service.spec.ts).
+jest.mock('@sentry/nestjs', () => ({
+  captureMessage: jest.fn(),
+  captureException: jest.fn(),
+}));
+
+jest.mock('@opentelemetry/api', () => ({
+  trace: {
+    getTracer: jest.fn().mockReturnValue({
+      startSpan: jest.fn().mockReturnValue({ setStatus: jest.fn(), end: jest.fn() }),
+    }),
+  },
+  SpanStatusCode: { ERROR: 2 },
+}));
+
 // ── Mock helpers ──────────────────────────────────────────────────────────────
 
 function makeStream(stopReason: string, textChunks: string[] = [], toolUses: any[] = []) {
   return {
+    withResponse: jest.fn().mockResolvedValue(undefined),
     [Symbol.asyncIterator]: async function* () {
       for (const text of textChunks) {
         yield { type: 'content_block_delta', delta: { type: 'text_delta', text } };
@@ -26,6 +46,7 @@ function makeStream(stopReason: string, textChunks: string[] = [], toolUses: any
 
 // Default stream for existing tests (itinerary)
 const mockItineraryStream = {
+  withResponse: jest.fn().mockResolvedValue(undefined),
   [Symbol.asyncIterator]: async function* () {
     yield { type: 'content_block_delta', delta: { type: 'text_delta', text: '{"title":"Test Itinerary",' } };
     yield { type: 'content_block_delta', delta: { type: 'text_delta', text: '"overview":"Great trip","days":[],' } };
@@ -61,6 +82,10 @@ const mockPrisma = {
   attraction: { findMany: jest.fn() },
   event: { findMany: jest.fn() },
   property: { findMany: jest.fn() },
+  // Needed only by the real ResilienceService in the CR-01 gap-closure regression
+  // describe below — onModuleInit() reads per-vendor thresholds from platformConfig.
+  // An empty array makes every vendor fall back to RESILIENCE_DEFAULTS.
+  platformConfig: { findMany: jest.fn().mockResolvedValue([]) },
 };
 
 const mockConfig = {
@@ -271,6 +296,27 @@ describe('AiService', () => {
       expect(res.end).toHaveBeenCalled();
       expect(mockVector.upsertInteraction).not.toHaveBeenCalled();
     });
+
+    it('forwards the EXACT AbortSignal instance cockatiel provides into messages.stream() options (reference-identity, WR-02)', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(USER_STUB);
+      mockStreamFactory = () => makeStream('end_turn', ['hi']);
+
+      const controller = new AbortController();
+      mockResilience.execute.mockImplementationOnce(
+        (_vendor: string, fn: (context: { signal: AbortSignal | undefined }) => any) =>
+          fn({ signal: controller.signal }),
+      );
+
+      const res = makeSimpleRes();
+      await service.streamChatWithTools(
+        'user-1',
+        { messages: [{ role: 'user', content: 'Hi' }] } as any,
+        res as any,
+      );
+
+      const mockedAnthropicInstance = (Anthropic as unknown as jest.Mock).mock.results[0].value;
+      expect(mockedAnthropicInstance.messages.stream.mock.calls[0][1]?.signal).toBe(controller.signal);
+    });
   });
 
   describe('streamChatWithTools — tool_use dispatch', () => {
@@ -357,6 +403,145 @@ describe('AiService', () => {
       await expect(service.getLgaIntelligence('lga-1', 'What is the tourism outlook?')).rejects.toThrow(
         ServiceUnavailableException,
       );
+    });
+  });
+
+  describe('streamChatWithTools / streamItinerary — real cockatiel timeout + breaker engagement (CR-01 gap-closure regression, 11-REVIEW.md)', () => {
+    let realAiService: AiService;
+    let streamCallCount = 0;
+
+    // A withResponse() that never settles — simulates a hung Anthropic connection.
+    // The async iterator is never reached since production code awaits
+    // withResponse() before returning the stream.
+    const hungStream = () => {
+      streamCallCount += 1;
+      return {
+        withResponse: jest.fn(() => new Promise(() => {})),
+        [Symbol.asyncIterator]: async function* () {},
+        finalMessage: jest.fn(),
+      };
+    };
+
+    const makeSseRes = () => {
+      const chunks: string[] = [];
+      return {
+        write: jest.fn((chunk: string) => chunks.push(chunk)),
+        end: jest.fn(),
+        chunks,
+      };
+    };
+
+    const itineraryDto = {
+      durationDays: 2,
+      startLgaSlug: 'abeokuta-south',
+      interests: ['history'],
+      budgetNgn: 50000,
+      partySize: 2,
+    };
+
+    beforeEach(async () => {
+      jest.useFakeTimers();
+      streamCallCount = 0;
+      mockPrisma.user.findUnique.mockResolvedValue(USER_STUB);
+      mockPrisma.lGA.findFirst.mockResolvedValue(LGA_STUB);
+      mockPrisma.attraction.findMany.mockResolvedValue([]);
+      mockPrisma.event.findMany.mockResolvedValue([]);
+      mockPrisma.property.findMany.mockResolvedValue([]);
+      mockStreamFactory = () => hungStream();
+
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          AiService,
+          { provide: PrismaService, useValue: mockPrisma },
+          { provide: ConfigService, useValue: mockConfig },
+          { provide: VectorService, useValue: mockVector },
+          ResilienceService,
+        ],
+      }).compile();
+
+      const realResilience = module.get<ResilienceService>(ResilienceService);
+      await realResilience.onModuleInit();
+      realAiService = module.get<AiService>(AiService);
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('Test A: streamChatWithTools does not emit the SSE error before ~8000ms and does after advancing 8100ms of simulated time', async () => {
+      const res = makeSseRes();
+      const pending = realAiService.streamChatWithTools(
+        'user-1',
+        { messages: [{ role: 'user', content: 'Hi' }] } as any,
+        res as any,
+      );
+
+      expect(res.chunks.some((c) => c.includes('"error":"AI service unavailable"'))).toBe(false);
+
+      await jest.advanceTimersByTimeAsync(8100);
+      await pending;
+
+      expect(res.chunks.some((c) => c.includes('"error":"AI service unavailable"'))).toBe(true);
+      expect(res.end).toHaveBeenCalled();
+    });
+
+    it('Test B: streamItinerary emits an event: error SSE frame only after advancing ~8000ms of simulated time', async () => {
+      const res = makeSseRes();
+      const pending = realAiService.streamItinerary(itineraryDto as any, res as any);
+
+      expect(
+        res.chunks.some((c) => c.includes('event: error') && c.includes('AI service unavailable')),
+      ).toBe(false);
+
+      await jest.advanceTimersByTimeAsync(8100);
+      await pending;
+
+      expect(
+        res.chunks.some((c) => c.includes('event: error') && c.includes('AI service unavailable')),
+      ).toBe(true);
+    });
+
+    it('Test C: after 3 consecutive hung-connection timeouts, the anthropic circuit breaker opens and a 4th call never invokes messages.stream again', async () => {
+      // Call 1: hangs, times out at ~8000ms — breaker records failure #1.
+      const res1 = makeSseRes();
+      const pending1 = realAiService.streamChatWithTools(
+        'user-1',
+        { messages: [{ role: 'user', content: 'Hi' }] } as any,
+        res1 as any,
+      );
+      await jest.advanceTimersByTimeAsync(8100);
+      await pending1;
+
+      // Call 2: hangs, times out at ~8000ms — breaker records failure #2.
+      const res2 = makeSseRes();
+      const pending2 = realAiService.streamChatWithTools(
+        'user-1',
+        { messages: [{ role: 'user', content: 'Hi' }] } as any,
+        res2 as any,
+      );
+      await jest.advanceTimersByTimeAsync(8100);
+      await pending2;
+
+      // Call 3: hangs, times out at ~8000ms — breaker records failure #3, opens.
+      const res3 = makeSseRes();
+      const pending3 = realAiService.streamChatWithTools(
+        'user-1',
+        { messages: [{ role: 'user', content: 'Hi' }] } as any,
+        res3 as any,
+      );
+      await jest.advanceTimersByTimeAsync(8100);
+      await pending3;
+
+      expect(streamCallCount).toBe(3);
+
+      const res4 = makeSseRes();
+      await realAiService.streamChatWithTools(
+        'user-1',
+        { messages: [{ role: 'user', content: 'Hi' }] } as any,
+        res4 as any,
+      );
+
+      expect(streamCallCount).toBe(3);
     });
   });
 });

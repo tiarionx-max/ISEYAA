@@ -274,10 +274,13 @@ Be concise, helpful, and culturally aware. Respond in the user's language (Engli
       let accumulatedText = '';
 
       for (let turn = 0; turn < 3; turn++) {
-        // Connection-only retry boundary: resilience wraps only establishing the stream.
-        // A mid-stream failure (after the first token) is never retried (RESEARCH.md).
-        const stream = await this.resilience.execute('anthropic', async ({ signal }) =>
-          this.anthropic.messages.stream(
+        // Resilience now awaits real connection establishment via withResponse() before
+        // its wrapped promise resolves, giving cockatiel's per-attempt timeout/breaker a
+        // genuine window over the actual network request (11-REVIEW.md CR-01).
+        // A mid-stream failure (after the first token) is still never retried, since the
+        // for-await loop below runs outside resilience.execute().
+        const stream = await this.resilience.execute('anthropic', async ({ signal }) => {
+          const s = this.anthropic.messages.stream(
             {
               model: 'claude-sonnet-4-20250514',
               max_tokens: 1024,
@@ -286,8 +289,10 @@ Be concise, helpful, and culturally aware. Respond in the user's language (Engli
               messages: messageHistory,
             },
             { signal },
-          ),
-        );
+          );
+          await s.withResponse();
+          return s;
+        });
 
         for await (const chunk of stream) {
           if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
@@ -490,17 +495,20 @@ Respond with ONLY valid JSON matching this exact structure — no markdown, no e
       sendEvent('status', { message: 'Generating your itinerary…' });
 
       let fullText = '';
-      // Connection-only retry boundary — see streamChatWithTools comment above.
-      const stream = await this.resilience.execute('anthropic', async ({ signal }) =>
-        this.anthropic.messages.stream(
+      // Resilience now awaits real connection establishment — see corrected comment on
+      // streamChatWithTools's call site above (11-REVIEW.md CR-01).
+      const stream = await this.resilience.execute('anthropic', async ({ signal }) => {
+        const s = this.anthropic.messages.stream(
           {
             model: 'claude-sonnet-4-20250514',
             max_tokens: 4096,
             messages: [{ role: 'user', content: prompt }],
           },
           { signal },
-        ),
-      );
+        );
+        await s.withResponse();
+        return s;
+      });
 
       for await (const chunk of stream) {
         if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
