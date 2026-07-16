@@ -52,14 +52,17 @@ export class ResilienceService implements OnModuleInit {
 
       const composed = wrap(
         breaker,
-        timeout(cfg.timeoutMs, TimeoutStrategy.Aggressive),
         retry(handleWhen(isTransientError), {
+          // CR-01 fix (11-REVIEW.md / 11-VERIFICATION.md): retry MUST be passed before
+          // timeout in wrap(...) so timeout is the innermost policy, applied fresh to
+          // EACH individual attempt — not once around the whole retry+backoff sequence.
           // cockatiel maxAttempts = retries AFTER the first call; total calls = 1 + retryCount.
           // paystackRefund's retryCount: 0 naturally makes this a zero-attempt no-op —
           // no special-case code needed (RESEARCH.md Pitfall 6).
           maxAttempts: cfg.retryCount,
           backoff: new ExponentialBackoff({ initialDelay: 200, maxDelay: 3_000 }),
         }),
+        timeout(cfg.timeoutMs, TimeoutStrategy.Aggressive),
       );
 
       this.policies.set(vendor, { execute: composed.execute.bind(composed), breaker });
@@ -94,11 +97,14 @@ export class ResilienceService implements OnModuleInit {
     });
     const byKey = new Map(rows.map((r) => [r.key, r.value]));
 
+    // WR-01 (11-REVIEW.md): a malformed PlatformConfig row (non-numeric, negative, or
+    // NaN-producing) must fall back to RESILIENCE_DEFAULTS per-key instead of silently
+    // disabling a vendor's timeout/breaker/retry protection until next restart.
     return {
-      timeoutMs: Number(byKey.get(keys.timeoutMs) ?? defaults.timeoutMs),
-      retryCount: Number(byKey.get(keys.retryCount) ?? defaults.retryCount),
-      failureThreshold: Number(byKey.get(keys.failureThreshold) ?? defaults.failureThreshold),
-      halfOpenAfterMs: Number(byKey.get(keys.halfOpenAfterMs) ?? defaults.halfOpenAfterMs),
+      timeoutMs: positiveInt(byKey.get(keys.timeoutMs), defaults.timeoutMs),
+      retryCount: nonNegativeInt(byKey.get(keys.retryCount), defaults.retryCount),
+      failureThreshold: positiveInt(byKey.get(keys.failureThreshold), defaults.failureThreshold),
+      halfOpenAfterMs: positiveInt(byKey.get(keys.halfOpenAfterMs), defaults.halfOpenAfterMs),
     };
   }
 
@@ -151,13 +157,60 @@ export class ResilienceService implements OnModuleInit {
   }
 }
 
+// WR-01 (11-REVIEW.md): guard DB-sourced numeric config so a malformed PlatformConfig
+// row (non-numeric, negative, NaN-producing) falls back to the per-key default instead
+// of silently producing a broken timeout/breaker/retry configuration platform-wide.
+
+/** Returns `fallback` unless `Number(raw)` is finite AND strictly greater than 0. */
+function positiveInt(raw: unknown, fallback: number): number {
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+/**
+ * Returns `fallback` unless `Number(raw)` is a finite integer AND >= 0. MUST allow
+ * exactly `0` — `paystackRefund`'s legitimate default `retryCount` is `0` (never
+ * auto-retry a refund; RESEARCH.md Pitfall 6).
+ */
+function nonNegativeInt(raw: unknown, fallback: number): number {
+  const n = Number(raw);
+  return Number.isFinite(n) && Number.isInteger(n) && n >= 0 ? n : fallback;
+}
+
 /**
  * Business/validation 4xx errors must NOT count toward retry attempts or breaker
- * accounting (RESEARCH.md Pitfall 4) — only network-level errors (no `.response`) and
- * specific transient status codes (408, 429, 5xx) are treated as vendor-outage signals.
+ * accounting (RESEARCH.md Pitfall 4) — only network-level errors, specific transient
+ * status codes (408, 429, 5xx), and cockatiel's own per-attempt timeout cancellation
+ * are treated as vendor-outage signals.
+ *
+ * WR-04 (11-REVIEW.md): narrowed so a bare application bug (e.g. a `TypeError` thrown
+ * inside a wrapped callback, with no `.response`/`.code`/cancellation shape) no longer
+ * counts toward a vendor's circuit-breaker consecutive-failure threshold. The
+ * `isTaskCancelledError` check MUST stay ahead of the final catch-all: cockatiel's
+ * aggressive `timeout()` policy throws a `TaskCancelledError` (no `.response`, no
+ * `.code`) on every per-attempt timeout, and that must still count as transient or
+ * CR-01's retry-after-per-attempt-timeout fix silently stops retrying on timeout.
  */
 function isTransientError(err: unknown): boolean {
   const status = (err as any)?.response?.status;
   if (status !== undefined) return status === 408 || status === 429 || status >= 500;
-  return true; // network-level errors (ECONNREFUSED, ETIMEDOUT, DNS failures) have no `.response`
+
+  // cockatiel's per-attempt timeout cancellation — must retry (preserves CR-01 fix).
+  if ((err as any)?.isTaskCancelledError === true) return true;
+
+  // Recognized network-level error codes (ECONNREFUSED, ETIMEDOUT, DNS failures, ...).
+  const code = (err as any)?.code;
+  if (
+    typeof code === 'string' &&
+    ['ECONNREFUSED', 'ETIMEDOUT', 'ECONNRESET', 'ENOTFOUND', 'EAI_AGAIN', 'ABORT_ERR'].includes(code)
+  ) {
+    return true;
+  }
+
+  // fetch/undici abort shape.
+  if ((err as any)?.name === 'AbortError') return true;
+
+  // Anything else (bare application bugs, programming errors) is NOT transient — it
+  // must not count toward retry attempts or the circuit breaker's failure threshold.
+  return false;
 }

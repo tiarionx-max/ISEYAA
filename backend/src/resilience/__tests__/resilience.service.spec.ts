@@ -147,6 +147,101 @@ describe('ResilienceService', () => {
     });
   });
 
+  describe('readConfig() — malformed DB config falls back to defaults (WR-01)', () => {
+    it('falls back to the default timeoutMs (10_000ms) when the DB-sourced timeout_ms value is non-numeric', async () => {
+      prisma.platformConfig.findMany.mockResolvedValue([
+        { key: 'resilience.paystack.timeout_ms', value: 'not-a-number' },
+      ]);
+      await service.onModuleInit();
+
+      const fn = jest.fn(
+        () =>
+          new Promise((resolve) => {
+            setTimeout(() => resolve('ok'), 50);
+          }),
+      );
+
+      // A malformed timeout_ms must fall back to the ample 10_000ms default rather
+      // than collapsing to a near-zero/NaN timeout that would reject before fn settles.
+      await expect(service.execute('paystack', fn as any)).resolves.toBe('ok');
+    });
+
+    it('falls back to the default retryCount (2) when the DB-sourced retry_count value is non-numeric', async () => {
+      prisma.platformConfig.findMany.mockResolvedValue([
+        { key: 'resilience.paystack.retry_count', value: 'abc' },
+      ]);
+      await service.onModuleInit();
+
+      const fn = jest.fn().mockRejectedValue({ response: { status: 500 } });
+
+      try {
+        await service.execute('paystack', fn);
+      } catch {
+        // expected — every attempt fails
+      }
+
+      // A malformed retry_count must fall back to the default retryCount: 2 (multiple
+      // attempts), not to 0/NaN (which would invoke fn only once).
+      expect(fn.mock.calls.length).toBeGreaterThan(1);
+    });
+  });
+
+  describe('isTransientError narrowing (WR-04)', () => {
+    it('does not open the breaker on repeated bare application errors (no .response/.code shape) — fn is invoked on every single call', async () => {
+      await service.onModuleInit();
+
+      const fn = jest.fn().mockRejectedValue(new TypeError('boom'));
+      const { failureThreshold } = RESILIENCE_DEFAULTS.paystack;
+
+      const attempts = failureThreshold + 5;
+      for (let i = 0; i < attempts; i++) {
+        try {
+          await service.execute('paystack', fn);
+        } catch {
+          // expected — every call fails with the bare application error itself
+        }
+      }
+
+      // A bare TypeError is not classified as transient, so cockatiel's retry never
+      // kicks in (fn invoked once per execute() call) AND the breaker never opens
+      // (no fail-fast short-circuit) — call count must equal execute() invocations.
+      expect(fn.mock.calls.length).toBe(attempts);
+    });
+
+    it('still retries genuine network-level errors shaped with a recognized .code (e.g. ECONNREFUSED)', async () => {
+      await service.onModuleInit();
+
+      const fn = jest.fn().mockRejectedValue({ code: 'ECONNREFUSED' });
+
+      try {
+        await service.execute('paystack', fn);
+      } catch {
+        // expected
+      }
+
+      // paystack retryCount: 2 means cockatiel retries this — proving genuine
+      // network-level errors remain classified as transient.
+      expect(fn.mock.calls.length).toBeGreaterThan(1);
+    });
+
+    it('still retries cockatiel-shaped TaskCancelledError (per-attempt timeout cancellation) — critical regression guard for CR-01', async () => {
+      await service.onModuleInit();
+
+      const fn = jest.fn().mockRejectedValue({ isTaskCancelledError: true });
+
+      try {
+        await service.execute('paystack', fn);
+      } catch {
+        // expected
+      }
+
+      // This is the interaction proof that WR-04's narrowing does not silently
+      // break CR-01's per-attempt retry: a TaskCancelledError-shaped rejection (no
+      // .response, no .code) must still trigger a retry.
+      expect(fn.mock.calls.length).toBeGreaterThan(1);
+    });
+  });
+
   describe('onBreak — Sentry + OTel span wiring', () => {
     it('calls Sentry.captureMessage and trace.getTracer().startSpan() with vendor + circuit_open attributes when the breaker opens', async () => {
       await service.onModuleInit();
