@@ -6,6 +6,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from './prisma/prisma.module';
 import { CommonModule } from './common/common.module';
 import { RedisModule } from './redis/redis.module';
+import { ResilienceModule } from './resilience/resilience.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { LgasModule } from './modules/lgas/lgas.module';
@@ -40,6 +41,7 @@ import { KafkaModule } from './kafka/kafka.module';
     PrismaModule,
     CommonModule,
     RedisModule,
+    ResilienceModule,
     AuthModule,
     UsersModule,
     LgasModule,
