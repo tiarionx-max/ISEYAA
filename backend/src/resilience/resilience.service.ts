@@ -179,11 +179,38 @@ function nonNegativeInt(raw: unknown, fallback: number): number {
 
 /**
  * Business/validation 4xx errors must NOT count toward retry attempts or breaker
- * accounting (RESEARCH.md Pitfall 4) — only network-level errors (no `.response`) and
- * specific transient status codes (408, 429, 5xx) are treated as vendor-outage signals.
+ * accounting (RESEARCH.md Pitfall 4) — only network-level errors, specific transient
+ * status codes (408, 429, 5xx), and cockatiel's own per-attempt timeout cancellation
+ * are treated as vendor-outage signals.
+ *
+ * WR-04 (11-REVIEW.md): narrowed so a bare application bug (e.g. a `TypeError` thrown
+ * inside a wrapped callback, with no `.response`/`.code`/cancellation shape) no longer
+ * counts toward a vendor's circuit-breaker consecutive-failure threshold. The
+ * `isTaskCancelledError` check MUST stay ahead of the final catch-all: cockatiel's
+ * aggressive `timeout()` policy throws a `TaskCancelledError` (no `.response`, no
+ * `.code`) on every per-attempt timeout, and that must still count as transient or
+ * CR-01's retry-after-per-attempt-timeout fix silently stops retrying on timeout.
  */
 function isTransientError(err: unknown): boolean {
   const status = (err as any)?.response?.status;
   if (status !== undefined) return status === 408 || status === 429 || status >= 500;
-  return true; // network-level errors (ECONNREFUSED, ETIMEDOUT, DNS failures) have no `.response`
+
+  // cockatiel's per-attempt timeout cancellation — must retry (preserves CR-01 fix).
+  if ((err as any)?.isTaskCancelledError === true) return true;
+
+  // Recognized network-level error codes (ECONNREFUSED, ETIMEDOUT, DNS failures, ...).
+  const code = (err as any)?.code;
+  if (
+    typeof code === 'string' &&
+    ['ECONNREFUSED', 'ETIMEDOUT', 'ECONNRESET', 'ENOTFOUND', 'EAI_AGAIN', 'ABORT_ERR'].includes(code)
+  ) {
+    return true;
+  }
+
+  // fetch/undici abort shape.
+  if ((err as any)?.name === 'AbortError') return true;
+
+  // Anything else (bare application bugs, programming errors) is NOT transient — it
+  // must not count toward retry attempts or the circuit breaker's failure threshold.
+  return false;
 }
