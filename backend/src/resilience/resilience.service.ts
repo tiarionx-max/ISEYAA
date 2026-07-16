@@ -198,11 +198,12 @@ function isTransientError(err: unknown): boolean {
   // cockatiel's per-attempt timeout cancellation — must retry (preserves CR-01 fix).
   if ((err as any)?.isTaskCancelledError === true) return true;
 
-  // Recognized network-level error codes (ECONNREFUSED, ETIMEDOUT, DNS failures, ...).
+  // Recognized network-level error codes (ECONNREFUSED, ETIMEDOUT, DNS failures,
+  // fetch/undici abort (ABORT_ERR), axios's own cancellation code (ERR_CANCELED) ...).
   const code = (err as any)?.code;
   if (
     typeof code === 'string' &&
-    ['ECONNREFUSED', 'ETIMEDOUT', 'ECONNRESET', 'ENOTFOUND', 'EAI_AGAIN', 'ABORT_ERR'].includes(code)
+    ['ECONNREFUSED', 'ETIMEDOUT', 'ECONNRESET', 'ENOTFOUND', 'EAI_AGAIN', 'ABORT_ERR', 'ERR_CANCELED'].includes(code)
   ) {
     return true;
   }

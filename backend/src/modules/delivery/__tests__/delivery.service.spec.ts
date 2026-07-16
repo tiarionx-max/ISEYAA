@@ -434,6 +434,22 @@ describe('DeliveryService', () => {
       expect(mockResilience.execute).toHaveBeenCalledWith('termiiDelivery', expect.any(Function));
     });
 
+    it("forwards the exact AbortSignal instance into fetch()'s init object (reference-identity, mirrors paystack.service.spec.ts Test 7)", async () => {
+      mockConfig.get.mockImplementation((key: string, def?: unknown) =>
+        key === 'TERMII_API_KEY' ? 'test-termii-key' : (def ?? undefined),
+      );
+      const controller = new AbortController();
+      mockResilience.execute.mockImplementationOnce(
+        (vendor: string, fn: (context: { signal: AbortSignal | undefined }) => any) =>
+          fn({ signal: controller.signal }),
+      );
+      jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true } as any);
+
+      await (service as any).sendTermiiDeliveryOtp('+2348012345678', '654321');
+
+      expect((global.fetch as jest.Mock).mock.calls[0][1]?.signal).toBe(controller.signal);
+    });
+
     it('resolves without throwing when resilience.execute rejects (circuit open) — log-and-swallow fallback preserved', async () => {
       mockConfig.get.mockImplementation((key: string, def?: unknown) =>
         key === 'TERMII_API_KEY' ? 'test-termii-key' : (def ?? undefined),

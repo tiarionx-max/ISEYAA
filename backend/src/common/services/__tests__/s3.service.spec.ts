@@ -134,5 +134,18 @@ describe('S3Service', () => {
         service.upload('images/test.jpg', Buffer.from('data'), 'image/jpeg'),
       ).rejects.toThrow(ServiceUnavailableException);
     });
+
+    it("Test 8: forwards the exact AbortSignal instance into S3Client.send()'s second argument (abortSignal) — reference-identity, mirrors paystack.service.spec.ts Test 7", async () => {
+      const controller = new AbortController();
+      mockResilience.execute.mockImplementationOnce(
+        (vendor: string, fn: (context: { signal: AbortSignal | undefined }) => any) =>
+          fn({ signal: controller.signal }),
+      );
+
+      await service.upload('images/test.jpg', Buffer.from('data'), 'image/jpeg');
+
+      const sendMock = (service.getClient() as any).send;
+      expect(sendMock.mock.calls[0][1]?.abortSignal).toBe(controller.signal);
+    });
   });
 });
