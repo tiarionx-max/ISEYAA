@@ -412,7 +412,7 @@ Plans:
   1. Every call site to Paystack, Termii, Anthropic, Cloudflare R2/S3, and Firebase FCM is wrapped in a `cockatiel`-based circuit-breaker + retry + timeout + fallback policy
   2. Simulating a Paystack outage (forced timeout/error injection) causes wallet top-up to fail gracefully via the fallback path while unrelated endpoints (e.g. `GET /api/v1/events`) continue responding normally
   3. Circuit-breaker state transitions (closed → open → half-open) and vendor-call failures appear as spans/log events in the existing Grafana/Sentry/OpenTelemetry stack
-**Plans**: 5 plans
+**Plans**: 8 plans (5 original + 3 gap closure)
 Plans:
 **Wave 1**
 - [x] 11-01-PLAN.md — ResilienceService foundation: cockatiel@3.2.1 pinned install, per-vendor cached policy registry (7 vendors incl. paystackRefund), PlatformConfig thresholds, Sentry+OTel wiring, global module registration
@@ -424,6 +424,11 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2)*
 - [x] 11-05-PLAN.md — Cross-vendor circuit isolation test (success criterion 2 proof) + full-suite regression gate
+
+**Gap closure (11-VERIFICATION.md CR-01/CR-02, wave 1, mutually parallel — file-disjoint)**
+- [ ] 11-06-PLAN.md — Fix CR-01 (retry/timeout composition order) in resilience.service.ts + WR-01/WR-04 hardening + regression tests
+- [ ] 11-07-PLAN.md — Fix CR-02 (AbortSignal propagation) in paystack.service.ts, s3.service.ts, notifications.service.ts + regression test
+- [ ] 11-08-PLAN.md — Fix CR-02 (AbortSignal propagation) in ai.service.ts, auth.service.ts, delivery.service.ts
 
 **Cross-cutting constraints:**
 - `cockatiel@^3.2.1` pinned exactly — never the unpinned `4.0.0` (Node>=22/ESM-only)
