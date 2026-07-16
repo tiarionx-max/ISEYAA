@@ -1,6 +1,7 @@
 import { Injectable, Logger, BadRequestException, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
+import { ResilienceService } from '../../resilience/resilience.service';
 
 export interface InitiatePaymentParams {
   email: string;
@@ -21,7 +22,10 @@ export class PaystackService {
   private readonly logger = new Logger(PaystackService.name);
   private readonly baseUrl = 'https://api.paystack.co';
 
-  constructor(private config: ConfigService) {}
+  constructor(
+    private config: ConfigService,
+    private resilience: ResilienceService,
+  ) {}
 
   async initiatePayment(params: InitiatePaymentParams): Promise<InitiatePaymentResult> {
     const { email, amountKobo, reference, metadata, callbackUrl } = params;
@@ -34,16 +38,18 @@ export class PaystackService {
     this.logger.log(`Paystack initiate: ref=${reference} amount=${amountKobo} keyPrefix=${secretKey.slice(0, 8)}…`);
 
     try {
-      const response = await axios.post(
-        `${this.baseUrl}/transaction/initialize`,
-        {
-          email,
-          amount: amountKobo,
-          reference,
-          metadata,
-          ...(callbackUrl && { callback_url: callbackUrl }),
-        },
-        { headers: { Authorization: `Bearer ${secretKey}` } },
+      const response = await this.resilience.execute('paystack', () =>
+        axios.post(
+          `${this.baseUrl}/transaction/initialize`,
+          {
+            email,
+            amount: amountKobo,
+            reference,
+            metadata,
+            ...(callbackUrl && { callback_url: callbackUrl }),
+          },
+          { headers: { Authorization: `Bearer ${secretKey}` } },
+        ),
       );
 
       const { authorization_url, access_code, reference: ref } = response.data.data;
@@ -52,7 +58,7 @@ export class PaystackService {
       const status = (err as any)?.response?.status;
       const body = (err as any)?.response?.data;
       this.logger.error(`Paystack initiate failed (HTTP ${status}): ${JSON.stringify(body) ?? (err as Error).message}`);
-      throw err;
+      throw new ServiceUnavailableException('Paystack is temporarily unavailable, please try again shortly');
     }
   }
 
@@ -66,9 +72,11 @@ export class PaystackService {
 
     try {
       // Never log the BVN value — only log errors
-      const response = await axios.get(`${this.baseUrl}/bank/resolve_bvn/${bvn}`, {
-        headers: { Authorization: `Bearer ${secretKey}` },
-      });
+      const response = await this.resilience.execute('paystack', () =>
+        axios.get(`${this.baseUrl}/bank/resolve_bvn/${bvn}`, {
+          headers: { Authorization: `Bearer ${secretKey}` },
+        }),
+      );
 
       const { status, data } = response.data;
       if (status === true && data) {
@@ -84,7 +92,7 @@ export class PaystackService {
     } catch (err: any) {
       if (err instanceof BadRequestException) throw err;
       this.logger.error('Paystack BVN resolve failed', err?.response?.data ?? err.message);
-      throw new BadRequestException('BVN verification failed');
+      throw new ServiceUnavailableException('Paystack is temporarily unavailable, please try again shortly');
     }
   }
 
@@ -115,10 +123,11 @@ export class PaystackService {
     if (reason) body.customer_note = reason;
 
     try {
-      const { data } = await axios.post(`${this.baseUrl}/transaction/refund`, body, {
-        headers: { Authorization: `Bearer ${secretKey}`, 'Content-Type': 'application/json' },
-        timeout: 10_000,
-      });
+      const { data } = await this.resilience.execute('paystackRefund', () =>
+        axios.post(`${this.baseUrl}/transaction/refund`, body, {
+          headers: { Authorization: `Bearer ${secretKey}`, 'Content-Type': 'application/json' },
+        }),
+      );
       return {
         id: String(data.data.id),
         amount: Number(data.data.amount),

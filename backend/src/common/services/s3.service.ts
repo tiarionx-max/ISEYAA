@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { ResilienceService } from '../../resilience/resilience.service';
 
 /**
  * S3-compatible storage service.
@@ -19,7 +20,10 @@ export class S3Service {
   private readonly cdnBase: string; // public CDN URL prefix (no trailing slash)
   private readonly mode: 'aws' | 'r2' | 'unconfigured';
 
-  constructor(private config: ConfigService) {
+  constructor(
+    private config: ConfigService,
+    private resilience: ResilienceService,
+  ) {
     const awsKey = config.get<string>('AWS_ACCESS_KEY_ID', '');
     const r2Key = config.get<string>('R2_ACCESS_KEY_ID', '');
 
@@ -68,14 +72,16 @@ export class S3Service {
     }
 
     try {
-      await this.s3.send(
-        new PutObjectCommand({
-          Bucket: this.bucket,
-          Key: key,
-          Body: body,
-          ContentType: contentType,
-          ...(this.mode === 'aws' && { ACL: 'public-read' as const }),
-        }),
+      await this.resilience.execute('s3', () =>
+        this.s3.send(
+          new PutObjectCommand({
+            Bucket: this.bucket,
+            Key: key,
+            Body: body,
+            ContentType: contentType,
+            ...(this.mode === 'aws' && { ACL: 'public-read' as const }),
+          }),
+        ),
       );
 
       if (this.cdnBase) return `${this.cdnBase}/${key}`;
@@ -87,7 +93,7 @@ export class S3Service {
       return `https://${accountId}.r2.cloudflarestorage.com/${this.bucket}/${key}`;
     } catch (err: any) {
       this.logger.error(`S3 upload failed for key ${key}`, err.message);
-      throw err;
+      throw new ServiceUnavailableException('Storage is temporarily unavailable, please try again shortly');
     }
   }
 

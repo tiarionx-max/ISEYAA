@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
+import { ServiceUnavailableException } from '@nestjs/common';
 import { S3Service } from '../s3.service';
+import { ResilienceService } from '../../../resilience/resilience.service';
 
 // Capture the S3Client constructor call arguments for assertions
 let capturedS3Config: Record<string, unknown> = {};
@@ -30,12 +32,19 @@ const mockConfig = {
   }),
 };
 
+// Default pass-through resilience mock — circuit-breaker mechanics are tested in
+// resilience.service.spec.ts; this file tests S3Service's own error-mapping.
+const mockResilience = {
+  execute: jest.fn((vendor: string, fn: () => any) => fn()),
+};
+
 describe('S3Service', () => {
   let service: S3Service;
 
   beforeEach(async () => {
     jest.clearAllMocks();
     capturedS3Config = {};
+    mockResilience.execute.mockImplementation((vendor: string, fn: () => any) => fn());
     // Reset mock to re-capture constructor args on each test
     const { S3Client } = jest.requireMock('@aws-sdk/client-s3');
     S3Client.mockImplementation((config: Record<string, unknown>) => {
@@ -50,6 +59,7 @@ describe('S3Service', () => {
       providers: [
         S3Service,
         { provide: ConfigService, useValue: mockConfig },
+        { provide: ResilienceService, useValue: mockResilience },
       ],
     }).compile();
 
@@ -103,6 +113,7 @@ describe('S3Service', () => {
         providers: [
           S3Service,
           { provide: ConfigService, useValue: emptyUrlConfig },
+          { provide: ResilienceService, useValue: mockResilience },
         ],
       }).compile();
 
@@ -110,6 +121,14 @@ describe('S3Service', () => {
       const url = await svcNoPublicUrl.upload('images/test.jpg', Buffer.from('data'), 'image/jpeg');
       expect(url).toContain('r2.cloudflarestorage.com');
       expect(url).toContain('test-account-id');
+    });
+
+    it('Test 7: throws ServiceUnavailableException when resilience.execute rejects', async () => {
+      mockResilience.execute.mockRejectedValue(new Error('network error'));
+
+      await expect(
+        service.upload('images/test.jpg', Buffer.from('data'), 'image/jpeg'),
+      ).rejects.toThrow(ServiceUnavailableException);
     });
   });
 });
