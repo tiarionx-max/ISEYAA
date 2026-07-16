@@ -327,7 +327,7 @@ export class DeliveryService {
     }
 
     try {
-      const response = await this.resilience.execute('termiiDelivery', () =>
+      const response = await this.resilience.execute('termiiDelivery', ({ signal }) =>
         fetch('https://v3.api.termii.com/api/sms/send', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -339,6 +339,7 @@ export class DeliveryService {
             channel: 'generic',
             api_key: apiKey,
           }),
+          signal,
         }),
       );
       if (!response.ok) {
