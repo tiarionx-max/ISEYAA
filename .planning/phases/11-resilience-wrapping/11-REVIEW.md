@@ -1,165 +1,161 @@
 ---
 phase: 11-resilience-wrapping
-reviewed: 2026-07-16T17:56:30Z
+reviewed: 2026-07-16T00:00:00Z
 depth: standard
-files_reviewed: 14
+files_reviewed: 9
 files_reviewed_list:
-  - backend/src/resilience/resilience.service.ts
-  - backend/src/resilience/__tests__/retry-timeout-composition.spec.ts
-  - backend/src/resilience/__tests__/resilience.service.spec.ts
-  - backend/src/common/services/paystack.service.ts
-  - backend/src/common/services/__tests__/paystack.service.spec.ts
-  - backend/src/common/services/s3.service.ts
-  - backend/src/common/services/__tests__/s3.service.spec.ts
-  - backend/src/modules/notifications/notifications.service.ts
-  - backend/src/modules/notifications/__tests__/notifications.service.spec.ts
   - backend/src/modules/ai/ai.service.ts
   - backend/src/modules/ai/__tests__/ai.service.spec.ts
-  - backend/src/modules/auth/auth.service.ts
+  - backend/src/modules/notifications/notifications.service.ts
+  - backend/src/modules/notifications/__tests__/notifications.service.spec.ts
+  - backend/src/resilience/resilience.service.ts
+  - backend/src/resilience/__tests__/resilience.service.spec.ts
+  - backend/src/common/services/__tests__/s3.service.spec.ts
   - backend/src/modules/auth/__tests__/auth.service.spec.ts
-  - backend/src/modules/delivery/delivery.service.ts
   - backend/src/modules/delivery/__tests__/delivery.service.spec.ts
 findings:
   critical: 1
   warning: 3
-  info: 2
-  total: 6
+  info: 4
+  total: 8
 status: issues_found
 ---
 
-# Phase 11: Code Review Report (Gap-Closure Batch — Plans 11-06/11-07/11-08)
+# Phase 11: Code Review Report (Round 2 Gap-Closure — Plans 11-09/11-10/11-11)
 
-**Reviewed:** 2026-07-16T17:56:30Z
+**Reviewed:** 2026-07-16T00:00:00Z
 **Depth:** standard
-**Files Reviewed:** 14
+**Files Reviewed:** 9
 **Status:** issues_found
 
 ## Summary
 
-This review covers the gap-closure batch that fixed CR-01 (retry/timeout composition order) and CR-02 (missing AbortSignal propagation) from the original 11-REVIEW.md/11-VERIFICATION.md. This report replaces the prior 11-REVIEW.md; the finding IDs below (CR-01, WR-01, etc.) are freshly numbered for this batch and do not refer to the same findings as the previous review.
+This is a fresh review of the current state of the resilience-wrapping files after plans 11-09 (Anthropic streaming CR-01 fix), 11-10 (FCM metadata-merge WR-01 fix), and 11-11 (axios `ERR_CANCELED` WR-03 fix + AbortSignal reference-identity test sweep). I verified all four targeted gap-closures directly in the source and confirmed they are correctly implemented and covered by real regression tests:
 
-**CR-01 (composition order) verified correct.** Traced `cockatiel`'s actual `wrap()` implementation (`node_modules/cockatiel/dist/Policy.js`): `wrap(breaker, retry, timeout)` nests execution as `breaker(retry(timeout(fn)))` — timeout is innermost and re-applied fresh on every retry attempt, exactly as the code comment claims. `retry-timeout-composition.spec.ts`'s fake-timer regression test correctly exercises this (3 attempts × 800ms each, well past a single 1000ms timeout window, all pass because timeout resets per-attempt). Also verified `RetryPolicy`'s `maxAttempts: 0` is a genuine zero-retry no-op (`retries < maxAttempts` is `0 < 0 = false`), confirming `paystackRefund`'s design intent. All 81 tests across the 9 affected suites pass (`npx jest` run performed as part of this review).
+- **Anthropic streaming blind spot (fixed):** both `streamChatWithTools` and `streamItinerary` now `await s.withResponse()` inside the `resilience.execute('anthropic', ...)` callback before returning the stream, giving cockatiel's per-attempt 8s timeout a genuine window over the real connection. `ai.service.spec.ts`'s new `describe('... real cockatiel timeout + breaker engagement ...')` block proves this with fake timers against a real `ResilienceService` instance (hung-connection test doesn't resolve before ~8000ms, does after 8100ms, and the breaker opens after 3 consecutive timeouts and stops invoking `messages.stream` again). Solid regression coverage.
+- **FCM metadata overwrite (fixed):** `NotificationsService.registerToken` now reads existing `user.metadata` and spreads it before setting `fcmToken`, instead of replacing the whole JSON blob. Both the empty-prior-metadata and non-empty-prior-metadata cases are covered by tests.
+- **Axios `ERR_CANCELED` (fixed):** `isTransientError` now includes `'ERR_CANCELED'` in its recognized network-code allowlist, and a dedicated regression test (`WR-03 — axios ERR_CANCELED`) proves a `CanceledError`-shaped rejection is retried.
+- **AbortSignal reference-identity coverage (fixed):** every vendor call site in this file set (`anthropic`, `fcm`, `s3`, `termiiAuth`, `termiiDelivery`) now has a dedicated test asserting the exact `AbortSignal` instance cockatiel hands out reaches the underlying HTTP call's signal option.
 
-**CR-02 (AbortSignal propagation) is correctly wired for every non-AI call site.** `paystack.service.ts`, `s3.service.ts`, `notifications.service.ts`, `auth.service.ts`, and `delivery.service.ts` all destructure `{ signal }` from the resilience context and forward it into the underlying HTTP call (`axios` `signal`, AWS SDK `abortSignal`, native `fetch` `signal`) — verified each option name is correct against the actual library APIs in `node_modules`.
-
-**However, a new and more serious defect was found in `ai.service.ts`:** the resilience wrapping around Anthropic's `.stream()` calls provides no actual timeout/retry/circuit-breaker protection, because `.stream()` returns synchronously without waiting for the connection to establish. This is not a regression introduced by the CR-01/CR-02 fixes — it predates Plan 11-08 and remains broken after it, even though 11-08 correctly threads the AbortSignal into `.stream()`'s options. See CR-01 below (this batch's own numbering).
+However, this fresh pass surfaced **one new Critical-severity defect introduced by this phase's own code** (a raw-error logging call in `resilience.service.ts` that leaks secrets/Authorization headers into application logs, directly contradicting the sanitization comment written immediately below it), plus several Warnings/Info items — some newly found, some carried forward unaddressed from the prior `11-REVIEW.md` round.
 
 ## Critical Issues
 
-### CR-01: `AiService`'s resilience wrapping around Anthropic `.stream()` calls provides no actual timeout/retry/circuit-breaker protection
+### CR-01: `ResilienceService.onBreak()` logs the raw vendor error object, leaking Authorization headers/secrets into application logs
 
-**File:** `backend/src/modules/ai/ai.service.ts:279-290` (`streamChatWithTools`) and `backend/src/modules/ai/ai.service.ts:494-503` (`streamItinerary`)
+**File:** `backend/src/resilience/resilience.service.ts:130`
 
-**Issue:** Both call sites wrap the *establishment* of the Anthropic stream in `resilience.execute('anthropic', ...)`:
+**Issue:** Inside `onBreak()`, the OTel span attribute and the `Sentry.captureMessage()` call are both correctly sanitized — they extract only `.message` or a generic reason string, per the comment directly above the Sentry call ("Never interpolate raw request/response payloads here — vendor name + generic error class only (T-11-03)"). But the line immediately preceding that comment does exactly what the comment forbids:
 
 ```ts
-const stream = await this.resilience.execute('anthropic', async ({ signal }) =>
-  this.anthropic.messages.stream({ ... }, { signal }),
-);
+this.logger.error(`Circuit breaker OPEN for ${vendor}`, reason.error as any);
 ```
 
-The comment above this code claims: *"Connection-only retry boundary: resilience wraps only establishing the stream."* This is incorrect. `@anthropic-ai/sdk`'s `messages.stream()` has the type signature `stream(body, options?): MessageStream` (`node_modules/@anthropic-ai/sdk/resources/messages/messages.d.ts:35`) — it is **synchronous**, returning a `MessageStream` object immediately. The actual HTTP request is kicked off in the background via `MessageStream._run(() => this._createMessage(...))` (`node_modules/@anthropic-ai/sdk/lib/MessageStream.js:110-118`), which is **fire-and-forget** and never awaited by `.stream()` itself.
+`reason.error` is the raw error thrown by the wrapped vendor call — for every `axios`-based vendor in this phase (`paystack`, `paystackRefund`, `fcm`), a failed request's error object carries `.config.headers`, which includes the outbound `Authorization: Bearer <token>` header (Paystack secret key, FCM OAuth bearer token) or other request-identifying data. NestJS's default `Logger.error(message, secondArg)` does not treat a non-string second argument as a stack-trace string — it serializes and prints the entire object. I verified this directly:
 
-Consequently, the `async ({ signal }) => this.anthropic.messages.stream(...)` callback passed to `resilience.execute` resolves in microtask time — long before cockatiel's per-attempt `timeout(cfg.timeoutMs)` (8000ms for `anthropic`) can ever fire, and without ever rejecting on a real connection failure. This means:
-
-1. **The 8-second timeout never applies to the actual network request.** If the Anthropic API hangs during connection setup, cockatiel's `TimeoutPolicy` will never observe it — the wrapped promise already resolved before the timer becomes relevant (verified by tracing `TimeoutPolicy.execute()` in `node_modules/cockatiel/dist/TimeoutPolicy.js:56-76`: it races `fn(context)` against a timer, and `fn(context)` here settles almost instantly).
-2. **The circuit breaker never opens due to connection-level failures** on these two paths, because `resilience.execute()` essentially always resolves successfully (the breaker never sees the eventual real network error).
-3. Real connection failures (DNS, TLS, hung connection, 5xx) surface later as an `'error'` event on the async iterator (`for await (const chunk of stream)`, `node_modules/@anthropic-ai/sdk/lib/MessageStream.js:521-527`) — entirely **outside** the `resilience.execute()` call, silently bypassing retry/timeout/breaker.
-
-This directly contradicts the 11-08 commit message's claim ("an aggressive resilience timeout now actually cancels the in-flight Anthropic stream/request instead of only abandoning the caller's promise") — the AbortSignal *is* threaded correctly into `.stream()`'s options, but cockatiel's timeout timer that would fire that abort never gets a meaningful window to run, since the policy chain resolves before the timer is relevant.
-
-Note `getLgaIntelligence` (`ai.service.ts:538-552`) is **not** affected — it uses `this.anthropic.messages.create(...)`, which returns a real `Promise` that only resolves once the response is received, so resilience wrapping works correctly there.
-
-This gap is not caught by any test: `ai.service.spec.ts` mocks `messages.stream()` synchronously (matching real behavior) but never exercises timing with fake timers the way `retry-timeout-composition.spec.ts` does for the generic resilience service — so there is no regression test that would have caught this.
-
-**Fix:** Make the wrapped operation actually wait for the connection before resolving, e.g. by awaiting the stream's connection promise inside the resilience-wrapped callback:
-
-```ts
-const stream = await this.resilience.execute('anthropic', async ({ signal }) => {
-  const s = this.anthropic.messages.stream({ ...params }, { signal });
-  await s.withResponse(); // resolves once the connection is established / response headers arrive
-  return s;
-});
-```
-
-(`MessageStream.withResponse()` awaits the internal `_connectedPromise`, which only resolves after the underlying HTTP response begins — see `node_modules/@anthropic-ai/sdk/lib/MessageStream.js:82-92`.) This gives cockatiel's per-attempt timeout a real window to enforce, and lets the circuit breaker see genuine connection failures. Add a fake-timer regression test analogous to `retry-timeout-composition.spec.ts` that simulates a slow/hanging Anthropic connection and asserts the resilience timeout actually fires for `streamChatWithTools`/`streamItinerary`.
-
-## Warnings
-
-### WR-01: `NotificationsService.registerToken` overwrites the entire `user.metadata` JSON blob instead of merging
-
-**File:** `backend/src/modules/notifications/notifications.service.ts:57-63`
-
-**Issue:**
-
-```ts
-async registerToken(userId: string, token: string) {
-  await this.prisma.user.update({
-    where: { id: userId },
-    data: { metadata: { fcmToken: token } as any },
-  });
-  return { registered: true };
+```text
+$ node -e "const {Logger}=require('@nestjs/common'); new Logger('t').error('Circuit breaker OPEN for paystack', { config: { headers: { Authorization: 'Bearer SECRET_TOKEN_XYZ' } }, message: 'Request failed with status code 500' });"
+...
+Object(2) {
+  config: { headers: { Authorization: 'Bearer SECRET_TOKEN_XYZ' } },
+  message: 'Request failed with status code 500'
 }
 ```
 
-`User.metadata` is a Prisma `Json?` field. This `update()` replaces the entire JSON document with `{ fcmToken: token }`, discarding any other keys that may already exist on `metadata`. Currently nothing else in the codebase writes other keys into `User.metadata`, so there is no observable data loss today — but this is a latent trap: the next feature that stores anything else in `user.metadata` (preferences, device info, etc.) will have its data silently wiped every time a user re-registers an FCM token (e.g. on every app relaunch).
+`onBreak()` fires on every consecutive-failure-threshold crossing — precisely the moment a vendor call has just failed and its error object is freshest/most complete — making this a reliably reproducible secret-leak path into whatever log sink is configured (stdout, file, log aggregator), for every vendor wrapped by `ResilienceService`, not just the ones reviewed in this file set.
 
-**Fix:** Merge instead of replace, e.g. read-then-merge:
+**Fix:** Mirror the sanitization already applied two lines above, for the plain logger call too:
 
 ```ts
-const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { metadata: true } });
-const metadata = { ...(user?.metadata as Record<string, any> | undefined), fcmToken: token };
-await this.prisma.user.update({ where: { id: userId }, data: { metadata } });
+this.logger.error(
+  `Circuit breaker OPEN for ${vendor}: ${(reason.error as Error)?.message ?? 'bad_result'}`,
+);
 ```
 
-### WR-02: AbortSignal reference-identity is only tested for one of six resilience-wrapped call sites
+Do not pass `reason.error` (or any vendor error object) as a second argument to `Logger.error()` anywhere errors may carry `.config`/`.headers`/`.request` data.
 
-**Files:** `backend/src/common/services/__tests__/paystack.service.spec.ts:78-92` (has it) vs. `s3.service.spec.ts`, `notifications.service.spec.ts`, `ai.service.spec.ts`, `auth.service.spec.ts`, `delivery.service.spec.ts` (do not)
+## Warnings
 
-**Issue:** CR-02 in the original review was specifically about missing AbortSignal propagation into the underlying vendor call. Only `paystack.service.spec.ts` ("Test 7") asserts that the *exact same* `AbortSignal` instance cockatiel provides reaches the underlying call (`expect(mockedAxios.post.mock.calls[0][2]?.signal).toBe(controller.signal)`). The other five spec files only assert that `resilience.execute` was called with the right vendor key and a function — none of them verify the signal actually reaches `s3.send()`'s `abortSignal` option, `fetch()`'s `signal` option (notifications, auth, delivery), or the Anthropic SDK's `options.signal`. A regression that silently dropped the signal forwarding in any of these five services (e.g. a future refactor) would not be caught by the current test suite.
+### WR-01: `NotificationsService.sendPush`'s Google OAuth token fetch is not covered by resilience wrapping
 
-**Fix:** Add a reference-identity assertion (mirroring paystack's Test 7) to each of the other five spec files, e.g. for `s3.service.spec.ts`:
+**File:** `backend/src/modules/notifications/notifications.service.ts:83-88`
+
+**Issue:** Only the final `axios.post(...)` to FCM's `messages:send` endpoint is wrapped in `resilience.execute('fcm', ...)`. The preceding network call needed to obtain the bearer token — `await this.fcmAuthClient.getAccessToken();` (a real call out to Google's OAuth token endpoint via `google-auth-library`) — runs completely outside the resilience layer: no per-attempt timeout, no circuit-breaker accounting, no retry policy. If Google's token endpoint is slow or intermittently failing, every `sendPush()` call pays the full (unbounded) latency of that call with no fail-fast protection, and repeated failures never trip the `fcm` breaker — defeating a core goal of this phase for half of the FCM vendor's real network surface.
+
+**Fix:** Wrap the token acquisition in the same resilience policy (a distinct vendor key, e.g. `fcmAuth`, may be warranted since its failure semantics differ from the send call), or at minimum apply an explicit timeout:
 
 ```ts
-it('forwards the exact AbortSignal into S3Client.send as abortSignal', async () => {
-  const controller = new AbortController();
-  mockResilience.execute.mockImplementationOnce((_v, fn) => fn({ signal: controller.signal }));
-  await service.upload('k', Buffer.from('x'), 'image/jpeg');
-  const sendMock = (service.getClient() as any).send;
-  expect(sendMock.mock.calls[0][1]?.abortSignal).toBe(controller.signal);
+const accessTokenResponse = await this.resilience.execute('fcm', () => this.fcmAuthClient!.getAccessToken());
+```
+
+### WR-02: `AiService`'s 3-turn agentic loop cap silently drops the final response when the cap is hit mid tool-use
+
+**File:** `backend/src/modules/ai/ai.service.ts:276-334`
+
+**Issue:** `for (let turn = 0; turn < 3; turn++)` bounds the tool-use loop. If `finalMessage.stop_reason === 'tool_use'` on the third (last permitted) iteration, the code pushes the assistant/tool-result messages onto `messageHistory` (lines 328-329) and the loop condition then terminates the loop — but no further call to Claude is made to synthesize a final answer using those tool results. Execution falls straight through to `res.write('data: [DONE]\n\n'); res.end();` (lines 336-337). The client receives the raw tool result events but never a closing assistant message acknowledging them, and no distinguishing SSE event (e.g. `{error: 'max_turns_reached'}`) is emitted to explain the truncation — the stream just ends as if it completed normally.
+
+**Fix:** Detect the cap being hit and emit an explicit signal, e.g.:
+
+```ts
+if (turn === 2 && finalMessage.stop_reason === 'tool_use') {
+  res.write(`data: ${JSON.stringify({ warning: 'max_turns_reached' })}\n\n`);
+}
+```
+
+### WR-03: Malformed-config regression coverage only exercises 2 of the 4 hardened `readConfig()` keys
+
+**File:** `backend/src/resilience/__tests__/resilience.service.spec.ts:150-187`
+
+**Issue:** The `describe('readConfig() — malformed DB config falls back to defaults (WR-01)')` block only has tests for a malformed `timeout_ms` (line 151) and a malformed `retry_count` (line 169). `breaker_failure_threshold` and `half_open_after_ms` — both also routed through `positiveInt()` in production code (`resilience.service.ts:106-107`) — have no malformed-value regression test. A future change that broke `positiveInt()`'s behavior specifically for one of those two keys (e.g. an off-by-one in how the key name is derived) would not be caught by this suite.
+
+**Fix:** Add the analogous two tests, e.g.:
+
+```ts
+it('falls back to the default failureThreshold when breaker_failure_threshold is malformed', async () => {
+  prisma.platformConfig.findMany.mockResolvedValue([
+    { key: 'resilience.paystack.breaker_failure_threshold', value: 'not-a-number' },
+  ]);
+  await service.onModuleInit();
+  // assert breaker still opens after RESILIENCE_DEFAULTS.paystack.failureThreshold consecutive failures
 });
-```
-
-### WR-03: `isTransientError` does not recognize axios's own abort-cancellation error code (`ERR_CANCELED`)
-
-**File:** `backend/src/resilience/resilience.service.ts:194-216`
-
-**Issue:** When cockatiel's aggressive timeout fires, it aborts the shared `AbortSignal` passed into `axios`. Axios (1.x) reacts to signal abortion by rejecting with a `CanceledError` whose `.code` is `'ERR_CANCELED'` (not `'ABORT_ERR'`, which is the native `fetch`/`undici` abort code already handled at line 205). `isTransientError`'s recognized-code allowlist (`ECONNREFUSED, ETIMEDOUT, ECONNRESET, ENOTFOUND, EAI_AGAIN, ABORT_ERR`) does not include `ERR_CANCELED`, and axios's `CanceledError.name` is `'CanceledError'`, not `'AbortError'` (the check at line 211), so it also fails that branch.
-
-In practice this is usually masked because cockatiel's own `TaskCancelledError` (with `isTaskCancelledError: true`, handled at line 199) wins the `Promise.race` against the underlying axios call in `TimeoutPolicy`'s aggressive strategy — so the axios-side `CanceledError` rarely reaches `isTransientError` first. But this is a timing coincidence, not a guarantee: a future move to `TimeoutStrategy.Cooperative` (which does *not* race and instead waits for `fn` to observe and honor the abort itself — see `node_modules/cockatiel/dist/TimeoutPolicy.js:66-67`) would surface the axios `CanceledError` directly, and it would be misclassified as non-transient — silently excluding it from retry and from the circuit breaker's failure accounting.
-
-**Fix:** Add `'ERR_CANCELED'` to the recognized network-code allowlist:
-
-```ts
-['ECONNREFUSED', 'ETIMEDOUT', 'ECONNRESET', 'ENOTFOUND', 'EAI_AGAIN', 'ABORT_ERR', 'ERR_CANCELED'].includes(code)
 ```
 
 ## Info
 
-### IN-01: `ResilienceService.readConfig()` does not filter soft-deleted `PlatformConfig` rows
+### IN-01: `readConfig()` still does not filter soft-deleted `PlatformConfig` rows (carried over, unaddressed)
 
-**File:** `backend/src/resilience/resilience.service.ts:95-97`
+**File:** `backend/src/resilience/resilience.service.ts:93-98`
 
-**Issue:** `this.prisma.platformConfig.findMany({ where: { key: { in: Object.values(keys) } } })` does not exclude rows with `deletedAt` set. If an operator soft-deletes a misconfigured threshold row expecting the per-key default to take over, the stale (deleted) value would still be picked up at next process restart. This matches the existing convention elsewhere in the codebase (e.g. `tour-bookings.service.ts` also reads `platformConfig` without a `deletedAt` filter), so it's not a regression introduced by this batch, but it's worth flagging since `readConfig()` is brand-new code for this phase and is exactly the kind of place a `deletedAt: null` filter would matter most (security/reliability thresholds).
+**Issue:** Flagged in the prior `11-REVIEW.md` round as IN-01 and not addressed by plans 11-09/11-10/11-11. `this.prisma.platformConfig.findMany({ where: { key: { in: Object.values(keys) } } })` still has no `deletedAt: null` filter, so a soft-deleted (intentionally retired) threshold row would still be picked up at next process restart instead of falling back to `RESILIENCE_DEFAULTS`.
 
-### IN-02: Resilience test suites leave a background timer running past teardown
+**Fix:** Add `deletedAt: null` to the `where` clause.
 
-**File:** `backend/src/resilience/__tests__/resilience.service.spec.ts`, `backend/src/resilience/__tests__/retry-timeout-composition.spec.ts`
+### IN-02: No `onModuleDestroy` teardown for cached circuit breakers (carried over, unaddressed)
 
-**Issue:** Running the full test batch (`npx jest src/resilience ...`) produces `A worker process has failed to exit gracefully ... Active timers can also cause this, ensure that .unref() was called on them.` This is most likely `ConsecutiveBreaker`'s internal `halfOpenAfter` timer surviving past the test's lifetime, since `ResilienceService` has no `onModuleDestroy()` to tear down its cached breakers. In a long-running NestJS process this is harmless (the breakers are meant to live for the process lifetime), but it's worth confirming this doesn't accumulate open handles in short-lived contexts (e.g. serverless, CLI scripts, or CI test workers that spin up the module repeatedly).
+**File:** `backend/src/resilience/resilience.service.ts`
+
+**Issue:** Flagged in the prior round as IN-02, still unaddressed. `ResilienceService` has no `onModuleDestroy()`, so `ConsecutiveBreaker`'s internal `halfOpenAfter` timers are never explicitly cleared. Harmless for the long-running production process, but confirmed still producing "a worker process has failed to exit gracefully" warnings when running the resilience test suites, and could accumulate open handles in short-lived contexts (serverless, CLI scripts, CI workers that reinstantiate the module repeatedly).
+
+**Fix:** Implement `onModuleDestroy()` to dispose cached breakers if cockatiel exposes a disposal API, or explicitly document why teardown is intentionally skipped.
+
+### IN-03: `NotificationsService.registerToken`'s read-then-merge-then-write is not atomic
+
+**File:** `backend/src/modules/notifications/notifications.service.ts:57-65`
+
+**Issue:** The WR-01 fix correctly merges `fcmToken` into existing metadata, but the `findUnique` → `update` sequence is not transactional. If any other concurrent write to the same `user.metadata` JSON blob occurs between the read and the write (e.g. two rapid `registerToken` calls from a user's multiple devices, or a future feature that also writes `user.metadata`), one write can still silently clobber the other's changes. This is the same class of bug as the original overwrite defect, just narrower — no other code path writes `User.metadata` today, so it is low-risk in practice, but worth noting since the "no other writer today" reasoning is exactly what allowed the original bug to go unnoticed for a while.
+
+**Fix:** If/when a second writer to `user.metadata` is introduced, revisit this with either a `$transaction` + row lock, a JSON-patch-style Prisma update (`{ metadata: { ...jsonPathSet... } }`), or an optimistic-concurrency check.
+
+### IN-04: `NotificationsService.initFcm()` passes the same service-account credentials twice
+
+**File:** `backend/src/modules/notifications/notifications.service.ts:37-44`
+
+**Issue:** `client_email`/`private_key` are passed both to the `GoogleAuth` constructor's `credentials` option (line 38) and again to `.fromJSON({...})` (lines 40-44) with an identical shape. The constructor's `credentials` option is unused since `.fromJSON()` overrides the client construction. This is dead/redundant configuration — harmless today, but a future edit to one copy without the other would silently diverge.
+
+**Fix:** Drop the unused `credentials` option from the `GoogleAuth` constructor call, or construct the `JWT` client directly instead of going through `GoogleAuth().fromJSON()`.
 
 ---
 
-_Reviewed: 2026-07-16T17:56:30Z_
+_Reviewed: 2026-07-16T00:00:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
