@@ -98,3 +98,7 @@ None - no external service configuration required.
 ---
 *Phase: 11-resilience-wrapping*
 *Completed: 2026-07-16*
+
+## Self-Check: PASSED
+
+All created/modified files verified present on disk (`paystack.service.ts`, `paystack.service.spec.ts`, `s3.service.ts`, `s3.service.spec.ts`, `11-02-SUMMARY.md`); all 3 commits (`be083f1`, `c529c41`, `f76309f`) verified present in git log.
