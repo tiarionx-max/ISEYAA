@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 Phase: 11 (resilience-wrapping) — EXECUTING
 Plan: 1 of 11
 Status: Executing Phase 11
-Last activity: 2026-07-16 -- Phase 11 execution started
+Last activity: 2026-07-16 - Completed quick task 260716-lbl: Fix deleteOutDir/tsbuildinfo stale-cache race and root .env not loading in backend dev bootstrap
 
 Progress: [██████████] 100%
 
@@ -78,6 +78,8 @@ Key decisions logged in PROJECT.md. Decisions affecting current v2.0 work:
 - [Phase 10]: PROJECT.md required zero edits for DOC-01 audit — All four candidate lines already stated the corrected proto-only gRPC reality (zero live @GrpcMethod/ClientGrpc wiring, monolithic NestFactory.create()); only ROADMAP.md's Phase 2 success criterion 2 and 02-07-PLAN.md entry needed correction
 - [Phase 10]: Widened rootDir at the per-service tsconfig.app.json level only (not shared backend/tsconfig.json) to keep the monolith's dist/main.js output path unchanged for the live Railway start:prod command — Avoids a breaking change to production deployment while fixing the TS6059 build failure across all 8 gRPC service scaffolds
 - [Phase 10]: Resolved ts-proto plugin path to the .cmd shim on Windows (MINGW/MSYS/Cygwin) since protoc.exe cannot execute the POSIX shell-script bin shim via direct Win32 CreateProcess — Plan's literal command line fails on Windows dev machines with 'not a valid Win32 application'; POSIX branch left unchanged for Linux/Mac CI
+- [Quick 260716-lbl]: TypeScript's incremental `tsBuildInfoFile` now lives inside `backend/dist/` (was defaulting to the project root) so nest-cli's `deleteOutDir: true` wipes it together with `dist/` on every restart — previously a stale cache outside `dist/` made tsc skip re-emitting into an empty `dist/`, crashing every second cold start with `Cannot find module dist/main`
+- [Quick 260716-lbl]: `ConfigModule.forRoot()` in `backend/src/app.module.ts` now sets `envFilePath` to the repo-root `.env` (npm workspace cwd is `backend/`, which has no `.env` of its own) — local `npm run dev:backend` was silently failing the required-env-var check unless vars were manually exported; Docker Compose's `env_file: .env` path is unaffected since injected `process.env` vars always take precedence over file-loaded ones
 
 ### Pending Todos
 
@@ -92,6 +94,12 @@ Key decisions logged in PROJECT.md. Decisions affecting current v2.0 work:
   - Phase 14 (Ministry Dashboard): `VisitorLog.purpose` taxonomy (categories the Ministry actually wants) is undefined — needs a stakeholder conversation during Phase 14 planning
   - Ministry wallet identity (same entity as `tour.government_wallet_user_id` vs. a distinct standing wallet) needs explicit stakeholder confirmation before Phase 12's schema/config work begins
 - Live Paystack secret key (`sk_live_...`) present in `backend/.env` / root `.env` — recommend rotating to test-mode keys for local/CI use (carried over from v1.0, still unresolved)
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260716-lbl | Fix deleteOutDir/tsbuildinfo stale-cache race and root .env not loading in backend dev bootstrap | 2026-07-16 | 5bd04f4 | [260716-lbl-fix-deleteoutdir-tsbuildinfo-stale-cache](./quick/260716-lbl-fix-deleteoutdir-tsbuildinfo-stale-cache/) |
 
 ## Deferred Items
 
