@@ -290,6 +290,15 @@ Be concise, helpful, and culturally aware. Respond in the user's language (Engli
             },
             { signal },
           );
+          // UAT Test 5: MessageStream emits 'error'/'abort' internally (its own
+          // EventEmitter-style dispatch, not Node's) when cockatiel aborts the signal on
+          // timeout. With zero listeners registered, the SDK's own _emit() does a raw
+          // `Promise.reject(error)` — an unhandled rejection that crashes the whole
+          // process, not just this request. No-op listeners here are enough to suppress
+          // that; the real failure still surfaces via withResponse()'s rejection below,
+          // caught by this method's outer try/catch.
+          s.on('error', () => {});
+          s.on('abort', () => {});
           await s.withResponse();
           return s;
         });
@@ -506,6 +515,11 @@ Respond with ONLY valid JSON matching this exact structure — no markdown, no e
           },
           { signal },
         );
+        // UAT Test 5: see the identical no-op listener comment on streamChatWithTools's
+        // call site above — without these, an aborted MessageStream's internal 'error'/
+        // 'abort' emission crashes the whole process via an unhandled rejection.
+        s.on('error', () => {});
+        s.on('abort', () => {});
         await s.withResponse();
         return s;
       });

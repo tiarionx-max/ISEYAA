@@ -29,6 +29,11 @@ jest.mock('@opentelemetry/api', () => ({
 
 function makeStream(stopReason: string, textChunks: string[] = [], toolUses: any[] = []) {
   return {
+    // Real MessageStream is an event emitter (its own dispatch, not Node's) — production
+    // code registers no-op 'error'/'abort' listeners (UAT Test 5) to stop an aborted
+    // stream's internal Promise.reject(...) from crashing the process. Mocked here so
+    // ai.service.ts's s.on(...) calls don't throw "s.on is not a function".
+    on: jest.fn(),
     withResponse: jest.fn().mockResolvedValue(undefined),
     [Symbol.asyncIterator]: async function* () {
       for (const text of textChunks) {
@@ -46,6 +51,7 @@ function makeStream(stopReason: string, textChunks: string[] = [], toolUses: any
 
 // Default stream for existing tests (itinerary)
 const mockItineraryStream = {
+  on: jest.fn(),
   withResponse: jest.fn().mockResolvedValue(undefined),
   [Symbol.asyncIterator]: async function* () {
     yield { type: 'content_block_delta', delta: { type: 'text_delta', text: '{"title":"Test Itinerary",' } };
@@ -413,9 +419,12 @@ describe('AiService', () => {
     // A withResponse() that never settles — simulates a hung Anthropic connection.
     // The async iterator is never reached since production code awaits
     // withResponse() before returning the stream.
+    let lastOnCalls: Array<[string, unknown]> = [];
     const hungStream = () => {
       streamCallCount += 1;
+      const onSpy = jest.fn((...args: [string, unknown]) => lastOnCalls.push(args));
       return {
+        on: onSpy,
         withResponse: jest.fn(() => new Promise(() => {})),
         [Symbol.asyncIterator]: async function* () {},
         finalMessage: jest.fn(),
@@ -442,6 +451,7 @@ describe('AiService', () => {
     beforeEach(async () => {
       jest.useFakeTimers();
       streamCallCount = 0;
+      lastOnCalls = [];
       mockPrisma.user.findUnique.mockResolvedValue(USER_STUB);
       mockPrisma.lGA.findFirst.mockResolvedValue(LGA_STUB);
       mockPrisma.attraction.findMany.mockResolvedValue([]);
@@ -466,6 +476,21 @@ describe('AiService', () => {
 
     afterEach(() => {
       jest.useRealTimers();
+    });
+
+    it('UAT Test 5 regression: registers no-op "error" and "abort" listeners on the MessageStream so an aborted connection cannot crash the process via an unhandled rejection', async () => {
+      const res = makeSseRes();
+      const pending = realAiService.streamChatWithTools(
+        'user-1',
+        { messages: [{ role: 'user', content: 'Hi' }] } as any,
+        res as any,
+      );
+
+      await jest.advanceTimersByTimeAsync(8100);
+      await pending;
+
+      const registeredEvents = lastOnCalls.map(([event]) => event);
+      expect(registeredEvents).toEqual(expect.arrayContaining(['error', 'abort']));
     });
 
     it('Test A: streamChatWithTools does not emit the SSE error before ~8000ms and does after advancing 8100ms of simulated time', async () => {
