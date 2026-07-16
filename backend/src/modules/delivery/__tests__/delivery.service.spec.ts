@@ -11,6 +11,7 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 import { DeliveryGateway } from '../delivery.gateway';
 import { ConfigService } from '@nestjs/config';
 import { S3Service } from '../../../common/services/s3.service';
+import { ResilienceService } from '../../../resilience/resilience.service';
 
 // ── Fixture IDs ────────────────────────────────────────────────────────────────
 
@@ -145,6 +146,10 @@ const mockConfig = {
   get: jest.fn().mockReturnValue(undefined),
 };
 
+const mockResilience = {
+  execute: jest.fn((vendor: string, fn: () => any) => fn()),
+};
+
 // ── Test suite ─────────────────────────────────────────────────────────────────
 
 describe('DeliveryService', () => {
@@ -172,6 +177,7 @@ describe('DeliveryService', () => {
         { provide: DeliveryGateway, useValue: mockGateway },
         { provide: ConfigService, useValue: mockConfig },
         { provide: S3Service, useValue: mockS3 },
+        { provide: ResilienceService, useValue: mockResilience },
       ],
     }).compile();
 
@@ -409,6 +415,32 @@ describe('DeliveryService', () => {
           }),
         }),
       );
+    });
+  });
+
+  // ── sendTermiiDeliveryOtp ──────────────────────────────────────────────────
+
+  describe('sendTermiiDeliveryOtp', () => {
+    it('routes the Termii fetch call through resilience.execute with the termiiDelivery vendor key', async () => {
+      mockConfig.get.mockImplementation((key: string, def?: unknown) =>
+        key === 'TERMII_API_KEY' ? 'test-termii-key' : (def ?? undefined),
+      );
+      jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true } as any);
+
+      await (service as any).sendTermiiDeliveryOtp('+2348012345678', '654321');
+
+      expect(mockResilience.execute).toHaveBeenCalledWith('termiiDelivery', expect.any(Function));
+    });
+
+    it('resolves without throwing when resilience.execute rejects (circuit open) — log-and-swallow fallback preserved', async () => {
+      mockConfig.get.mockImplementation((key: string, def?: unknown) =>
+        key === 'TERMII_API_KEY' ? 'test-termii-key' : (def ?? undefined),
+      );
+      mockResilience.execute.mockRejectedValueOnce(new Error('circuit open'));
+
+      await expect(
+        (service as any).sendTermiiDeliveryOtp('+2348012345678', '654321'),
+      ).resolves.toBeUndefined();
     });
   });
 });

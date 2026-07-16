@@ -13,6 +13,7 @@ import { randomInt } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
+import { ResilienceService } from '../../resilience/resilience.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { OtpSendDto } from './dto/otp-send.dto';
@@ -50,6 +51,7 @@ export class AuthService {
     private redis: RedisService,
     private jwt: JwtService,
     private config: ConfigService,
+    private resilience: ResilienceService,
   ) {}
 
   async register(dto: RegisterDto, ip?: string, ua?: string) {
@@ -297,18 +299,20 @@ export class AuthService {
       const from = (whatsappSender ?? smsSender) || 'N-Alert';
 
       try {
-        const response = await fetch('https://v3.api.termii.com/api/sms/send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            to: phone,
-            from,
-            sms: `Your Iṣẹ́yáá verification code is ${otp}. Valid for 5 minutes. Do not share.`,
-            type: 'plain',
-            channel,
-            api_key: termiiKey,
+        const response = await this.resilience.execute('termiiAuth', () =>
+          fetch('https://v3.api.termii.com/api/sms/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: phone,
+              from,
+              sms: `Your Iṣẹ́yáá verification code is ${otp}. Valid for 5 minutes. Do not share.`,
+              type: 'plain',
+              channel,
+              api_key: termiiKey,
+            }),
           }),
-        });
+        );
         if (response.ok) {
           this.logger.log(`OTP sent via Termii (${channel}) to ${phone}`);
           return;
