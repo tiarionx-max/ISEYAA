@@ -119,6 +119,18 @@ describe('NotificationsService.sendPush', () => {
     });
   });
 
+  it("forwards the exact AbortSignal instance into axios.post's config (reference-identity, mirrors paystack.service.spec.ts Test 7)", async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'user-1', metadata: { fcmToken: 'token-1' } });
+
+    const controller = new AbortController();
+    mockResilience.execute.mockImplementationOnce(
+      (_vendor: string, fn: (context: { signal: AbortSignal | undefined }) => any) => fn({ signal: controller.signal }),
+    );
+
+    await service.sendPush('user-1', 'Title', 'Body');
+
+    expect(mockedAxios.post.mock.calls[0][2]?.signal).toBe(controller.signal);
+  });
 });
 
 describe('NotificationsService.registerToken', () => {
