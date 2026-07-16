@@ -412,7 +412,24 @@ Plans:
   1. Every call site to Paystack, Termii, Anthropic, Cloudflare R2/S3, and Firebase FCM is wrapped in a `cockatiel`-based circuit-breaker + retry + timeout + fallback policy
   2. Simulating a Paystack outage (forced timeout/error injection) causes wallet top-up to fail gracefully via the fallback path while unrelated endpoints (e.g. `GET /api/v1/events`) continue responding normally
   3. Circuit-breaker state transitions (closed → open → half-open) and vendor-call failures appear as spans/log events in the existing Grafana/Sentry/OpenTelemetry stack
-**Plans**: TBD
+**Plans**: 5 plans
+Plans:
+**Wave 1**
+- [ ] 11-01-PLAN.md — ResilienceService foundation: cockatiel@3.2.1 pinned install, per-vendor cached policy registry (7 vendors incl. paystackRefund), PlatformConfig thresholds, Sentry+OTel wiring, global module registration
+
+**Wave 2** *(blocked on Wave 1, parallel)*
+- [ ] 11-02-PLAN.md — Paystack (initiatePayment/resolveBvn/refundCharge) + S3/R2 upload wrapped
+- [ ] 11-03-PLAN.md — FCM sendPush (D-02 swallow-and-report preserved) + Anthropic streamChatWithTools/streamItinerary/getLgaIntelligence wrapped
+- [ ] 11-04-PLAN.md — Termii wrapped independently in auth.service.ts and delivery.service.ts (D-08, no consolidation)
+
+**Wave 3** *(blocked on Wave 2)*
+- [ ] 11-05-PLAN.md — Cross-vendor circuit isolation test (success criterion 2 proof) + full-suite regression gate
+
+**Cross-cutting constraints:**
+- `cockatiel@^3.2.1` pinned exactly — never the unpinned `4.0.0` (Node>=22/ESM-only)
+- One cached policy instance per vendor, built once at `onModuleInit` — never rebuilt per-call
+- Paystack, Anthropic, S3/R2 fail loud (`ServiceUnavailableException`, D-01/D-05); FCM never throws (D-02); Termii falls through its existing per-file chains unchanged (D-03/D-08)
+- `refundCharge` uses a distinct zero-retry `paystackRefund` policy, separate from `initiatePayment`/`resolveBvn`'s `paystack` policy, to avoid double-refund risk on retried ambiguous-outcome refunds
 **UI hint**: no
 
 ### Phase 12: Settlement Engine Foundation
@@ -508,7 +525,7 @@ Phases 11, 12 (Settlement Foundation), and 15 (WhatsApp OTP) are independent of 
 | 8. Mobile Redesign | 10/11 | In Progress (08-09 EAS build queued, 08-10 human verification pending) | - |
 | 9. Tour Packages & Tour Guides | 12/13 | In Progress (09-13 human checkpoint pending) | - |
 | 10. Documentation Correction + gRPC Build Fix | 3/3 | Complete    | 2026-07-15 |
-| 11. Resilience Wrapping | 0/0 | Not started | - |
+| 11. Resilience Wrapping | 0/5 | Planned | - |
 | 12. Settlement Engine Foundation | 0/0 | Not started | - |
 | 13. Settlement Cutover — Transport & Delivery | 0/0 | Not started | - |
 | 14. Ministry Dashboard | 0/0 | Not started | - |
