@@ -10,6 +10,7 @@ import { ResilienceService } from '../../../resilience/resilience.service';
 
 function makeStream(stopReason: string, textChunks: string[] = [], toolUses: any[] = []) {
   return {
+    withResponse: jest.fn().mockResolvedValue(undefined),
     [Symbol.asyncIterator]: async function* () {
       for (const text of textChunks) {
         yield { type: 'content_block_delta', delta: { type: 'text_delta', text } };
@@ -26,6 +27,7 @@ function makeStream(stopReason: string, textChunks: string[] = [], toolUses: any
 
 // Default stream for existing tests (itinerary)
 const mockItineraryStream = {
+  withResponse: jest.fn().mockResolvedValue(undefined),
   [Symbol.asyncIterator]: async function* () {
     yield { type: 'content_block_delta', delta: { type: 'text_delta', text: '{"title":"Test Itinerary",' } };
     yield { type: 'content_block_delta', delta: { type: 'text_delta', text: '"overview":"Great trip","days":[],' } };
