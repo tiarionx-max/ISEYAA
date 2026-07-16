@@ -432,9 +432,9 @@ Plans:
 - [x] 11-08-PLAN.md — Fix CR-02 (AbortSignal propagation) in ai.service.ts, auth.service.ts, delivery.service.ts
 
 **Gap closure round 2 (11-VERIFICATION.md re-verification + fresh 11-REVIEW.md, wave 1, mutually parallel — file-disjoint)**
-- [ ] 11-09-PLAN.md — Fix blocking gap: ai.service.ts's streamChatWithTools/streamItinerary now await stream.withResponse() inside resilience.execute('anthropic', ...) so cockatiel's timeout/breaker get a real window over the actual Anthropic connection (not just the synchronous .stream() call); fake-timer regression test + AbortSignal reference-identity test
-- [ ] 11-10-PLAN.md — Fix WR-01 (notifications.service.ts registerToken now merges User.metadata instead of overwriting) + AbortSignal reference-identity test (WR-02 sweep)
-- [ ] 11-11-PLAN.md — Fix WR-03 (isTransientError recognizes axios's ERR_CANCELED) + AbortSignal reference-identity tests for s3/auth/delivery spec files (WR-02 sweep)
+- [x] 11-09-PLAN.md — Fix blocking gap: ai.service.ts's streamChatWithTools/streamItinerary now await stream.withResponse() inside resilience.execute('anthropic', ...) so cockatiel's timeout/breaker get a real window over the actual Anthropic connection (not just the synchronous .stream() call); fake-timer regression test + AbortSignal reference-identity test
+- [x] 11-10-PLAN.md — Fix WR-01 (notifications.service.ts registerToken now merges User.metadata instead of overwriting) + AbortSignal reference-identity test (WR-02 sweep)
+- [x] 11-11-PLAN.md — Fix WR-03 (isTransientError recognizes axios's ERR_CANCELED) + AbortSignal reference-identity tests for s3/auth/delivery spec files (WR-02 sweep)
 
 Note: RESIL-02's live-observability human-verification item (Grafana/Sentry dashboard confirmation of a real vendor outage) remains open after this round — it requires a live OTel/Sentry pipeline outside a Jest sandbox and is not addressed by code-level plans.
 
@@ -538,7 +538,7 @@ Phases 11, 12 (Settlement Foundation), and 15 (WhatsApp OTP) are independent of 
 | 8. Mobile Redesign | 10/11 | In Progress (08-09 EAS build queued, 08-10 human verification pending) | - |
 | 9. Tour Packages & Tour Guides | 12/13 | In Progress (09-13 human checkpoint pending) | - |
 | 10. Documentation Correction + gRPC Build Fix | 3/3 | Complete    | 2026-07-15 |
-| 11. Resilience Wrapping | 8/8 | Complete   | 2026-07-16 |
+| 11. Resilience Wrapping | 11/11 | Complete   | 2026-07-16 |
 | 12. Settlement Engine Foundation | 0/0 | Not started | - |
 | 13. Settlement Cutover — Transport & Delivery | 0/0 | Not started | - |
 | 14. Ministry Dashboard | 0/0 | Not started | - |
