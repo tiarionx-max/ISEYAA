@@ -1,18 +1,14 @@
 ---
-status: testing
+status: complete
 phase: 11-resilience-wrapping
 source: 11-01-SUMMARY.md, 11-02-SUMMARY.md, 11-03-SUMMARY.md, 11-04-SUMMARY.md, 11-05-SUMMARY.md, 11-06-SUMMARY.md, 11-07-SUMMARY.md, 11-08-SUMMARY.md, 11-09-SUMMARY.md, 11-10-SUMMARY.md, 11-11-SUMMARY.md
 started: 2026-07-16T20:30:00Z
-updated: 2026-07-16T22:20:00Z
+updated: 2026-07-16T23:15:00Z
 ---
 
 ## Current Test
-<!-- OVERWRITE each test - shows where we are -->
 
-number: 6
-name: Breaker State Changes Are Visible in Observability (Sentry/OTel)
-expected: When a vendor circuit breaker opens, closes, or half-opens, a corresponding event appears in Sentry (a captured message naming the vendor) and/or the configured OpenTelemetry backend (a span with the breaker state and vendor attributes) — visible to whoever monitors the platform's observability dashboards.
-awaiting: user response
+[testing complete]
 
 ## Tests
 
@@ -198,18 +194,56 @@ result: |
 
 ### 6. Breaker State Changes Are Visible in Observability (Sentry/OTel)
 expected: When a vendor circuit breaker opens, closes, or half-opens, a corresponding event appears in Sentry (a captured message naming the vendor) and/or the configured OpenTelemetry backend (a span with the breaker state and vendor attributes) — visible to whoever monitors the platform's observability dashboards.
-result: [pending]
+result: |
+  PASSED. No live Sentry/OTel target existed anywhere (local `.env` or Railway) at the
+  start of this test, so the user created a Sentry project and added a real `SENTRY_DSN`
+  to the repo-root `.env`.
+
+  Verified with a real (unmocked) call to the production code path, without touching the
+  running dev server or the real Paystack API: a one-off NestJS-testing-module script
+  wired `ResilienceService` the same way `resilience.service.spec.ts` does, but left
+  `@sentry/nestjs` and `@opentelemetry/api` unmocked, then fed 6 consecutive synthetic
+  transient (HTTP 500) failures into `service.execute('paystack', ...)`. The real paystack
+  breaker opened at exactly `failureThreshold` (5) — call 6 fail-fasted with "Execution
+  prevented because the circuit breaker is open" — and the log line stayed clean
+  (`Circuit breaker OPEN for paystack: status=500 synthetic failure #5`, no raw error
+  object, consistent with the Test 3 fix). The real `onBreak()` handler called
+  `Sentry.captureMessage('Circuit breaker opened: paystack', { level: 'error', tags: {
+  vendor: 'paystack', 'resilience.event': 'circuit_open' } })` using the real DSN, and
+  `Sentry.flush(5000)` returned `true` (event actually delivered over the network, not
+  just queued). User confirmed live in their Sentry Issues feed: an event titled "Circuit
+  breaker opened: paystack", Level: Error — exact match to the expected criterion.
+
+  Side observation (not a gap, see note below): the same live check surfaced a second,
+  unrelated Sentry event (`listen EADDRINUSE :::3001`, Unhandled, `bootstrap(main.ts)`) —
+  confirming Sentry's default uncaught-exception capture is also active, a bonus proof
+  point for this test's premise even though it wasn't the event being tested for.
 
 ## Summary
 
 total: 6
-passed: 4
+passed: 5
 issues: 1
-pending: 1
+pending: 0
 skipped: 0
 blocked: 0
 
 ## Gaps
+
+### Note (not a gap, flagged only): EADDRINUSE crash on bootstrap surfaced by the Sentry check for Test 6
+found_in: Test 6 (Breaker State Changes Are Visible in Observability)
+description: |
+  While confirming the Test 6 Sentry event, the user's Sentry Issues feed also showed an
+  unrelated event: `listen EADDRINUSE: address already in use :::3001`, Level: Error,
+  Unhandled, tagged `bootstrap(main.ts)`. Consistent with a second `npm run dev:backend`
+  process attempting to bind port 3001 while the existing dev instance was already
+  running, and crashing unhandled during `app.listen()` in `main.ts` instead of failing
+  gracefully. The already-running instance was confirmed unaffected and healthy
+  (`GET /api/v1/lgas` returned live `200` immediately after). Not tracked as a Gap since
+  no reproduction steps were deliberately taken and the live instance was never down —
+  flagged here only so it's visible if it recurs. If it becomes a recurring nuisance,
+  `main.ts`'s `app.listen()` could catch `EADDRINUSE` and log a clear "port already in
+  use" message instead of an unhandled crash.
 
 ### Gap 4 (RESOLVED): An aborted Anthropic MessageStream crashed the entire backend process, not just the one slow request
 found_in: Test 5 (AI Chat/Itinerary Streaming Recovers From a Slow/Down Anthropic)
