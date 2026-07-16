@@ -25,7 +25,8 @@ Sprint 1 is shipped. This roadmap covers the six remaining sprints: infrastructu
 - [x] **Phase 8: Mobile Redesign** - Bring mobile app in line with the redesigned web (Airbnb-style stays, Temu-style marketplace, host onboarding, news ticker), complete the 5-tab migration, and ship a fresh EAS preview build
 - [x] **Phase 9: Tour Packages & Tour Guides** - Sell complete Ogun State experiences (curated multi-vendor packages) and onboard certified Tour Guides as a first-class role, with multi-vendor commission splitting on a single buyer payment
 - [x] **Phase 10: Documentation Correction + gRPC Build Fix** - Correct the false "8 services extracted" claim, make all 8 service scaffolds actually build, and author `.proto` contracts for the 7 never-stubbed modules (completed 2026-07-15)
-- [x] **Phase 11: Resilience Wrapping** - Circuit-breaker + retry + timeout + fallback around every external vendor call (Paystack, Termii, Anthropic, R2/S3, FCM), visible in observability (completed 2026-07-16)
+- [x] **Phase 11: Resilience Wrapping** - Circuit-breaker + retry + timeout + fallback around every external vendor call (Paystack, Termii, Anthropic, R2/S3, FCM), visible in observability
+ (completed 2026-07-16)
 - [ ] **Phase 12: Settlement Engine Foundation** - Generalized `SettlementService` + standing Ministry wallet, plus fixing two pre-existing revenue bugs (Stays escrow fee leak, missing Marketplace/Events/Studio webhook consumers)
 - [ ] **Phase 13: Settlement Cutover — Transport & Delivery** - Transport and Delivery's live payouts move onto the three-way settlement engine, shadow-mode verified before cutover
 - [ ] **Phase 14: Ministry Dashboard** - `MINISTRY_VIEWER` role + read-only dashboard: visitor counts, purpose-of-visit, revenue-to-government-share, CSV/PDF export, zero PII leakage
@@ -412,7 +413,7 @@ Plans:
   1. Every call site to Paystack, Termii, Anthropic, Cloudflare R2/S3, and Firebase FCM is wrapped in a `cockatiel`-based circuit-breaker + retry + timeout + fallback policy
   2. Simulating a Paystack outage (forced timeout/error injection) causes wallet top-up to fail gracefully via the fallback path while unrelated endpoints (e.g. `GET /api/v1/events`) continue responding normally
   3. Circuit-breaker state transitions (closed → open → half-open) and vendor-call failures appear as spans/log events in the existing Grafana/Sentry/OpenTelemetry stack
-**Plans**: 8 plans (5 original + 3 gap closure)
+**Plans**: 11 plans (5 original + 6 gap closure)
 Plans:
 **Wave 1**
 - [x] 11-01-PLAN.md — ResilienceService foundation: cockatiel@3.2.1 pinned install, per-vendor cached policy registry (7 vendors incl. paystackRefund), PlatformConfig thresholds, Sentry+OTel wiring, global module registration
@@ -425,10 +426,17 @@ Plans:
 **Wave 3** *(blocked on Wave 2)*
 - [x] 11-05-PLAN.md — Cross-vendor circuit isolation test (success criterion 2 proof) + full-suite regression gate
 
-**Gap closure (11-VERIFICATION.md CR-01/CR-02, wave 1, mutually parallel — file-disjoint)**
+**Gap closure round 1 (11-VERIFICATION.md CR-01/CR-02, wave 1, mutually parallel — file-disjoint)**
 - [x] 11-06-PLAN.md — Fix CR-01 (retry/timeout composition order) in resilience.service.ts + WR-01/WR-04 hardening + regression tests
 - [x] 11-07-PLAN.md — Fix CR-02 (AbortSignal propagation) in paystack.service.ts, s3.service.ts, notifications.service.ts + regression test
 - [x] 11-08-PLAN.md — Fix CR-02 (AbortSignal propagation) in ai.service.ts, auth.service.ts, delivery.service.ts
+
+**Gap closure round 2 (11-VERIFICATION.md re-verification + fresh 11-REVIEW.md, wave 1, mutually parallel — file-disjoint)**
+- [ ] 11-09-PLAN.md — Fix blocking gap: ai.service.ts's streamChatWithTools/streamItinerary now await stream.withResponse() inside resilience.execute('anthropic', ...) so cockatiel's timeout/breaker get a real window over the actual Anthropic connection (not just the synchronous .stream() call); fake-timer regression test + AbortSignal reference-identity test
+- [ ] 11-10-PLAN.md — Fix WR-01 (notifications.service.ts registerToken now merges User.metadata instead of overwriting) + AbortSignal reference-identity test (WR-02 sweep)
+- [ ] 11-11-PLAN.md — Fix WR-03 (isTransientError recognizes axios's ERR_CANCELED) + AbortSignal reference-identity tests for s3/auth/delivery spec files (WR-02 sweep)
+
+Note: RESIL-02's live-observability human-verification item (Grafana/Sentry dashboard confirmation of a real vendor outage) remains open after this round — it requires a live OTel/Sentry pipeline outside a Jest sandbox and is not addressed by code-level plans.
 
 **Cross-cutting constraints:**
 - `cockatiel@^3.2.1` pinned exactly — never the unpinned `4.0.0` (Node>=22/ESM-only)
