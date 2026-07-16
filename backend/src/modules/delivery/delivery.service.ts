@@ -16,6 +16,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 import { WalletService } from '../wallet/wallet.service';
 import { S3Service } from '../../common/services/s3.service';
+import { ResilienceService } from '../../resilience/resilience.service';
 import { DeliveryGateway } from './delivery.gateway';
 import { CreateDeliveryRiderDto } from './dto/create-delivery-rider.dto';
 import { ApproveDeliveryRiderDto } from './dto/approve-delivery-rider.dto';
@@ -61,6 +62,7 @@ export class DeliveryService {
     private walletService: WalletService,
     private s3Service: S3Service,
     private config: ConfigService,
+    private resilience: ResilienceService,
     private schedulerRegistry: SchedulerRegistry,
     @Inject(forwardRef(() => DeliveryGateway)) private gateway: DeliveryGateway,
   ) {}
@@ -325,18 +327,20 @@ export class DeliveryService {
     }
 
     try {
-      const response = await fetch('https://v3.api.termii.com/api/sms/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: phone,
-          from: this.config.get('TERMII_SENDER_ID', 'ISEYAA'),
-          sms: `Your Iṣẹ́yáá delivery code is ${otp}. Share with the rider to complete delivery.`,
-          type: 'plain',
-          channel: 'generic',
-          api_key: apiKey,
+      const response = await this.resilience.execute('termiiDelivery', () =>
+        fetch('https://v3.api.termii.com/api/sms/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: phone,
+            from: this.config.get('TERMII_SENDER_ID', 'ISEYAA'),
+            sms: `Your Iṣẹ́yáá delivery code is ${otp}. Share with the rider to complete delivery.`,
+            type: 'plain',
+            channel: 'generic',
+            api_key: apiKey,
+          }),
         }),
-      });
+      );
       if (!response.ok) {
         this.logger.error(`Termii error: ${response.status} ${await response.text()}`);
       }
