@@ -242,6 +242,25 @@ describe('ResilienceService', () => {
     });
   });
 
+  describe('isTransientError narrowing (WR-03 — axios ERR_CANCELED)', () => {
+    it("still retries an axios-shaped CanceledError ({ code: 'ERR_CANCELED', name: 'CanceledError' }) — WR-03 regression guard", async () => {
+      await service.onModuleInit();
+
+      const fn = jest.fn().mockRejectedValue({ code: 'ERR_CANCELED', name: 'CanceledError' });
+
+      try {
+        await service.execute('paystack', fn);
+      } catch {
+        // expected
+      }
+
+      // paystack retryCount: 2 means cockatiel retries this — proving axios's own
+      // cancellation code is now classified as transient, consistent with the
+      // already-handled native fetch/undici ABORT_ERR code.
+      expect(fn.mock.calls.length).toBeGreaterThan(1);
+    });
+  });
+
   describe('onBreak — Sentry + OTel span wiring', () => {
     it('calls Sentry.captureMessage and trace.getTracer().startSpan() with vendor + circuit_open attributes when the breaker opens', async () => {
       await service.onModuleInit();
