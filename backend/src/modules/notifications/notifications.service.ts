@@ -55,9 +55,11 @@ export class NotificationsService {
   }
 
   async registerToken(userId: string, token: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { metadata: true } });
+    const metadata = { ...(user?.metadata as Record<string, any> | undefined), fcmToken: token };
     await this.prisma.user.update({
       where: { id: userId },
-      data: { metadata: { fcmToken: token } as any },
+      data: { metadata },
     });
     return { registered: true };
   }
