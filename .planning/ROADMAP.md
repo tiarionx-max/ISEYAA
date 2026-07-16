@@ -426,9 +426,9 @@ Plans:
 - [x] 11-05-PLAN.md — Cross-vendor circuit isolation test (success criterion 2 proof) + full-suite regression gate
 
 **Gap closure (11-VERIFICATION.md CR-01/CR-02, wave 1, mutually parallel — file-disjoint)**
-- [ ] 11-06-PLAN.md — Fix CR-01 (retry/timeout composition order) in resilience.service.ts + WR-01/WR-04 hardening + regression tests
-- [ ] 11-07-PLAN.md — Fix CR-02 (AbortSignal propagation) in paystack.service.ts, s3.service.ts, notifications.service.ts + regression test
-- [ ] 11-08-PLAN.md — Fix CR-02 (AbortSignal propagation) in ai.service.ts, auth.service.ts, delivery.service.ts
+- [x] 11-06-PLAN.md — Fix CR-01 (retry/timeout composition order) in resilience.service.ts + WR-01/WR-04 hardening + regression tests
+- [x] 11-07-PLAN.md — Fix CR-02 (AbortSignal propagation) in paystack.service.ts, s3.service.ts, notifications.service.ts + regression test
+- [x] 11-08-PLAN.md — Fix CR-02 (AbortSignal propagation) in ai.service.ts, auth.service.ts, delivery.service.ts
 
 **Cross-cutting constraints:**
 - `cockatiel@^3.2.1` pinned exactly — never the unpinned `4.0.0` (Node>=22/ESM-only)
@@ -530,7 +530,7 @@ Phases 11, 12 (Settlement Foundation), and 15 (WhatsApp OTP) are independent of 
 | 8. Mobile Redesign | 10/11 | In Progress (08-09 EAS build queued, 08-10 human verification pending) | - |
 | 9. Tour Packages & Tour Guides | 12/13 | In Progress (09-13 human checkpoint pending) | - |
 | 10. Documentation Correction + gRPC Build Fix | 3/3 | Complete    | 2026-07-15 |
-| 11. Resilience Wrapping | 5/5 | Complete   | 2026-07-16 |
+| 11. Resilience Wrapping | 8/8 | Complete   | 2026-07-16 |
 | 12. Settlement Engine Foundation | 0/0 | Not started | - |
 | 13. Settlement Cutover — Transport & Delivery | 0/0 | Not started | - |
 | 14. Ministry Dashboard | 0/0 | Not started | - |
