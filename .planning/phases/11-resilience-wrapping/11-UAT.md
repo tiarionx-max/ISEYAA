@@ -3,15 +3,15 @@ status: testing
 phase: 11-resilience-wrapping
 source: 11-01-SUMMARY.md, 11-02-SUMMARY.md, 11-03-SUMMARY.md, 11-04-SUMMARY.md, 11-05-SUMMARY.md, 11-06-SUMMARY.md, 11-07-SUMMARY.md, 11-08-SUMMARY.md, 11-09-SUMMARY.md, 11-10-SUMMARY.md, 11-11-SUMMARY.md
 started: 2026-07-16T20:30:00Z
-updated: 2026-07-16T21:49:03Z
+updated: 2026-07-16T22:20:00Z
 ---
 
 ## Current Test
 <!-- OVERWRITE each test - shows where we are -->
 
-number: 4
-name: FCM Token Registration Preserves Existing Profile Data
-expected: A user with existing metadata (e.g. saved preferences) registers a new FCM push token. After registration, the previously-saved preference data is still present on the user record — not wiped out by the token write.
+number: 6
+name: Breaker State Changes Are Visible in Observability (Sentry/OTel)
+expected: When a vendor circuit breaker opens, closes, or half-opens, a corresponding event appears in Sentry (a captured message naming the vendor) and/or the configured OpenTelemetry backend (a span with the breaker state and vendor attributes) — visible to whoever monitors the platform's observability dashboards.
 awaiting: user response
 
 ## Tests
@@ -105,11 +105,96 @@ result: |
 
 ### 4. FCM Token Registration Preserves Existing Profile Data
 expected: A user with existing metadata (e.g. saved preferences) registers a new FCM push token. After registration, the previously-saved preference data is still present on the user record — not wiped out by the token write.
-result: [pending]
+result: |
+  PASSED. This was already fixed earlier in the phase (commit fe0ecca, plan 11-10,
+  tracked as WR-01) — `NotificationsService.registerToken()` in
+  `backend/src/modules/notifications/notifications.service.ts:57-65` reads the user's
+  existing `metadata` via `findUnique`, spreads it, then adds `fcmToken` before writing
+  back, instead of overwriting the whole JSON column with `{ fcmToken: token }`.
+
+  Verified live end-to-end against the running dev backend (port 3001, real DB): registered
+  a fresh test user via `POST /auth/register`, seeded `metadata` directly via Prisma with
+  `{ preferences: { theme: 'dark', language: 'yo' }, someOtherKey: 'keep-me' }` (simulating
+  pre-existing saved profile data — there's no dedicated "set preferences" endpoint, so
+  metadata was seeded at the DB layer as the closest real-world equivalent), then called the
+  real `POST /notifications/register-token` endpoint with a bearer token for that user.
+  Metadata after the call was
+  `{ fcmToken: 'test-fcm-token-abc123', preferences: { theme: 'dark', language: 'yo' },
+  someOtherKey: 'keep-me' }` — both pre-existing keys survived untouched alongside the new
+  `fcmToken`. Test user and wallet cleaned up afterward.
+
+  Also covered by two permanent unit tests already added in `notifications.service.spec.ts`
+  at fix time: "Test 1: merges the new fcmToken into existing metadata, preserving
+  pre-existing keys" and "Test 2: writes just { fcmToken } when there is no prior metadata
+  (null), without crashing" — the null-metadata edge case isn't practical to re-verify live
+  (every registered user gets `metadata: null` by default) but is exercised by the unit test.
 
 ### 5. AI Chat/Itinerary Streaming Recovers From a Slow/Down Anthropic
 expected: If the Anthropic API is slow or unreachable, an AI chat or itinerary-generation request does not hang indefinitely — it times out within roughly 8 seconds and returns a graceful error/fallback to the client instead of a stuck connection.
-result: [pending]
+result: |
+  ISSUE FOUND, then FIXED. Verified two ways: the pre-existing fake-timer regression
+  suite (Test A/B/C in `ai.service.spec.ts`, using the real `ResilienceService`, hung-stream
+  mocks) confirmed the per-client-request contract — no SSE error before ~8000ms, an SSE
+  error after 8100ms, and the breaker opens after 3 consecutive timeouts — but those mocks
+  are plain objects with no `.on()` method, so they could never exercise the real Anthropic
+  SDK's internal event machinery.
+
+  A genuine live E2E check filled that gap: spun up an isolated backend instance (port
+  3099, real DB/Redis, existing dev instance on 3001 left untouched) with
+  `ANTHROPIC_BASE_URL` pointed at a local TCP "black-hole" server (accepts connections,
+  never responds — simulates an unreachable/hung Anthropic) via the SDK's documented
+  `ANTHROPIC_BASE_URL` env var, no source changes needed for the setup itself. Called the
+  real `POST /api/v1/ai/itinerary` endpoint (no auth guard). Result: HTTP 201 after
+  ~8.04s with the expected SSE `event: error` / `"AI service unavailable"` frame — the
+  per-request contract held. BUT immediately after, the entire backend process crashed
+  (confirmed reproducible on a second identical run): an uncaught `APIUserAbortError`
+  thrown from deep inside `@anthropic-ai/sdk`'s `MessageStream` internals, taking down
+  every user's connection, not just the one hitting the slow vendor — the opposite of
+  vendor isolation, the core premise of this phase.
+
+  Root cause (traced against `node_modules/@anthropic-ai/sdk/src/lib/MessageStream.ts`):
+  `MessageStream` is its own lightweight event emitter (not Node's `EventEmitter`, but the
+  same "unhandled 'error' crashes the process" contract). When cockatiel's 8000ms timeout
+  aborts the request's `AbortSignal`, the SDK's internal `_run()` promise chain calls
+  `#handleError()` → `_emit('abort', error)` (line ~340). `_emit()`'s own logic
+  (`resilience.service.ts` equivalent inside the SDK) reads: if no listener is registered
+  for that event AND `.done()`/`.finalMessage()`/`.emitted()` was never called on the
+  stream, it does a raw `Promise.reject(error)` — an unhandled rejection, which Node
+  (v24, default `--unhandled-rejections=throw`) turns into a process crash. `ai.service.ts`
+  never attached an `.on('error', ...)` / `.on('abort', ...)` listener to the streams
+  returned by `this.anthropic.messages.stream(...)` in `streamChatWithTools` or
+  `streamItinerary`, and the abort always happens during `await s.withResponse()` — before
+  the stream is ever returned to the caller and before `.finalMessage()` is reachable — so
+  neither the "attach a listener" nor the "call .done()/.finalMessage() first" escape hatch
+  the SDK itself documents (inline comment at the crash site) was ever exercised.
+
+  This is why 444+ passing unit tests never caught it: every existing mock stream is a
+  plain object without an `.on()` method, so none of them could reproduce the SDK's real
+  event-dispatch mechanics — only a real `MessageStream` instance, only reachable via a
+  live call, exhibits this.
+
+  Fix applied in `backend/src/modules/ai/ai.service.ts` (both `streamChatWithTools` and
+  `streamItinerary` call sites): register no-op `s.on('error', () => {})` and
+  `s.on('abort', () => {})` on the stream immediately after construction, before awaiting
+  `s.withResponse()`. This satisfies the SDK's "at least one listener" check so it never
+  falls through to the raw `Promise.reject(error)`; the real failure still surfaces to our
+  code exactly as before via `withResponse()`'s own rejection, caught by each method's
+  existing outer try/catch — zero change to client-facing behavior or timing.
+  `getLgaIntelligence` (uses `.messages.create()`, a real `Promise`, no `MessageStream`
+  involved) was never affected — confirmed with its own live call (8.02s, graceful 503
+  `"AI service is temporarily unavailable, please try again shortly"`, instance unaffected).
+
+  Re-verified live after the fix: both `POST /ai/itinerary` and `POST /ai/chat` (with a
+  real registered user's JWT) against the same black-hole server returned their graceful
+  SSE error at ~8.0-8.1s, and — critically — the isolated backend instance stayed up and
+  serving `GET /lgas` with a 200 immediately afterward, on both endpoints, confirmed twice.
+
+  Added a permanent regression test in `ai.service.spec.ts` ("UAT Test 5 regression:
+  registers no-op 'error' and 'abort' listeners...") asserting `s.on(...)` is called with
+  both event names during the hung-connection timeout path; updated the existing mock
+  stream helpers (`makeStream`, `mockItineraryStream`, `hungStream`) to include a mocked
+  `.on()` so they don't throw `s.on is not a function` now that production code calls it.
+  Full backend suite (463 tests, all 40 suites) passes after the fix.
 
 ### 6. Breaker State Changes Are Visible in Observability (Sentry/OTel)
 expected: When a vendor circuit breaker opens, closes, or half-opens, a corresponding event appears in Sentry (a captured message naming the vendor) and/or the configured OpenTelemetry backend (a span with the breaker state and vendor attributes) — visible to whoever monitors the platform's observability dashboards.
@@ -118,13 +203,64 @@ result: [pending]
 ## Summary
 
 total: 6
-passed: 3
-issues: 0
-pending: 3
+passed: 4
+issues: 1
+pending: 1
 skipped: 0
 blocked: 0
 
 ## Gaps
+
+### Gap 4 (RESOLVED): An aborted Anthropic MessageStream crashed the entire backend process, not just the one slow request
+found_in: Test 5 (AI Chat/Itinerary Streaming Recovers From a Slow/Down Anthropic)
+description: |
+  `AiService.streamChatWithTools()` and `AiService.streamItinerary()` in
+  `backend/src/modules/ai/ai.service.ts` construct an Anthropic `MessageStream` via
+  `this.anthropic.messages.stream(...)` and await `s.withResponse()` inside
+  `resilience.execute('anthropic', ...)`, but never attached an `.on('error', ...)` or
+  `.on('abort', ...)` listener to the stream. `MessageStream` is its own lightweight event
+  emitter (not Node's `EventEmitter`, but the same "unhandled error crashes the process"
+  contract). When cockatiel's 8000ms per-attempt timeout aborts the request's
+  `AbortSignal`, the SDK's internal `_run()` promise chain reacts by emitting an internal
+  `'abort'` event; since zero listeners were registered and neither `.done()` nor
+  `.finalMessage()` had ever been called on that stream instance (the abort happens during
+  `withResponse()`, before the stream is ever returned to the caller), the SDK's own
+  `_emit()` logic falls through to a raw `Promise.reject(error)` — an unhandled promise
+  rejection that crashes the entire Node process under Node's default
+  `--unhandled-rejections=throw` behavior (confirmed on Node v24).
+
+  Reproduced live and twice-confirmed reproducible: an isolated backend instance (port
+  3099, `ANTHROPIC_BASE_URL` pointed at a local TCP black-hole server that accepts
+  connections but never responds) received a real `POST /api/v1/ai/itinerary` call, which
+  correctly returned a graceful SSE `event: error` at ~8.04s (a fully correct per-request
+  contract) — but the entire process then crashed with an uncaught `APIUserAbortError`,
+  taking down every other in-flight and future request on that instance, not just the one
+  hitting the slow vendor. This is the exact opposite of the phase's core premise (isolate
+  a single vendor's failure); it's invisible to the existing fake-timer unit-test suite
+  because every mocked stream in `ai.service.spec.ts` is a plain object with no `.on()`
+  method, so none of them exercise the real SDK's event-dispatch mechanics — only a live
+  call against a real `MessageStream` instance surfaces it.
+resolution: |
+  Added no-op `s.on('error', () => {})` and `s.on('abort', () => {})` registrations in
+  `backend/src/modules/ai/ai.service.ts`, immediately after constructing the stream and
+  before awaiting `s.withResponse()`, at both call sites (`streamChatWithTools` and
+  `streamItinerary`). This satisfies the SDK's internal "at least one listener registered"
+  check, so it never falls through to the raw `Promise.reject(error)` path; the real
+  failure still surfaces through `withResponse()`'s own rejection exactly as before, caught
+  by each method's existing outer try/catch — no change to client-facing behavior or
+  timing. `getLgaIntelligence` (uses `.messages.create()`, a real `Promise`, no
+  `MessageStream` involved) was confirmed unaffected by this class of bug both by code
+  inspection and a live call (8.02s, graceful 503, instance unaffected).
+
+  Re-verified live after the fix on both `POST /ai/itinerary` and `POST /ai/chat` against
+  the same black-hole server: graceful SSE error at ~8.0-8.1s, and the isolated backend
+  instance stayed up and kept serving `GET /lgas` with 200s immediately afterward — on
+  both endpoints. Added a permanent regression test in `ai.service.spec.ts` asserting the
+  stream's `.on(...)` is called with both `'error'` and `'abort'` during the hung-connection
+  timeout path, and updated the existing mock stream helpers (`makeStream`,
+  `mockItineraryStream`, `hungStream`) to include a mocked `.on()` so they reflect the real
+  SDK's shape and don't throw `s.on is not a function` now that production code calls it.
+  Full backend suite (463 tests, all 40 suites) passes after the fix.
 
 ### Gap 3 (RESOLVED): Circuit-breaker open events logged the raw vendor error, including Authorization headers and request bodies
 found_in: Test 3 (Circuit-Breaker Open Event Does NOT Leak Vendor Secrets to Logs)
