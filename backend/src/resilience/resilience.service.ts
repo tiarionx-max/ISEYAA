@@ -97,11 +97,14 @@ export class ResilienceService implements OnModuleInit {
     });
     const byKey = new Map(rows.map((r) => [r.key, r.value]));
 
+    // WR-01 (11-REVIEW.md): a malformed PlatformConfig row (non-numeric, negative, or
+    // NaN-producing) must fall back to RESILIENCE_DEFAULTS per-key instead of silently
+    // disabling a vendor's timeout/breaker/retry protection until next restart.
     return {
-      timeoutMs: Number(byKey.get(keys.timeoutMs) ?? defaults.timeoutMs),
-      retryCount: Number(byKey.get(keys.retryCount) ?? defaults.retryCount),
-      failureThreshold: Number(byKey.get(keys.failureThreshold) ?? defaults.failureThreshold),
-      halfOpenAfterMs: Number(byKey.get(keys.halfOpenAfterMs) ?? defaults.halfOpenAfterMs),
+      timeoutMs: positiveInt(byKey.get(keys.timeoutMs), defaults.timeoutMs),
+      retryCount: nonNegativeInt(byKey.get(keys.retryCount), defaults.retryCount),
+      failureThreshold: positiveInt(byKey.get(keys.failureThreshold), defaults.failureThreshold),
+      halfOpenAfterMs: positiveInt(byKey.get(keys.halfOpenAfterMs), defaults.halfOpenAfterMs),
     };
   }
 
@@ -152,6 +155,26 @@ export class ResilienceService implements OnModuleInit {
     span.end();
     this.logger.warn(`Circuit breaker HALF-OPEN (testing recovery) for ${vendor}`);
   }
+}
+
+// WR-01 (11-REVIEW.md): guard DB-sourced numeric config so a malformed PlatformConfig
+// row (non-numeric, negative, NaN-producing) falls back to the per-key default instead
+// of silently producing a broken timeout/breaker/retry configuration platform-wide.
+
+/** Returns `fallback` unless `Number(raw)` is finite AND strictly greater than 0. */
+function positiveInt(raw: unknown, fallback: number): number {
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+/**
+ * Returns `fallback` unless `Number(raw)` is a finite integer AND >= 0. MUST allow
+ * exactly `0` — `paystackRefund`'s legitimate default `retryCount` is `0` (never
+ * auto-retry a refund; RESEARCH.md Pitfall 6).
+ */
+function nonNegativeInt(raw: unknown, fallback: number): number {
+  const n = Number(raw);
+  return Number.isFinite(n) && Number.isInteger(n) && n >= 0 ? n : fallback;
 }
 
 /**

@@ -147,6 +147,45 @@ describe('ResilienceService', () => {
     });
   });
 
+  describe('readConfig() — malformed DB config falls back to defaults (WR-01)', () => {
+    it('falls back to the default timeoutMs (10_000ms) when the DB-sourced timeout_ms value is non-numeric', async () => {
+      prisma.platformConfig.findMany.mockResolvedValue([
+        { key: 'resilience.paystack.timeout_ms', value: 'not-a-number' },
+      ]);
+      await service.onModuleInit();
+
+      const fn = jest.fn(
+        () =>
+          new Promise((resolve) => {
+            setTimeout(() => resolve('ok'), 50);
+          }),
+      );
+
+      // A malformed timeout_ms must fall back to the ample 10_000ms default rather
+      // than collapsing to a near-zero/NaN timeout that would reject before fn settles.
+      await expect(service.execute('paystack', fn as any)).resolves.toBe('ok');
+    });
+
+    it('falls back to the default retryCount (2) when the DB-sourced retry_count value is non-numeric', async () => {
+      prisma.platformConfig.findMany.mockResolvedValue([
+        { key: 'resilience.paystack.retry_count', value: 'abc' },
+      ]);
+      await service.onModuleInit();
+
+      const fn = jest.fn().mockRejectedValue({ response: { status: 500 } });
+
+      try {
+        await service.execute('paystack', fn);
+      } catch {
+        // expected — every attempt fails
+      }
+
+      // A malformed retry_count must fall back to the default retryCount: 2 (multiple
+      // attempts), not to 0/NaN (which would invoke fn only once).
+      expect(fn.mock.calls.length).toBeGreaterThan(1);
+    });
+  });
+
   describe('onBreak — Sentry + OTel span wiring', () => {
     it('calls Sentry.captureMessage and trace.getTracer().startSpan() with vendor + circuit_open attributes when the breaker opens', async () => {
       await service.onModuleInit();
