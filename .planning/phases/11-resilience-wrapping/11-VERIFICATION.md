@@ -1,182 +1,178 @@
 ---
 phase: 11-resilience-wrapping
-verified: 2026-07-16T12:00:00Z
+verified: 2026-07-16T20:15:00Z
 status: gaps_found
-score: 24/25 must-haves verified
+score: 21/22 must-haves verified (1 human-needed excluded from denominator)
 overrides_applied: 0
+re_verification:
+  previous_status: gaps_found
+  previous_score: 25/27
+  gaps_closed:
+    - "ai.service.ts's streamChatWithTools and streamItinerary now await stream.withResponse() inside resilience.execute('anthropic', ...) before returning the stream, giving cockatiel's 8000ms per-attempt timeout and failureThreshold:3 circuit breaker a genuine window over the real Anthropic HTTP connection instead of resolving in microtask time on the synchronous MessageStream object — proven by a fake-timer regression test using the REAL ResilienceService (not a mock) that demonstrates a hung connection is NOT flagged before ~8000ms and IS flagged after advanceTimersByTimeAsync(8100), and that the breaker opens (stops invoking messages.stream) after 3 consecutive timeouts. getLgaIntelligence (.messages.create(), a real Promise) confirmed byte-for-byte unchanged."
+    - "NotificationsService.registerToken (WR-01) now reads existing User.metadata via findUnique, spreads it, and merges in fcmToken before writing — no longer blindly overwrites the whole metadata JSON document. Verified in source and by dedicated merge-preservation + null-metadata tests."
+    - "resilience.service.ts's isTransientError() (WR-03) now recognizes axios's own ERR_CANCELED cancellation code in its network-code allowlist, alongside the already-handled fetch/undici ABORT_ERR code — no longer dependent on a timing coincidence between cockatiel's TaskCancelledError and axios's CanceledError winning a race. Verified in source and by a dedicated regression test."
+    - "AbortSignal reference-identity test coverage (WR-02) is now complete across all 6 vendor call-site spec files (paystack, ai, notifications, s3, auth/termii, delivery/termii) — each has exactly one .toBe(controller.signal) reference-identity assertion, confirmed by direct grep count across all 6 files."
+  gaps_remaining: []
+  regressions: []
 gaps:
-  - truth: "Every call site to Paystack, Termii, Anthropic, Cloudflare R2/S3, and Firebase FCM is wrapped in a cockatiel-based circuit-breaker + retry + timeout + fallback policy that functions correctly under real (non-instant) vendor latency"
+  - truth: "Circuit-breaker OPEN log events do not leak raw vendor error objects (which may carry Authorization headers/secrets for axios-based vendors) into application logs — a prerequisite for RESIL-02's 'visible in observability' success criterion to be trustworthy rather than itself a new vulnerability"
     status: failed
     reason: >
-      Two unresolved structural defects in ResilienceService.onModuleInit()'s policy
-      composition, both already flagged as CRITICAL in this phase's own code review
-      (11-REVIEW.md CR-01/CR-02, status: issues_found) and confirmed still present via
-      direct source inspection — not detected by any of the phase's automated tests
-      because every test mock rejects synchronously (11-REVIEW.md IN-01 already
-      documents this blind spot).
-      (1) CR-01 — composition order `wrap(breaker, timeout(cfg.timeoutMs, ...),
-      retry(...))` makes cockatiel's `timeout` the OUTER policy wrapping the ENTIRE
-      retry+backoff sequence, not each individual attempt (verified against
-      node_modules/cockatiel/dist/Policy.js composition semantics: first arg is
-      outermost). For paystack (timeoutMs 10s, retryCount 2), one merely-slow (not
-      down) 8s first attempt leaves only 2s for backoff + two more full attempts —
-      the retry mechanism is disabled for exactly the "slow, not down" scenario it
-      exists to survive, and a purely-slow vendor can trip the ConsecutiveBreaker
-      because retries never get a chance to run.
-      (2) CR-02 — none of the 6 wrapped call sites (paystack.service.ts,
-      s3.service.ts, ai.service.ts x3, auth.service.ts, delivery.service.ts,
-      notifications.service.ts) forward cockatiel's `context.signal` into the
-      underlying axios/fetch/S3-SDK/Anthropic-SDK call (`grep -rn "signal"` across
-      all six files returns zero matches). Cockatiel's "aggressive" timeout only
-      rejects the caller's promise early; it never aborts the in-flight request.
-      For `paystackRefund` specifically this reintroduces the exact double-refund
-      race the `retryCount: 0` design (Plan 01, threat T-11-05) was built to
-      prevent — a client-side "timed out" refund can still land server-side after
-      the caller has already surfaced failure, with nothing to correlate or cancel
-      it.
+      A fresh, independent code review (11-REVIEW.md, dated after this round's gap-closure
+      plans 11-09/11-10/11-11) found a NEW Critical-severity defect in resilience.service.ts
+      that none of this round's 3 plans touched or were scoped to fix: onBreak() (line 130)
+      calls `this.logger.error(\`Circuit breaker OPEN for ${vendor}\`, reason.error as any)`,
+      passing the raw vendor error object as NestJS Logger's second argument. For every
+      axios-based vendor this phase wraps (paystack, paystackRefund, fcm), a failed
+      request's error object carries `.config.headers.Authorization` (the outbound Paystack
+      secret key or FCM OAuth bearer token). NestJS's default Logger.error does not treat a
+      non-string second argument as a stack-trace string — it serializes and prints the
+      entire object. This directly contradicts the sanitization comment written two lines
+      below in the same method ("Never interpolate raw request/response payloads here —
+      vendor name + generic error class only (T-11-03)"), which the OTel span attribute and
+      Sentry.captureMessage() calls correctly follow — only the plain logger.error() call
+      violates it. I independently confirmed this is not just a theoretical read: re-running
+      the full backend suite for this verification reproduced the exact behavior live —
+      `vendor-outage-isolation.spec.ts` printed `[ResilienceService] Circuit breaker OPEN for
+      paystack` followed by `Object(1) { response: { status: 500 } }` to stdout the moment
+      the paystack breaker opened, proving the raw error object is genuinely serialized into
+      the log stream today, not merely a hypothetical. onBreak() fires on every
+      consecutive-failure-threshold crossing — precisely the moment a vendor call has just
+      failed and its error object (headers included) is freshest — making this a reliably
+      reproducible secret-leak path into whatever log sink is configured (stdout, file, log
+      aggregator) for a Nigerian-government financial platform with explicit AES-256-GCM/PII
+      and wallet-security constraints. This gap was not part of the original CR-01/CR-02 gap
+      list or this round's 3 targeted plans (11-09 fixed Anthropic streaming, 11-10 fixed FCM
+      metadata overwrite, 11-11 fixed ERR_CANCELED classification) — it was introduced back
+      in Wave 1 (11-01-PLAN.md) and has never been addressed by any gap-closure round to date.
     artifacts:
       - path: "backend/src/resilience/resilience.service.ts"
-        issue: "Lines 53-63: wrap(breaker, timeout(...), retry(...)) — timeout wraps the whole retry sequence instead of each attempt (should be wrap(breaker, retry(...), timeout(...)))"
-      - path: "backend/src/common/services/paystack.service.ts"
-        issue: "resilience.execute callbacks discard the { signal } context param at all 3 call sites (initiatePayment, resolveBvn, refundCharge) — no axios `signal` option passed"
-      - path: "backend/src/common/services/s3.service.ts"
-        issue: "resilience.execute callback discards { signal } — PutObjectCommand send has no abortSignal"
-      - path: "backend/src/modules/ai/ai.service.ts"
-        issue: "All 3 Anthropic call sites (streamChatWithTools, streamItinerary, getLgaIntelligence) discard { signal } — no { signal } passed to the SDK call"
-      - path: "backend/src/modules/auth/auth.service.ts"
-        issue: "sendTermii's resilience.execute callback discards { signal } — fetch() has no signal option"
-      - path: "backend/src/modules/delivery/delivery.service.ts"
-        issue: "sendTermiiDeliveryOtp's resilience.execute callback discards { signal } — fetch() has no signal option"
-      - path: "backend/src/modules/notifications/notifications.service.ts"
-        issue: "sendPush's resilience.execute callback discards { signal } — axios.post has no signal option"
+        issue: "Line 130: this.logger.error(`Circuit breaker OPEN for ${vendor}`, reason.error as any) passes the raw vendor error object (which may include axios's .config.headers.Authorization for paystack/paystackRefund/fcm) to Logger.error's second argument, which NestJS serializes and prints in full — contradicting the sanitization already correctly applied 2 lines below for the OTel span attribute and Sentry.captureMessage() call in the same method."
     missing:
-      - "Reorder resilience.service.ts's composition to wrap(breaker, retry(...), timeout(...)) so each attempt (not the whole retry sequence) gets its own timeout budget"
-      - "Thread context.signal from every resilience.execute(vendor, ({ signal }) => ...) callback into the underlying axios/fetch (signal option), S3 SDK (abortSignal request option), and Anthropic SDK ({ signal } request option) calls at all 7 call sites"
-      - "Add a regression test using fake timers / a delayed-resolution mock fn to prove each retry attempt gets its own timeout window (not detectable with the current synchronous-reject mocks per 11-REVIEW.md IN-01)"
-      - "Add a test asserting the AbortSignal cockatiel provides is the same object forwarded to the mocked HTTP client, for at least one call site"
+      - "Sanitize the plain logger.error() call in onBreak() to match the already-sanitized Sentry/OTel calls in the same method, e.g.: this.logger.error(`Circuit breaker OPEN for ${vendor}: ${(reason.error as Error)?.message ?? 'bad_result'}`); — never pass reason.error (or any vendor error object) as a second argument to Logger.error() anywhere the error may carry .config/.headers/.request data."
+      - "A regression test asserting logger.error is never called with a raw object containing an Authorization/headers/config key when the breaker opens due to an axios-shaped rejection (to prevent this exact defect from silently reappearing in a future edit)."
 human_verification:
   - test: "Force a real vendor outage (e.g. point PAYSTACK_SECRET_KEY at an unreachable/blackholed endpoint, or use a Sentry/OTel-connected staging environment) and confirm a resilience.circuit_breaker.state_change span with resilience.breaker.state=open and vendor attributes actually appears in the live OpenTelemetry collector/Grafana dashboard, and a corresponding Sentry event is captured with the vendor name in the message"
     expected: "Span and Sentry event visible in the live observability stack, matching ROADMAP.md Phase 11 success criterion 3 (RESIL-02)"
     why_human: "Requires live Grafana Cloud / Sentry dashboards and a real OTel exporter pipeline — code-level wiring (Sentry.captureMessage + tracer.startSpan calls) is confirmed present and unit-tested with mocks, but end-to-end delivery to the observability backend cannot be verified from a local unit-test sandbox"
 ---
 
-# Phase 11: Resilience Wrapping Verification Report
+# Phase 11: Resilience Wrapping Verification Report (Re-Verification, Round 3)
 
-**Phase Goal:** Wrap every external vendor integration (Paystack, S3, FCM, Anthropic, Termii auth, Termii delivery) in a per-vendor circuit-breaker + retry + timeout resilience policy, so a single vendor outage degrades only that vendor's dependent feature while the rest of the platform stays fully operational — proven by an automated test.
-**Verified:** 2026-07-16T12:00:00Z
+**Phase Goal:** A single vendor outage (Paystack, Termii, Anthropic, Cloudflare R2/S3, or Firebase FCM) degrades only the dependent feature, not the whole API, and that degradation is visible in observability
+**Verified:** 2026-07-16T20:15:00Z
 **Status:** gaps_found
-**Re-verification:** No — initial verification
+**Re-verification:** Yes — after gap-closure round 2 (Plans 11-09, 11-10, 11-11), which fixed the one blocking gap from the prior re-verification (Anthropic streaming timeout defect, CR-01 in 11-REVIEW.md's second pass) plus 2 additional warnings (WR-01 FCM metadata overwrite, WR-03 axios ERR_CANCELED classification) and a full AbortSignal reference-identity test sweep (WR-02)
 
 ## Goal Achievement
 
-### Observable Truths
+### Gap Closure Status (from prior 11-VERIFICATION.md re-verification)
+
+| Prior Gap | Status | Evidence |
+|---|---|---|
+| ai.service.ts's streamChatWithTools/streamItinerary — resilience.execute('anthropic', ...) resolved before the real Anthropic HTTP connection was established, so cockatiel's timeout/retry/breaker never got a genuine window over real vendor latency | ✓ CLOSED | Both call sites (`ai.service.ts:282-295`, `ai.service.ts:500-511`) now do `const s = this.anthropic.messages.stream(...); await s.withResponse(); return s;` inside the `resilience.execute` callback. Directly re-read the source. `getLgaIntelligence` (`ai.service.ts:546-553`) confirmed byte-for-byte unchanged — still `.messages.create()`, a real Promise, needing no fix. A new fake-timer regression suite in `ai.service.spec.ts` (`describe('streamChatWithTools / streamItinerary — real cockatiel timeout + breaker engagement ...')`) was executed directly during this verification: with a hung-connection mock (`withResponse` never resolves), the wrapped call does NOT reject before `advanceTimersByTimeAsync(8100)`, and DOES reject after — confirmed by direct test run output showing `isTaskCancelledError: true` at ~8s, then after 3 consecutive timeouts a `BrokenCircuitError` ("Execution prevented because the circuit breaker is open") on the 4th call, proving the breaker's `failureThreshold: 3` is genuinely enforced, not a source-inspection assumption. |
+
+### New Finding (surfaced by a fresh 11-REVIEW.md pass over this round's changes, NOT part of the original CR-01/CR-02/streaming gap list)
+
+| Concern | Status | Evidence |
+|---|---|---|
+| Does `ResilienceService.onBreak()`'s plain `Logger.error()` call leak raw vendor error data (potentially including Authorization headers/secrets) every time a circuit breaker opens? | ✗ FAILED | `resilience.service.ts:130` — `this.logger.error(\`Circuit breaker OPEN for ${vendor}\`, reason.error as any)` passes the raw vendor error object to `Logger.error`'s second argument. Confirmed this is not merely theoretical: re-running the full backend test suite during this verification reproduced it live — `vendor-outage-isolation.spec.ts`'s console output showed `[ResilienceService] ERROR Circuit breaker OPEN for paystack` immediately followed by the raw error object (`Object(1) { response: { status: 500 } }`) printed to stdout. For a real axios-based failure (paystack/paystackRefund/fcm), that same object carries `.config.headers.Authorization` (the vendor secret key/bearer token) — this is the exact leak path the sanitization comment two lines below (for the OTel span and Sentry call, which ARE correctly sanitized) explicitly warns against, but which this one plain-logger call violates. |
+
+### Observable Truths (Full Re-Check)
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | Every call site wrapped in a cockatiel-based circuit-breaker + retry + timeout + fallback policy that functions correctly under real vendor latency (ROADMAP SC1) | ✗ FAILED | Wrapping exists syntactically at all 7 vendor keys, but the retry/timeout composition order bug (CR-01) and missing AbortSignal propagation (CR-02) — both already flagged CRITICAL by this phase's own 11-REVIEW.md and unresolved in current code — mean retry does not correctly bound each attempt and timeout does not actually cancel in-flight requests. See gaps section. |
-| 2 | Simulating a Paystack outage causes graceful degradation via fallback while unrelated vendor policies/endpoints keep working (ROADMAP SC2) | ✓ VERIFIED | `vendor-outage-isolation.spec.ts` (real `ResilienceService`, only `PrismaService` mocked) proves the Paystack breaker opens after 5 consecutive transient failures and fails fast (call count stops growing), while `execute('s3', fn2)` on the SAME instance still resolves `'uploaded-ok'` — ran directly: `npx jest src/resilience --silent` → 2 suites, 11 tests pass |
-| 3 | Circuit-breaker transitions (closed→open→half-open) appear as spans/log events in Grafana/Sentry/OTel (ROADMAP SC3 / RESIL-02) | ? HUMAN NEEDED | Code-level wiring confirmed: `onBreak`/`onReset`/`onHalfOpen` call `trace.getTracer('iseyaa-resilience').startSpan(...)` and `Sentry.captureMessage(...)` with vendor + state attributes (resilience.service.ts:105-151), unit-tested with mocks. Live-dashboard delivery is explicitly called out as a manual-only verification in the phase's own 11-VALIDATION.md and cannot be confirmed from a local sandbox. |
-| 4 | cockatiel pinned at exactly `^3.2.1` (not the Node≥22/ESM-only `4.0.0`) | ✓ VERIFIED | `backend/package.json` line 53: `"cockatiel": "^3.2.1"`; `npm ls cockatiel` → `cockatiel@3.2.1` |
-| 5 | One cached cockatiel policy instance per vendor (7 vendors incl. paystackRefund), built once at `onModuleInit`, never rebuilt per-call | ✓ VERIFIED | `resilience.service.ts:38-70` — `circuitBreaker(...)` call appears only inside `onModuleInit`'s loop over `Object.keys(RESILIENCE_DEFAULTS)` (7 keys); `execute()` only does a `Map.get` lookup, no construction |
-| 6 | Per-vendor thresholds read from PlatformConfig with per-vendor key granularity, falling back to RESILIENCE_DEFAULTS | ✓ VERIFIED | `readConfig()` (resilience.service.ts:81-103) queries `prisma.platformConfig.findMany` for `resilience.<vendor>.{timeout_ms,retry_count,breaker_failure_threshold,half_open_after_ms}`, falls back to `RESILIENCE_DEFAULTS[vendor]` per-key |
-| 7 | Circuit breaker opens after configured consecutive-failure threshold and fails fast until half-open | ✓ VERIFIED | `resilience.service.spec.ts` + `vendor-outage-isolation.spec.ts` both assert `fn.mock.calls.length` stabilizes at `failureThreshold` and stops growing on subsequent calls — both suites pass |
-| 8 | Business-logic 4xx errors never count toward a vendor's breaker failure threshold | ✓ VERIFIED | `isTransientError()` (resilience.service.ts:159-163) explicitly excludes non-408/429/5xx statuses; dedicated test in `resilience.service.spec.ts` drives >5 status-400 failures and asserts `fn` is invoked every time (no fail-fast) |
-| 9 | Breaker state transitions produce both a Sentry capture and an OTel span naming the vendor | ✓ VERIFIED | `onBreak` (resilience.service.ts:107-133) calls both `tracer.startSpan(...)` with `resilience.vendor` attribute and `Sentry.captureMessage(...)` with `tags: { vendor, ... }`; asserted in `resilience.service.spec.ts` |
-| 10 | Paystack refunds default to zero cockatiel retries | ✓ VERIFIED | `RESILIENCE_DEFAULTS.paystackRefund.retryCount === 0` (resilience.types.ts:31); dedicated test proves `fn` invoked exactly once per `execute('paystackRefund', fn)` call |
-| 11 | initiatePayment/resolveBvn route through `resilience.execute('paystack', ...)`; refundCharge through `resilience.execute('paystackRefund', ...)` | ✓ VERIFIED | `paystack.service.ts` lines 41, 75, 126 — grep confirms exactly 2x `'paystack'` + 1x `'paystackRefund'` |
-| 12 | Circuit-open/timeout/retry-exhausted failure surfaces as generic `ServiceUnavailableException`, never the raw axios error | ✓ VERIFIED | All 3 `PaystackService` catch blocks throw static-string `ServiceUnavailableException`; `paystack.service.spec.ts` (8 tests) passes |
-| 13 | resolveBvn still throws BadRequestException for a genuine invalid-BVN business response, distinct from vendor-outage | ✓ VERIFIED | `resolveBvn` catch block: `if (err instanceof BadRequestException) throw err;` before the `ServiceUnavailableException` fallback; tested |
-| 14 | S3Service.upload() routes through `resilience.execute('s3', ...)` and throws ServiceUnavailableException on failure | ✓ VERIFIED | `s3.service.ts:75-96`; `s3.service.spec.ts` (7 tests, incl. new failure case) passes |
-| 15 | NotificationsService.sendPush() never throws — still returns `{sent:false, reason:'send_failed'}` on circuit-open (D-02) | ✓ VERIFIED | `notifications.service.ts:93-113` — surrounding try/catch unchanged, wraps only `axios.post`; `notifications.service.spec.ts` dedicated test simulates `mockResilience.execute` rejection and asserts the promise resolves (not rejects) |
-| 16 | AiService's Anthropic client constructed with `maxRetries:0` | ✓ VERIFIED | `ai.service.ts:97` — `new Anthropic({ apiKey: ..., maxRetries: 0 })` |
-| 17 | streamChatWithTools/streamItinerary retry only the connection attempt; mid-stream failure never retried | ✓ VERIFIED | `resilience.execute('anthropic', ...)` wraps only `messages.stream(...)`; the `for await` consumption loop runs outside the policy (ai.service.ts:279, 491); dedicated test asserts `vector.upsertInteraction` not called on connection-failure |
-| 18 | getLgaIntelligence has error handling (previously none), throws ServiceUnavailableException on failure | ✓ VERIFIED | `ai.service.ts:531-550` — new try/catch wraps `resilience.execute('anthropic', ...)`; tested (success + failure cases) |
-| 19 | auth.service.ts's Termii→Twilio→console-stub fallback chain unchanged when Termii circuit is open (D-03) | ✓ VERIFIED | `auth.service.ts:302` wraps only the `fetch()` call; surrounding catch/fallback untouched; `auth.service.spec.ts` (20 tests) passes incl. dedicated circuit-open test |
-| 20 | delivery.service.ts's Termii→log-and-swallow fallback unchanged when circuit is open (D-03) | ✓ VERIFIED | `delivery.service.ts:330` wraps only `fetch()`; `delivery.service.spec.ts` (10 tests) passes incl. dedicated circuit-open test |
-| 21 | The two Termii call sites use independent resilience policies (termiiAuth vs termiiDelivery), never unified (D-08) | ✓ VERIFIED | `auth.service.ts` uses `'termiiAuth'`, `delivery.service.ts` uses `'termiiDelivery'` — distinct `Vendor` keys with independent `RESILIENCE_DEFAULTS` entries and independent breaker instances in the `Map` |
-| 22 | A simulated Paystack outage opens only the Paystack circuit; S3 circuit on the same instance is unaffected | ✓ VERIFIED | `vendor-outage-isolation.spec.ts` test 3 — directly re-ran, passes |
-| 23 | Once Paystack circuit is open, no further calls dispatched to the mock vendor function (fail-fast) | ✓ VERIFIED | `vendor-outage-isolation.spec.ts` test 2 — `fn.mock.calls.length` stable after threshold — directly re-ran, passes |
-| 24 | Full backend test suite passes with zero regressions from Plans 01-04's combined changes | ✓ VERIFIED | Directly re-ran `cd backend && npm test`: **39 suites, 443 tests, all passing** — matches SUMMARY claim exactly |
-| 25 | No global axios interceptor exists that would compound retry behavior alongside cockatiel | ✓ VERIFIED | Directly re-ran `grep -rn "axios.interceptors" backend/src` → zero matches |
+| 1 | Every call site wrapped in a cockatiel-based circuit-breaker + retry + timeout + fallback policy that functions correctly under real (non-instant) vendor latency (ROADMAP SC1) | ✓ VERIFIED | All 9 wrapped call sites (paystack×3, s3, fcm, termiiAuth, termiiDelivery, anthropic×3) now genuinely function under real latency — the previously-open gap (ai.service.ts's 2 streaming sites) is closed and independently proven by a passing fake-timer regression test using the real `ResilienceService`. |
+| 2 | Simulating a Paystack outage causes graceful degradation via fallback while unrelated vendor policies/endpoints keep working (ROADMAP SC2) | ✓ VERIFIED | `vendor-outage-isolation.spec.ts` re-run directly as part of the full suite: paystack breaker opens after 5 consecutive transient failures and fails fast; unrelated vendor policy on the same `ResilienceService` instance still resolves. |
+| 3 | Circuit-breaker transitions (closed→open→half-open) appear as spans/log events in Grafana/Sentry/OTel (ROADMAP SC3 / RESIL-02) | ? HUMAN NEEDED | Code-level wiring confirmed (`onBreak`/`onReset`/`onHalfOpen` at `resilience.service.ts:113-157`), unit-tested with mocks; live-dashboard delivery cannot be confirmed from a local sandbox. See also Truth #23 below — the log-event half of this criterion has a security defect. |
+| 4 | cockatiel pinned at exactly `^3.2.1` | ✓ VERIFIED | `backend/package.json` still pins `^3.2.1`. |
+| 5 | One cached cockatiel policy instance per vendor, built once at `onModuleInit` | ✓ VERIFIED | `resilience.service.ts:38-73` — structurally unchanged this round. |
+| 6 | Per-vendor thresholds read from PlatformConfig, hardened against malformed values (WR-01, round 1) | ✓ VERIFIED | `positiveInt`/`nonNegativeInt` helpers still present and unchanged (`resilience.service.ts:165-178`). |
+| 7 | Circuit breaker opens after configured consecutive-failure threshold and fails fast until half-open | ✓ VERIFIED | Re-run, still passes. |
+| 8 | Business-logic 4xx errors never count toward a vendor's breaker failure threshold | ✓ VERIFIED | Unchanged, still passes. |
+| 9 | Breaker state transitions produce a sanitized Sentry capture and a sanitized OTel span attribute naming the vendor | ✓ VERIFIED | `resilience.service.ts:116-138` — span attribute uses `.message` only; `Sentry.captureMessage` uses a generic templated string + tags. (The accompanying plain `logger.error` call is NOT sanitized — see Truth #23.) |
+| 10 | Paystack refunds default to zero cockatiel retries | ✓ VERIFIED | Unchanged. |
+| 11 | cockatiel's own per-attempt timeout cancellation (`TaskCancelledError`) still counts as transient and triggers the next retry attempt | ✓ VERIFIED | `isTransientError()` (`resilience.service.ts:199`) checks `isTaskCancelledError === true` ahead of the network-code checks; directly observed in this verification's test run (hung-connection test throws with `isTaskCancelledError: true` at the timeout boundary). |
+| 12 | A bare application bug (e.g. `TypeError`) does not count toward a vendor's circuit-breaker consecutive-failure threshold (WR-04) | ✓ VERIFIED | Final catch-all in `isTransientError()` still returns `false` for unrecognized shapes; unchanged. |
+| 13 | Paystack's initiatePayment/resolveBvn/refundCharge forward the AbortSignal into axios's `signal` option, with reference-identity proof | ✓ VERIFIED | `paystack.service.spec.ts` — exactly 1 `.toBe(controller.signal)` assertion confirmed present. |
+| 14 | S3Service.upload forwards the AbortSignal into the S3 SDK's `abortSignal` option, with reference-identity proof | ✓ VERIFIED | `s3.service.spec.ts` — exactly 1 `.toBe(controller.signal)` assertion (added by Plan 11-11, Task 2). |
+| 15 | NotificationsService.sendPush forwards the AbortSignal into axios's `signal` option, with reference-identity proof | ✓ VERIFIED | `notifications.service.spec.ts` — exactly 1 `.toBe(controller.signal)` assertion (added by Plan 11-10, Task 2). |
+| 16 | auth.service.ts's sendTermii and delivery.service.ts's sendTermiiDeliveryOtp forward the AbortSignal into fetch's `signal` option, with reference-identity proof | ✓ VERIFIED | `auth.service.spec.ts` and `delivery.service.spec.ts` each show exactly 1 `.toBe(controller.signal)` assertion (added by Plan 11-11, Task 2). |
+| 17 | ai.service.ts's 3 Anthropic call sites forward the AbortSignal into the SDK's RequestOptions AND the two streaming sites are now genuinely bounded by cockatiel's timeout/breaker | ✓ VERIFIED | `ai.service.spec.ts` — exactly 1 `.toBe(controller.signal)` assertion (Test D, Plan 11-09) plus the real-ResilienceService fake-timer suite (Tests A/B/C) proving functional timeout/breaker engagement — this closes the structural gap the prior verification round flagged. |
+| 18 | Full backend test suite passes with zero regressions from the entire gap-closure batch (rounds 1 + 2) | ✓ VERIFIED | Directly re-ran `cd backend && npm test`: **40 suites, 461 tests, all passing** (up from 40/450 pre-round-2 — 11 new tests added by Plans 11-09/11-10/11-11, matching SUMMARY claims). |
+| 19 | No global axios interceptor exists that would compound retry behavior alongside cockatiel | ✓ VERIFIED | Re-confirmed, zero matches. |
+| 20 | NotificationsService.registerToken merges the new fcmToken into existing User.metadata instead of overwriting the whole document (WR-01, round 2) | ✓ VERIFIED | `notifications.service.ts:57-65` — `findUnique({ select: { metadata: true } })` → object-spread `{ ...(user?.metadata as Record<string, any> | undefined), fcmToken: token }` → `update`. Directly read in source; dedicated merge-preservation and null-metadata tests pass. |
+| 21 | isTransientError() classifies axios's own ERR_CANCELED cancellation code as transient (WR-03, round 2) | ✓ VERIFIED | `resilience.service.ts:206` — `'ERR_CANCELED'` present in the network-code allowlist alongside `'ABORT_ERR'`. Dedicated regression test (`WR-03 — axios ERR_CANCELED`) passes. |
+| 22 | AbortSignal reference-identity test coverage is complete across all 6 vendor-call-site spec files (WR-02 full sweep, round 2) | ✓ VERIFIED | Direct grep count: `paystack.service.spec.ts`, `s3.service.spec.ts`, `notifications.service.spec.ts`, `auth.service.spec.ts`, `delivery.service.spec.ts`, `ai.service.spec.ts` each show exactly 1 `.toBe(controller.signal)` assertion. |
+| 23 | Circuit-breaker OPEN log events do not leak raw vendor error objects (potential secrets/Authorization headers) into application logs | ✗ FAILED | `resilience.service.ts:130` still passes `reason.error as any` directly to `Logger.error()`'s second argument, unaddressed by any of this round's 3 plans. Empirically reproduced during this verification's own test run — see New Finding above and Gaps. |
 
-**Score:** 24/25 truths verified (1 human-needed item folded into truth #3 does not count against score per Step 9's ordering; 1 failed truth listed above)
+**Score:** 21/22 relevant truths verified (Truth #3 remains human-needed and is excluded from the denominator per standard scoring convention; Truth #23 is a genuine FAILED item, newly surfaced this round).
+
+### Deferred Items
+
+None. No later phase in `.planning/ROADMAP.md` (Phases 12-17) addresses logging sanitization or this specific defect in `resilience.service.ts`.
 
 ### Required Artifacts
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `backend/src/resilience/resilience.types.ts` | Vendor union + per-vendor defaults | ✓ VERIFIED | 7-key union, `RESILIENCE_DEFAULTS` matches plan exactly incl. `paystackRefund.retryCount: 0` |
-| `backend/src/resilience/resilience.service.ts` | Cached per-vendor policy registry + execute() + observability wiring | ⚠️ VERIFIED-WITH-DEFECT | Exists, exports `ResilienceService`, wired everywhere — but composition order (CR-01) and signal-propagation contract (CR-02) are structurally incorrect (see gaps) |
-| `backend/src/resilience/resilience.module.ts` | `@Global()` module exporting ResilienceService | ✓ VERIFIED | 9-line file, `@Global()`, exports `ResilienceService` |
-| `backend/src/common/services/paystack.service.ts` | Resilience-wrapped, D-01/D-05 contract | ✓ VERIFIED (wiring) | Wrapped, exception-mapped correctly; underlying signal/timeout defect inherited from ResilienceService |
-| `backend/src/common/services/s3.service.ts` | Resilience-wrapped upload | ✓ VERIFIED (wiring) | Same caveat as above |
-| `backend/src/modules/notifications/notifications.service.ts` | Resilience-wrapped FCM, D-02 preserved | ✓ VERIFIED | D-02 contract proven to survive circuit-open |
-| `backend/src/modules/ai/ai.service.ts` | Resilience-wrapped Anthropic, connection-only retry | ✓ VERIFIED (wiring) | Same signal-propagation caveat |
-| `backend/src/modules/auth/auth.service.ts` | termiiAuth-wrapped, fallback preserved | ✓ VERIFIED |  |
-| `backend/src/modules/delivery/delivery.service.ts` | termiiDelivery-wrapped, fallback preserved | ✓ VERIFIED |  |
-| `backend/src/resilience/__tests__/vendor-outage-isolation.spec.ts` | Cross-vendor isolation proof | ✓ VERIFIED | 4 `it()` blocks, all pass, substantive (real `ResilienceService`, only Prisma mocked) |
+| `backend/src/modules/ai/ai.service.ts` | Both streaming call sites await real connection establishment; getLgaIntelligence untouched | ✓ VERIFIED | `await s.withResponse()` present at both sites (lines 293, 509); `getLgaIntelligence` unchanged. |
+| `backend/src/modules/ai/__tests__/ai.service.spec.ts` | Fake-timer regression proving timeout/breaker engagement + AbortSignal reference-identity test | ✓ VERIFIED | 18 tests pass in isolation; real-ResilienceService describe block present and directly exercised (reproduced `isTaskCancelledError`/`BrokenCircuitError` in test output). |
+| `backend/src/modules/notifications/notifications.service.ts` | Read-then-merge registerToken (WR-01) | ✓ VERIFIED | Confirmed in source. |
+| `backend/src/modules/notifications/__tests__/notifications.service.spec.ts` | Merge-preservation tests + AbortSignal reference-identity test | ✓ VERIFIED | Present and passing. |
+| `backend/src/resilience/resilience.service.ts` | ERR_CANCELED in transient-error allowlist (WR-03) | ✓ VERIFIED | Confirmed in source, line 206. |
+| `backend/src/resilience/resilience.service.ts` | onBreak() does not leak raw vendor error data via plain logger.error() | ✗ FAILED | Line 130 unchanged — still leaks raw error object; see gaps. |
+| `backend/src/resilience/__tests__/resilience.service.spec.ts` | ERR_CANCELED regression test | ✓ VERIFIED | Present. |
+| `backend/src/common/services/__tests__/s3.service.spec.ts`, `auth.service.spec.ts`, `delivery.service.spec.ts` | AbortSignal reference-identity tests (WR-02 sweep) | ✓ VERIFIED | Each has exactly 1 `.toBe(controller.signal)` assertion. |
 
 ### Key Link Verification
 
 | From | To | Via | Status | Details |
 |------|----|----|--------|---------|
-| `backend/src/app.module.ts` | `resilience.module.ts` | imports array | ✓ WIRED | `ResilienceModule` imported and registered between `RedisModule`/`AuthModule` |
-| `paystack.service.ts` | `resilience.service.ts` | constructor injection + `execute('paystack'\|'paystackRefund', ...)` | ✓ WIRED | Confirmed by grep + passing tests |
-| `s3.service.ts` | `resilience.service.ts` | constructor injection + `execute('s3', ...)` | ✓ WIRED | |
-| `notifications.service.ts` | `resilience.service.ts` | constructor injection + `execute('fcm', ...)` | ✓ WIRED | |
-| `ai.service.ts` | `resilience.service.ts` | constructor injection + `execute('anthropic', ...)` | ✓ WIRED | 3 call sites |
-| `auth.service.ts` | `resilience.service.ts` | constructor injection + `execute('termiiAuth', ...)` | ✓ WIRED | |
-| `delivery.service.ts` | `resilience.service.ts` | constructor injection + `execute('termiiDelivery', ...)` | ✓ WIRED | |
-| `resilience.service.ts` | `PlatformConfig` (Prisma) | `prisma.platformConfig.findMany` | ✓ WIRED | |
-| `resilience.service.ts` | `@sentry/nestjs` + `@opentelemetry/api` | `onBreak`/`onReset`/`onHalfOpen` handlers | ✓ WIRED | Present, but not confirmed to reach a live dashboard (human_needed) |
-| `resilience.service.ts`'s `context.signal` | underlying axios/fetch/S3-SDK/Anthropic-SDK calls | `({ signal }) => ...(..., { signal })` | ✗ NOT WIRED | All 7 call sites discard `context` entirely — `grep -rn "signal" <6 files>` returns zero matches (CR-02) |
+| `ai.service.ts`'s `streamChatWithTools`/`streamItinerary` | Anthropic's real HTTP connection | `resilience.execute('anthropic', async ({signal}) => { const s = ...stream(...); await s.withResponse(); return s; })` | ✓ WIRED | Confirmed in source at both call sites; functional engagement proven by fake-timer test. |
+| `ai.service.ts`'s `getLgaIntelligence` | Anthropic's real HTTP connection | `.messages.create()` (real Promise) | ✓ WIRED | Unaffected, unchanged. |
+| `notifications.service.ts`'s `registerToken` | `prisma.user.update` | merged metadata object spread | ✓ WIRED | Confirmed in source; findUnique precedes update. |
+| `resilience.service.ts`'s `isTransientError` | recognized network-code allowlist | `'ERR_CANCELED'` literal | ✓ WIRED | Confirmed in source and by regression test. |
+| `resilience.service.ts`'s `onBreak()` | application log sink | `this.logger.error(..., reason.error as any)` | ✗ UNSAFELY WIRED | The raw vendor error object (including potential secrets) reaches the log sink unsanitized — this IS "wired" in the sense of functioning, but it is wired in a way that violates the phase's own sanitization intent stated 2 lines below in the same file. |
 
 ### Data-Flow Trace (Level 4)
 
-Not applicable in the classic sense (no UI-rendered data) — the equivalent trace here is the composition/signal trace performed above (breaker→timeout→retry ordering and signal propagation), which surfaced the CR-01/CR-02 defects.
+Not applicable in the classic UI sense. The equivalent trace here is: does the AbortSignal/timeout data actually reach and bound the real vendor call (Level 4 for this phase, as established by the prior verification round)? This was fully closed this round for `ai.service.ts`'s two remaining streaming sites — traced via a genuine fake-timer test rather than source inspection alone, and independently reproduced live during this verification. A second Level-4-style trace surfaced this round: does the *error data* that flows into `onBreak()` get sanitized before reaching an external sink (logs)? Tracing `reason.error` from the cockatiel breaker callback through to `Logger.error()`'s second argument shows it does NOT get sanitized on the plain-logger path, even though the OTel span and Sentry paths (fed by the same `reason.error`) are correctly sanitized 2-4 lines away in the same function.
 
 ### Behavioral Spot-Checks
 
 | Behavior | Command | Result | Status |
 |----------|---------|--------|--------|
-| Resilience unit suite green | `cd backend && npx jest src/resilience --silent` | 2 suites, 11 tests passed | ✓ PASS |
-| Vendor-call-site spec suites green | `cd backend && npx jest src/modules/auth/__tests__/auth.service.spec.ts src/modules/delivery/__tests__/delivery.service.spec.ts src/modules/notifications/__tests__/notifications.service.spec.ts src/modules/ai/__tests__/ai.service.spec.ts src/common/services/__tests__/paystack.service.spec.ts src/common/services/__tests__/s3.service.spec.ts --silent` | 6 suites, 63 tests passed | ✓ PASS |
-| Full backend regression suite | `cd backend && npm test` | 39 suites, 443 tests passed | ✓ PASS |
-| cockatiel pinned version | `cd backend && npm ls cockatiel` | `cockatiel@3.2.1` | ✓ PASS |
-| No global axios interceptor | `grep -rn "axios.interceptors" backend/src` | zero matches | ✓ PASS |
-| No new TypeScript compile errors touching phase 11 files | `cd backend && npx tsc --noEmit -p tsconfig.json \| grep -iE "resilience\|app.module\|paystack.service\|s3.service\|notifications.service\|ai.service\|auth.service\|delivery.service"` | zero matches | ✓ PASS |
-| AbortSignal actually propagated to a vendor call | `grep -n "signal" <6 call-site files>` | zero matches | ✗ FAIL (confirms CR-02) |
+| Full backend regression suite | `cd backend && npm test` | 40 suites, 461 tests passed | ✓ PASS |
+| Anthropic streaming fake-timer regression (real ResilienceService) | `cd backend && npx jest src/modules/ai/__tests__/ai.service.spec.ts --silent` | 18/18 tests pass; console output shows `isTaskCancelledError: true` at the ~8s timeout boundary, then `BrokenCircuitError` ("circuit breaker is open") on the 4th call after 3 consecutive timeouts | ✓ PASS |
+| `getLgaIntelligence` unchanged | `grep -n "getLgaIntelligence" -A 15 backend/src/modules/ai/ai.service.ts` | Still `.messages.create()`, no `withResponse` call | ✓ PASS |
+| ERR_CANCELED recognized as transient | `grep -n "ERR_CANCELED" backend/src/resilience/resilience.service.ts` | Present in allowlist | ✓ PASS |
+| AbortSignal reference-identity coverage complete (6 files) | `grep -c "toBe(controller.signal)" <6 spec files>` | Each returns exactly `1` | ✓ PASS |
+| Circuit-breaker OPEN log event does NOT print raw vendor error object | Direct observation of `npm test` console output for `vendor-outage-isolation.spec.ts` | `[ResilienceService] ERROR Circuit breaker OPEN for paystack` immediately followed by `Object(1) { response: { status: 500 } }` printed to stdout | ✗ FAIL — confirms the new Critical finding live, not just via source read |
 
 ### Probe Execution
 
-No `scripts/*/tests/probe-*.sh` files declared or discovered for this phase — SKIPPED (no runnable probes; phase verification is Jest-test-based per its own 11-VALIDATION.md).
+No `scripts/*/tests/probe-*.sh` files declared or discovered for this phase — SKIPPED (Jest-test-based verification per the phase's own 11-VALIDATION.md).
 
 ### Requirements Coverage
 
 | Requirement | Source Plan | Description | Status | Evidence |
 |--------------|-------------|--------------|--------|----------|
-| RESIL-01 | 11-01, 11-02, 11-03, 11-04, 11-05 | Every call to Paystack, Termii, Anthropic, R2/S3, FCM wrapped in circuit-breaker + retry + timeout + fallback, single vendor outage degrades only dependent feature | ⚠️ PARTIAL | Wrapping exists at all 7 vendor keys and cross-vendor isolation is proven; however the retry/timeout composition (CR-01) and missing signal propagation (CR-02) mean the "retry" and "timeout" pillars of this requirement do not function correctly under real (non-instant) vendor latency — see gaps |
-| RESIL-02 | 11-01, 11-05 | Vendor-call failures and circuit-breaker transitions visible in Grafana/Sentry/OTel | ⚠️ CODE VERIFIED / HUMAN NEEDED | `Sentry.captureMessage` + OTel span calls present and unit-tested; live-dashboard delivery requires human confirmation per the phase's own 11-VALIDATION.md manual-verification section |
+| RESIL-01 | 11-01..11-11 | Every call to Paystack, Termii, Anthropic, R2/S3, FCM wrapped in circuit-breaker + retry + timeout + fallback, single vendor outage degrades only dependent feature | ✓ SATISFIED | All 9 wrapped call sites now function correctly under real vendor latency, including the previously-open `ai.service.ts` streaming gap (closed by Plan 11-09, proven with a genuine fake-timer test, not just source inspection). |
+| RESIL-02 | 11-01, 11-05 | Vendor-call failures and circuit-breaker transitions visible in Grafana/Sentry/OTel | ⚠️ PARTIAL / HUMAN NEEDED | OTel span + Sentry capture are correctly sanitized and wired (code-verified, unit-tested); live-dashboard delivery still requires human confirmation. However, the plain-logger half of this same observability path (`onBreak()`'s `logger.error` call) is NOT safely wired — it leaks raw vendor error data including potential secrets, which is a genuine defect in the "visible in observability" deliverable, not merely an open human-verification item. |
 
-**Note:** `REQUIREMENTS.md` lines 21-22 still show RESIL-01/RESIL-02 as unchecked `- [ ]` checkboxes and the traceability table (line 102-103) lists both as "Pending," despite `ROADMAP.md` marking Phase 11 "Complete" and both requirements' Plan-frontmatter `requirements:` fields declaring them satisfied. This is a documentation-sync gap in `REQUIREMENTS.md`, not a code gap — flagged for housekeeping, not blocking.
+**Note (carried forward, unresolved):** `REQUIREMENTS.md` lines 21-22 still show RESIL-01/RESIL-02 as unchecked `- [ ]` and the traceability table (lines 102-103) still lists both "Pending," despite `ROADMAP.md` marking Phase 11 "Complete" (2026-07-16). This documentation-sync gap persists across all three verification rounds. Given the new Critical finding below, this "Pending" status is arguably still accurate for RESIL-02 until the log-leak defect is fixed — recommend resolving both the code defect and the documentation sync together.
 
-No orphaned requirements found — RESIL-01 and RESIL-02 both appear in at least one plan's `requirements:` frontmatter field.
+No orphaned requirements found — RESIL-01 and RESIL-02 both appear in every plan's `requirements:` frontmatter field, including this round's 3 gap-closure plans (11-09/11-10/11-11).
 
 ### Anti-Patterns Found
 
 | File | Line | Pattern | Severity | Impact |
 |------|------|---------|----------|--------|
-| `backend/src/resilience/resilience.service.ts` | 53-63 | `wrap(breaker, timeout(...), retry(...))` — timeout wraps the whole retry sequence, not each attempt | 🛑 Blocker | Retry mechanism effectively disabled for the "vendor is slow, not down" scenario; a merely-slow vendor can trip the breaker (CR-01, unresolved from 11-REVIEW.md) |
-| 6 call sites (paystack/s3/ai/auth/delivery/notifications .service.ts) | various | `resilience.execute(vendor, () => ...)` discards `{ signal }` context param | 🛑 Blocker | Timeout never actually cancels the underlying HTTP/SDK request; reintroduces the double-refund race `paystackRefund.retryCount:0` was designed to prevent (CR-02, unresolved from 11-REVIEW.md) |
-| `backend/src/resilience/resilience.service.ts` | 97-102 | DB-sourced config coerced with `Number(...)` and no NaN/positivity validation | ⚠️ Warning | A bad `PlatformConfig` row (e.g. non-numeric JSON value) can silently produce `timeoutMs: NaN`/`0` or `failureThreshold: 0`, causing a full vendor outage until next restart (WR-01, pre-existing from review, unresolved) |
-| `backend/src/resilience/resilience.service.ts` | 159-163 | `isTransientError` treats any non-HTTP-shaped error (incl. application bugs, e.g. `TypeError`) as transient | ⚠️ Warning | A programming bug inside a wrapped callback can trip the circuit breaker and fail-fast for all users of that vendor, masking the real defect (WR-04) |
-| `backend/src/modules/notifications/notifications.service.ts` | 171-177 | `registerToken` replaces `user.metadata` wholesale instead of merging | ⚠️ Warning | Pre-existing, unrelated to this phase's resilience wrap but noted in 11-REVIEW.md (WR-02) |
-| `backend/src/common/services/paystack.service.ts` | 38 | Logs first 8 chars of `PAYSTACK_SECRET_KEY` on every payment initiation | ⚠️ Warning | Pre-existing, unrelated to resilience wrap (WR-03) |
-| `backend/src/modules/ai/ai.service.ts` | 527 | `getLgaIntelligence`'s LGA lookup skips the `deletedAt: null` filter used elsewhere in the file | ⚠️ Warning | Pre-existing, unrelated to resilience wrap (WR-05) |
-| `backend/src/modules/ai/ai.service.ts` | 532-549 | Response-shape bugs (e.g. empty `content[0]`) are caught by the same handler as real vendor failures and surfaced identically as `ServiceUnavailableException` | ⚠️ Warning | Masks genuine bugs as vendor outages during triage (WR-06) |
-| `backend/src/modules/notifications/notifications.service.ts` | 51 | `// TODO: persistence not yet wired` in unrelated `listForUser` method | ℹ️ Info | Pre-existing, not touched by this phase; not a debt marker introduced by Phase 11 |
+| `backend/src/resilience/resilience.service.ts` | 130 | `this.logger.error(...)` called with a raw vendor error object as the second argument, in direct contradiction of the sanitization comment 4 lines below in the same method | 🛑 Blocker | Reliably reproducible secret/credential leak path (Paystack Authorization header, FCM OAuth bearer token) into whatever log sink is configured, triggered on every circuit-breaker-open event for axios-based vendors — empirically reproduced during this verification's test run. |
+| `backend/src/modules/notifications/notifications.service.ts` | 51 | `// TODO: persistence not yet wired` in unrelated `listForUser` method | ℹ️ Info | Pre-existing, not touched by this phase or either gap-closure round; not a debt marker introduced here. |
 
-All 🛑 Blocker findings above (CR-01, CR-02) were independently confirmed present in the current codebase by this verification via direct source inspection and a `grep -rn "signal"` check — they are not carried forward from the review without re-checking.
+No `TBD`/`FIXME`/`XXX` markers found in any file modified by this round's plans (11-09/11-10/11-11) or in `resilience.service.ts`.
 
 ### Human Verification Required
 
@@ -184,20 +180,27 @@ All 🛑 Blocker findings above (CR-01, CR-02) were independently confirmed pres
 
 **Test:** Force a real vendor outage (e.g., temporarily point `PAYSTACK_SECRET_KEY` at an unreachable endpoint, or exercise the code against a staging environment wired to the real OTel collector + Sentry project).
 **Expected:** A `resilience.circuit_breaker.state_change` span with `resilience.breaker.state: 'open'` and `resilience.vendor` attributes appears in the Grafana/OTel pipeline, and a matching Sentry event (`Circuit breaker opened: <vendor>`) is captured.
-**Why human:** Requires a live Grafana Cloud/Sentry/OTel-collector pipeline; code-level instrumentation is confirmed present and unit-tested with mocks, but end-to-end delivery to the observability backend cannot be verified in a local Jest sandbox. This is explicitly called out as manual-only in the phase's own `11-VALIDATION.md`.
+**Why human:** Requires a live Grafana Cloud/Sentry/OTel-collector pipeline; code-level instrumentation is confirmed present and unit-tested with mocks, but end-to-end delivery to the observability backend cannot be verified in a local Jest sandbox.
 
 ### Gaps Summary
 
-Phase 11 successfully delivers the **structural** shape of resilience wrapping: all 7 vendor call sites route through a single `ResilienceService.execute(vendor, fn)` choke point, cross-vendor circuit isolation is proven by a genuine automated test (not a stub — a real `ResilienceService` instance, only `PrismaService` mocked), 4xx exclusion works, the zero-retry `paystackRefund` policy is correctly distinct from `paystack`, Sentry/OTel wiring code is present and unit-tested, and the full 443-test backend regression suite is green with zero failures — all SUMMARY claims here were independently re-run and confirmed true, not just trusted.
+Round 2's gap-closure plans (11-09, 11-10, 11-11) successfully and verifiably closed everything they targeted:
 
-However, the phase's own code review (`11-REVIEW.md`, `status: issues_found`) flagged two CRITICAL structural defects in the resilience engine itself — the single piece of code every other plan in this phase depends on — and **both remain unresolved in the current codebase**, confirmed by this verification via direct source inspection:
+1. **Anthropic streaming timeout blind spot** — the single blocking gap from the prior re-verification — is now genuinely closed. Both `streamChatWithTools` and `streamItinerary` await `stream.withResponse()` before returning, giving cockatiel's 8000ms timeout and 3-failure circuit breaker a real window over the actual Anthropic connection. This was proven with a fake-timer regression test using the real `ResilienceService`, and I independently re-ran that test during this verification and observed the exact expected sequence (timeout at ~8s, breaker opens after 3 consecutive failures).
+2. **WR-01 (FCM metadata overwrite)** — `registerToken` now merges instead of overwrites `User.metadata`.
+3. **WR-03 (axios ERR_CANCELED)** — `isTransientError()` now classifies it as transient.
+4. **WR-02 (AbortSignal reference-identity coverage)** — now complete across all 6 vendor call-site spec files.
 
-1. **CR-01 (composition order):** `timeout()` wraps the entire `retry()` sequence instead of each individual attempt, so the retry mechanism is effectively neutralized for a vendor that is merely slow (not fully down) — exactly the scenario retries exist to survive. This is invisible to every existing test because all mock functions reject synchronously (never simulate real latency), a blind spot the review itself documented (`IN-01`) and that persists today.
-2. **CR-02 (signal propagation):** none of the 7 wrapped call sites forward cockatiel's `AbortSignal` into the underlying vendor call, so an "aggressive" timeout stops the caller from waiting but never cancels the real in-flight request. For `paystackRefund` — the vendor this phase's own comments and threat model (T-11-05) single out specifically to prevent double-refunds via `retryCount: 0` — this means a client-side "timed out" refund can still succeed server-side after the caller has already surfaced a failure, undermining the very protection the design claims to provide.
+However, this same fresh review pass (`11-REVIEW.md`) surfaced a **new Critical-severity defect** in `resilience.service.ts` — the very module this phase exists to deliver — that none of round 2's 3 plans were scoped to touch: `onBreak()`'s plain `Logger.error()` call passes the raw vendor error object (potentially including Authorization headers/secrets for axios-based vendors) straight into the log stream, contradicting the sanitization the same method correctly applies to its OTel span and Sentry calls two lines above. I independently reproduced this live during this verification's own `npm test` run: the console output for `vendor-outage-isolation.spec.ts` showed the raw error object printed to stdout the instant the paystack breaker opened.
 
-Both defects sit inside `backend/src/resilience/resilience.service.ts`, the phase's foundational deliverable (Plan 01), and propagate identically to every vendor wrapped downstream (Plans 02-04) since they all share the same `execute()` facade. Given the phase goal explicitly requires the resilience policy to correctly implement "circuit-breaker + retry + timeout," and given these two defects were already caught and documented as blockers by this project's own review process without being addressed, they are classified as a blocking gap here rather than a soft warning.
+This directly undermines the trustworthiness of ROADMAP Phase 11's own success criterion 3 / RESIL-02 ("visible in observability") — a circuit-breaker-open event is designed to be the phase's signal that a vendor outage is happening, and for a Nigerian-government platform handling wallet/payment credentials, that same signal currently also leaks the vendor's secret credentials to whatever log aggregator is configured. Because this is independently reproducible (not merely a theoretical trace) and was found in code delivered entirely within this phase's own scope (Wave 1, `11-01-PLAN.md`), it is classified as a blocking gap rather than a soft warning — consistent with how CR-01/CR-02 and the Anthropic streaming defect were classified in the two prior verification rounds.
+
+Three lower-severity Warnings from the fresh `11-REVIEW.md` remain unaddressed and are NOT classified as blockers against this phase's stated success criteria (they do not prevent the goal from being achieved, but should be tracked):
+- WR-01 (this round's numbering): `NotificationsService.sendPush`'s Google OAuth token fetch (`this.fcmAuthClient.getAccessToken()`) runs outside `resilience.execute('fcm', ...)` — only the final `axios.post` is wrapped, so a slow/failing Google token endpoint has no timeout/breaker protection.
+- WR-02 (this round's numbering): `AiService`'s 3-turn agentic tool-use loop silently drops the final synthesized answer if the turn cap is hit mid tool-use, with no distinguishing SSE signal to the client.
+- WR-03 (this round's numbering): Malformed-config regression coverage in `resilience.service.spec.ts` only exercises 2 of the 4 hardened `readConfig()` keys (`timeout_ms`, `retry_count` — missing `breaker_failure_threshold`, `half_open_after_ms`).
 
 ---
 
-*Verified: 2026-07-16T12:00:00Z*
+*Verified: 2026-07-16T20:15:00Z*
 *Verifier: Claude (gsd-verifier)*
