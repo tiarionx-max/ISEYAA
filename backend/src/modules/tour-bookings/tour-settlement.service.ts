@@ -6,33 +6,46 @@ import {
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RefundService } from '../../common/services/refund.service';
+import {
+  SettlementService,
+  SettlementRecipient,
+} from '../../common/services/settlement.service';
 import { KafkaService } from '../../kafka/kafka.service';
 
 /**
- * 09-06 — Tour Settlement Service.
+ * 09-06 / 12-03 — Tour Settlement Service.
  *
- * Atomic multi-vendor wallet fan-out for `payment.tour_booking` events.
- * Runs entirely inside ONE Prisma `$transaction`, mirrors the SELECT FOR UPDATE
- * pattern proven in `wallet.service.ts:272` extended to N vendor wallets.
+ * Resolves Tour's domain-specific N-way vendor split (GUIDE/HOST/ORGANISER/
+ * ATTRACTION) from the booking snapshot, then delegates the atomic wallet
+ * fan-out — `$transaction`, `SELECT FOR UPDATE`, idempotency, drift assertion,
+ * refund-on-failure — to the shared `SettlementService` (12-01). This module
+ * keeps 100% of the vendor-resolution logic; only the transactional primitives
+ * moved.
  *
  * ── Architectural commitments (LOCKED — do not deviate) ───────────────────
- * 1. ONE `$transaction` per Paystack `charge.success` with `metadata.type='tour_booking'`.
- * 2. `SELECT FOR UPDATE` on EVERY wallet row touched (vendor wallets + system wallet).
- * 3. Failure rollback → `RefundService.refund` → booking transitions to REFUNDED.
- * 4. Idempotency keyed on `<paystackRef>-V-*` Transaction rows; replays are no-ops.
+ * 1. ONE `SettlementService.settle()` call per Paystack `charge.success` with
+ *    `metadata.type='tour_booking'` — internally ONE `$transaction`.
+ * 2. `SELECT FOR UPDATE` on EVERY wallet row touched (vendor wallets + system
+ *    wallet) — enforced inside `SettlementService`.
+ * 3. Failure rollback → `RefundService.refund` → booking transitions to REFUNDED
+ *    (via `SettlementService`'s `onFailure` hook for in-transaction failures, or
+ *    `refundInvalidSplit` for the pre-flight split-percentage guard below).
+ * 4. Idempotency keyed on `<paystackRef>-*` Transaction rows; replays are no-ops
+ *    (enforced inside `SettlementService`).
  * 5. Reference scheme: `<paystackRef>-V-<idx>` per vendor, `<paystackRef>-PLAT` for commission.
  * 6. ATTRACTION vendorType with unset `tour.government_wallet_user_id` PlatformConfig:
  *    that share rolls into platform commission with a `logger.warn` (does NOT block
  *    settlement — blocking would brick all tour bookings on misconfiguration).
  * 7. Split-bill: child charges settle identically per share; CONFIRMED transition
  *    is OUTSIDE the wallet $transaction (array mutation is independent of wallet locks).
- * 8. System wallet upserted on `onModuleInit` against a well-known SYSTEM user id —
- *    v1 audit anchor; a proper SystemWallet model is a documented future refactor.
+ * 8. System wallet bootstrap now lives in `SettlementService.onModuleInit()` —
+ *    Tour no longer owns it.
  *
  * ── Wallet invariant (TOUR-10) ─────────────────────────────────────────────
  *   sum(vendor credits with resolved wallets) + platform commission == buyer paid amount
  * The platform row absorbs all rounding drift and any unresolved ATTRACTION shares.
- * A defensive assert throws on drift > ₦0.02 to surface programming errors.
+ * A defensive assert throws on drift > ₦0.02 to surface programming errors
+ * (enforced inside `SettlementService`).
  */
 
 export interface TourBookingPaymentPayload {
@@ -61,27 +74,19 @@ interface ResolvedSplit {
   amountNgn: number;
 }
 
-// Well-known SYSTEM user that owns the platform commission wallet (v1 audit anchor).
-// A proper SystemWallet model is flagged as future refactor in 09-06-SUMMARY.
-const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000001';
-
 @Injectable()
 export class TourSettlementService implements OnModuleInit {
   private readonly logger = new Logger(TourSettlementService.name);
-  // Resolved on bootstrap so the hot path never blocks on an upsert.
-  // The non-null assertion is safe because onModuleInit runs before the
-  // first message is delivered (Kafka consumer subscribe is awaited).
-  private systemWalletId!: string;
 
   constructor(
     private prisma: PrismaService,
     private refundService: RefundService,
     private eventEmitter: EventEmitter2,
     private kafka: KafkaService,
+    private settlementService: SettlementService,
   ) {}
 
   async onModuleInit(): Promise<void> {
-    await this.ensureSystemWallet();
     // Cross-pod durability: when KAFKA_BROKER_URL is set, the consumer subscribes.
     // When not set (local dev), KafkaService.consume is a no-op and we rely purely
     // on EventEmitter2 (in-process). The @OnEvent handler below handles that path.
@@ -124,36 +129,10 @@ export class TourSettlementService implements OnModuleInit {
       return;
     }
 
-    // 2. Idempotency precheck — any existing -V-* row for this reference means
-    //    we already ran settlement. Return no-op.
-    const existing = await this.prisma.transaction.findFirst({
-      where: { reference: { startsWith: `${payload.reference}-V-` } },
-      select: { id: true },
-    });
-    if (existing) {
-      this.logger.log(
-        `Tour settlement already applied for ${payload.reference} — replay no-op`,
-      );
-      return;
-    }
-    // Also guard the all-platform-fallback case where no vendor rows would be
-    // written (e.g. solo ATTRACTION with unset gov wallet): a -PLAT row alone
-    // is still proof the settlement already ran.
-    const existingPlat = await this.prisma.transaction.findFirst({
-      where: { reference: `${payload.reference}-PLAT` },
-      select: { id: true },
-    });
-    if (existingPlat) {
-      this.logger.log(
-        `Tour settlement already applied (PLAT-only) for ${payload.reference} — replay no-op`,
-      );
-      return;
-    }
-
-    // 3. Convert charge to NGN
+    // 2. Convert charge to NGN
     const chargeAmountNgn = payload.amount / 100;
 
-    // 4. Resolve settlement entries from booking snapshot
+    // 3. Resolve settlement entries from booking snapshot
     const snapshot: any = booking.snapshot ?? {};
     const split: SplitEntry[] = (snapshot.settlementSplit as SplitEntry[]) ?? [];
 
@@ -164,7 +143,7 @@ export class TourSettlementService implements OnModuleInit {
       const err = new Error(
         `Settlement split percentages sum to ${sumPct} > 100 (booking ${booking.id})`,
       );
-      await this.handleSettlementFailure(payload, booking, err);
+      await this.refundInvalidSplit(payload, booking, err);
       throw err;
     }
 
@@ -233,122 +212,65 @@ export class TourSettlementService implements OnModuleInit {
       });
     }
 
-    // 5. Compute platform commission (absorbs rounding drift + unresolved shares)
-    const claimedAmountNgn = resolved
-      .filter((r) => r.walletId)
-      .reduce((s, r) => s + r.amountNgn, 0);
-    const platformAmountNgn =
-      Math.round((chargeAmountNgn - claimedAmountNgn) * 100) / 100;
-    const drift = chargeAmountNgn - claimedAmountNgn - platformAmountNgn;
-    if (Math.abs(drift) > 0.02) {
-      const err = new Error(
-        `Tour settlement drift exceeded ₦0.02 (drift=${drift}) — programming error`,
-      );
-      await this.handleSettlementFailure(payload, booking, err);
-      throw err;
-    }
+    // 5. Delegate the atomic wallet fan-out to SettlementService — idempotency,
+    //    SELECT FOR UPDATE, drift assertion, refund-on-failure all live there now.
+    const recipients: SettlementRecipient[] = resolved.map((r) => ({
+      tag: r.entry.vendorType,
+      refSuffix: `V-${r.idx}`,
+      walletId: r.walletId,
+      amountNgn: r.amountNgn,
+      metadata: {
+        vendorId: r.entry.vendorId,
+        packageName: snapshot.name ?? null,
+        percentage: r.entry.percentage,
+      },
+    }));
 
-    // 6. Atomic $transaction — vendor fan-out + platform commission + status flip
+    const buyerWallet = await this.prisma.wallet.findUnique({
+      where: { userId: booking.buyerUserId },
+      select: { id: true },
+    });
+
+    const attractionsRolledIn = resolved
+      .filter((r) => r.entry.vendorType === 'ATTRACTION' && !r.walletId)
+      .map((r) => r.entry.vendorId);
+
     const isSplitBillChild = !!payload.metadata?.shareKey;
-    try {
-      await this.prisma.$transaction(async (tx) => {
-        // 6a. Vendor wallet credits — one CREDIT row + balance bump per resolved wallet.
-        for (const r of resolved.filter((x) => x.walletId)) {
-          // SELECT FOR UPDATE — prevents concurrent writes to the same vendor wallet.
-          await tx.$executeRaw`SELECT id FROM wallets WHERE id = ${r.walletId} FOR UPDATE`;
-          const w = await tx.wallet.findUnique({ where: { id: r.walletId! } });
-          if (!w) {
-            throw new Error(
-              `Vendor wallet vanished mid-transaction: ${r.walletId}`,
-            );
-          }
-          const before = Number(w.balance);
-          const after = before + r.amountNgn;
-          await tx.wallet.update({
-            where: { id: r.walletId! },
-            data: { balance: after },
-          });
-          await tx.transaction.create({
-            data: {
-              walletId: r.walletId!,
-              type: 'CREDIT',
-              status: 'SUCCESS',
-              amount: r.amountNgn,
-              currency: 'NGN',
-              reference: `${payload.reference}-V-${r.idx}`,
-              gateway: 'PAYSTACK',
-              gatewayRef: payload.reference,
-              description: `Tour booking commission (${r.entry.vendorType})`,
-              balanceBefore: before,
-              balanceAfter: after,
-              metadata: {
-                module: 'tour',
-                bookingId: booking.id,
-                vendorType: r.entry.vendorType,
-                vendorId: r.entry.vendorId,
-                packageName: snapshot.name ?? null,
-                percentage: r.entry.percentage,
-              },
-            },
-          });
-        }
 
-        // 6b. Platform commission row — system wallet locked + credited.
-        await tx.$executeRaw`SELECT id FROM wallets WHERE id = ${this.systemWalletId} FOR UPDATE`;
-        const sysW = await tx.wallet.findUnique({
-          where: { id: this.systemWalletId },
-        });
-        if (!sysW) throw new Error('System wallet missing');
-        const sysBefore = Number(sysW.balance);
-        const sysAfter = sysBefore + platformAmountNgn;
-        await tx.wallet.update({
-          where: { id: this.systemWalletId },
-          data: { balance: sysAfter },
-        });
-        await tx.transaction.create({
-          data: {
-            walletId: this.systemWalletId,
-            type: 'CREDIT',
-            status: 'SUCCESS',
-            amount: platformAmountNgn,
-            currency: 'NGN',
-            reference: `${payload.reference}-PLAT`,
-            gateway: 'PAYSTACK',
-            gatewayRef: payload.reference,
-            description: 'Tour platform commission',
-            balanceBefore: sysBefore,
-            balanceAfter: sysAfter,
-            metadata: {
-              module: 'tour',
-              bookingId: booking.id,
-              chargeAmountNgn,
-              claimedAmountNgn,
-              attractionsRolledIn: resolved
-                .filter((r) => r.entry.vendorType === 'ATTRACTION' && !r.walletId)
-                .map((r) => r.entry.vendorId),
-            },
-          },
-        });
-
-        // 6c. Solo bookings confirm immediately INSIDE the transaction. Split-bill
-        //     children defer the CONFIRMED transition to step 7 (outside the txn)
-        //     because length-based bookkeeping needs the post-update value.
+    await this.settlementService.settle({
+      module: 'tour_booking',
+      reference: payload.reference,
+      gateway: 'PAYSTACK',
+      amountKobo: payload.amount,
+      recipients,
+      buyerWalletId: buyerWallet?.id,
+      description: 'Tour booking commission',
+      platformMetadata: { bookingId: booking.id, attractionsRolledIn },
+      onSettled: async (tx) => {
         if (!isSplitBillChild) {
           await tx.tourBooking.update({
             where: { id: booking.id },
-            data: {
-              status: 'CONFIRMED',
-              paymentReference: payload.reference,
-            },
+            data: { status: 'CONFIRMED', paymentReference: payload.reference },
           });
         }
-      });
-    } catch (err) {
-      await this.handleSettlementFailure(payload, booking, err as Error);
-      throw err;
-    }
+      },
+      onFailure: async (err) => {
+        const existingMeta: any = (booking as any).metadata ?? {};
+        await this.prisma.tourBooking.update({
+          where: { id: booking.id },
+          data: {
+            status: 'REFUNDED',
+            metadata: {
+              ...existingMeta,
+              settlementError: err.message,
+              settlementFailedAt: new Date().toISOString(),
+            },
+          },
+        });
+      },
+    });
 
-    // 7. Split-bill bookkeeping — OUTSIDE the wallet $transaction.
+    // 6. Split-bill bookkeeping — OUTSIDE the wallet $transaction.
     //    Array mutation is independent of wallet locks and the CONFIRMED gate
     //    depends on the post-update array length.
     if (isSplitBillChild) {
@@ -404,9 +326,10 @@ export class TourSettlementService implements OnModuleInit {
     }
   }
 
-  // ── Failure path: Paystack refund + status REFUNDED ────────────────────────
+  // ── Pre-flight failure path: split-percentage guard rejects before we ever
+  //    call SettlementService.settle() (so it never got a chance to refund) ──
 
-  private async handleSettlementFailure(
+  private async refundInvalidSplit(
     payload: TourBookingPaymentPayload,
     booking: { id: string; buyerUserId: string; metadata: any },
     err: Error,
@@ -416,12 +339,7 @@ export class TourSettlementService implements OnModuleInit {
         where: { userId: booking.buyerUserId },
         select: { id: true },
       });
-      if (!buyerWallet) {
-        this.logger.error(
-          `Settlement failure refund aborted — buyer wallet missing for user ${booking.buyerUserId} ` +
-            `(booking ${booking.id}, ref ${payload.reference})`,
-        );
-      } else {
+      if (buyerWallet) {
         await this.refundService.refund({
           paystackReference: payload.reference,
           amountKobo: payload.amount,
@@ -429,7 +347,7 @@ export class TourSettlementService implements OnModuleInit {
           reason: `tour_booking_settlement_failed: ${err.message}`,
           metadata: {
             bookingId: booking.id,
-            failedAt: 'settlement_transaction',
+            failedAt: 'pre_settlement_validation',
             module: 'tour',
           },
         });
@@ -460,34 +378,5 @@ export class TourSettlementService implements OnModuleInit {
         `Failed to mark booking ${booking.id} REFUNDED: ${(updateErr as Error).message}`,
       );
     }
-
-    this.logger.error(
-      `Tour settlement failed — refund issued for ${payload.reference}: ${err.message}`,
-    );
-  }
-
-  // ── System wallet bootstrap (v1 ops audit anchor) ──────────────────────────
-
-  private async ensureSystemWallet(): Promise<void> {
-    // Upsert the well-known SYSTEM user. SUPER_ADMIN role + ndpaConsent: true
-    // satisfies AuthService.register-equivalent invariants for non-citizen
-    // platform accounts. firstName/lastName are descriptive only.
-    await this.prisma.user.upsert({
-      where: { id: SYSTEM_USER_ID },
-      create: {
-        id: SYSTEM_USER_ID,
-        firstName: 'Platform',
-        lastName: 'System',
-        role: 'SUPER_ADMIN',
-        ndpaConsent: true,
-      },
-      update: {},
-    });
-    const w = await this.prisma.wallet.upsert({
-      where: { userId: SYSTEM_USER_ID },
-      create: { userId: SYSTEM_USER_ID },
-      update: {},
-    });
-    this.systemWalletId = w.id;
   }
 }
