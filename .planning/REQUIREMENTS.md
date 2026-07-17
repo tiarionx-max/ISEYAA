@@ -18,8 +18,8 @@ Requirements for milestone v2.0. Each maps to roadmap phases (Phase 10+, continu
 
 ### Resilience
 
-- [ ] **RESIL-01**: Every call to Paystack, Termii, Anthropic, Cloudflare R2/S3, and Firebase FCM is wrapped in a circuit-breaker + retry + timeout + fallback policy, so a single vendor outage degrades only the dependent feature, not the whole API
-- [ ] **RESIL-02**: Vendor-call failures and circuit-breaker state transitions are visible in the existing Grafana/Sentry/OpenTelemetry observability stack
+- [x] **RESIL-01**: Every call to Paystack, Termii, Anthropic, Cloudflare R2/S3, and Firebase FCM is wrapped in a circuit-breaker + retry + timeout + fallback policy, so a single vendor outage degrades only the dependent feature, not the whole API
+- [ ] **RESIL-02**: Vendor-call failures and circuit-breaker state transitions are visible in the existing Grafana/Sentry/OpenTelemetry observability stack — code-side wiring and sanitization verified; live Grafana/Sentry dashboard delivery still requires human confirmation (see v2.0-MILESTONE-AUDIT.md)
 
 ### gRPC Microservice Extraction
 
@@ -53,14 +53,14 @@ Requirements for milestone v2.0. Each maps to roadmap phases (Phase 10+, continu
 
 ### Settlement Split
 
-- [ ] **SETTLE-01**: A shared `SettlementService` in `CommonModule` generalizes `TourSettlementService`'s proven pattern (single `$transaction`, `SELECT FOR UPDATE` per recipient wallet, idempotency keys, drift-tolerance assertion, append-only audit) for reuse across modules
-- [ ] **SETTLE-02**: A standing Ministry wallet is provisioned, reusing the existing `tour.government_wallet_user_id` `PlatformConfig` entity as the Ministry's recipient wallet
+- [x] **SETTLE-01**: A shared `SettlementService` in `CommonModule` generalizes `TourSettlementService`'s proven pattern (single `$transaction`, `SELECT FOR UPDATE` per recipient wallet, idempotency keys, drift-tolerance assertion, append-only audit) for reuse across modules
+- [x] **SETTLE-02**: A standing Ministry wallet is provisioned, reusing the existing `tour.government_wallet_user_id` `PlatformConfig` entity as the Ministry's recipient wallet
 - [ ] **SETTLE-03**: Transport's settlement is generalized to a three-way, `PlatformConfig`-driven split (driver/rider, Ministry, platform), replacing the hardcoded 85/15
 - [ ] **SETTLE-04**: Delivery's settlement is generalized to a three-way, `PlatformConfig`-driven split, replacing the hardcoded 80/20
-- [ ] **SETTLE-05**: Stays' `releaseEscrow()` cron is fixed to actually read and apply `Booking.govtLevyPct` instead of crediting the host 100% of the booking price (pre-existing revenue-leak bug)
-- [ ] **SETTLE-06**: Marketplace, Events, and Studio payment webhooks have working settlement consumers — currently no `@OnEvent` handler exists for `payment.order_payment`, `payment.ticket_purchase`, or `payment.studio_booking` anywhere in the codebase
-- [ ] **SETTLE-07**: Each settlement recipient (vendor/rider, Ministry, platform) can retrieve a per-recipient, itemized settlement statement
-- [ ] **SETTLE-08**: N-way split calculations sum exactly to the buyer's paid amount across a wide range of non-round amounts, verified by an automated test (no silent rounding/remainder drift)
+- [x] **SETTLE-05**: Stays' `releaseEscrow()` cron is fixed to actually read and apply `Booking.govtLevyPct` instead of crediting the host 100% of the booking price (pre-existing revenue-leak bug)
+- [x] **SETTLE-06**: Marketplace, Events, and Studio payment webhooks have working settlement consumers — currently no `@OnEvent` handler exists for `payment.order_payment`, `payment.ticket_purchase`, or `payment.studio_booking` anywhere in the codebase
+- [x] **SETTLE-07**: Each settlement recipient (vendor/rider, Ministry, platform) can retrieve a per-recipient, itemized settlement statement
+- [x] **SETTLE-08**: N-way split calculations sum exactly to the buyer's paid amount across a wide range of non-round amounts, verified by an automated test (no silent rounding/remainder drift)
 - [ ] **SETTLE-09**: Transport and Delivery's cutover to the generalized settlement engine is verified in shadow mode against their existing hardcoded-percentage output before going live, so no live driver/rider payout amount changes silently
 
 ## v2 Requirements (Deferred beyond v2.0)
@@ -99,8 +99,8 @@ Requirements for milestone v2.0. Each maps to roadmap phases (Phase 10+, continu
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | DOC-01 | Phase 10 | Complete |
-| RESIL-01 | Phase 11 | Pending |
-| RESIL-02 | Phase 11 | Pending |
+| RESIL-01 | Phase 11 | Complete |
+| RESIL-02 | Phase 11 | Partial (live Grafana/Sentry dashboard confirmation pending — see v2.0-MILESTONE-AUDIT.md) |
 | GRPC-01 | Phase 10 | Complete |
 | GRPC-02 | Phase 10 | Complete |
 | GRPC-03 | Phase 17 | Pending |
@@ -119,14 +119,14 @@ Requirements for milestone v2.0. Each maps to roadmap phases (Phase 10+, continu
 | MIN-05 | Phase 14 | Pending |
 | MIN-06 | Phase 14 | Pending |
 | MIN-07 | Phase 14 | Pending |
-| SETTLE-01 | Phase 12 | Pending |
-| SETTLE-02 | Phase 12 | Pending |
+| SETTLE-01 | Phase 12 | Complete |
+| SETTLE-02 | Phase 12 | Complete |
 | SETTLE-03 | Phase 13 | Pending |
 | SETTLE-04 | Phase 13 | Pending |
-| SETTLE-05 | Phase 12 | Pending |
-| SETTLE-06 | Phase 12 | Pending |
-| SETTLE-07 | Phase 12 | Pending |
-| SETTLE-08 | Phase 12 | Pending |
+| SETTLE-05 | Phase 12 | Complete |
+| SETTLE-06 | Phase 12 | Complete |
+| SETTLE-07 | Phase 12 | Complete |
+| SETTLE-08 | Phase 12 | Complete |
 | SETTLE-09 | Phase 13 | Pending |
 
 **Coverage:**
