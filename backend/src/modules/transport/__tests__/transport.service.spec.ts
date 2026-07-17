@@ -14,6 +14,7 @@ import { RedisService } from '../../../redis/redis.service';
 import { WalletService } from '../../wallet/wallet.service';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { TransportGateway } from '../transport.gateway';
+import { SettlementService } from '../../../common/services/settlement.service';
 
 // ── Fixture IDs ────────────────────────────────────────────────────────────────
 
@@ -76,7 +77,7 @@ const mockTrip = {
   deletedAt: null,
 };
 
-const mockPlatformConfig = (key: string, value: number) => ({
+const mockPlatformConfig = (key: string, value: number | boolean) => ({
   id: `cfg-${key}`,
   key,
   value,
@@ -116,7 +117,15 @@ const mockPrisma = {
   platformConfig: {
     findUnique: jest.fn(),
   },
+  shadowSettlementComparison: {
+    create: jest.fn().mockResolvedValue({}),
+  },
   $transaction: jest.fn(),
+};
+
+const mockSettlement = {
+  settle: jest.fn().mockResolvedValue({ status: 'SETTLED', platformAmountNgn: 0, recipientCredits: [] }),
+  resolveMinistryWallet: jest.fn().mockResolvedValue({ id: 'WAL-MINISTRY' }),
 };
 
 const mockRedis = {
@@ -154,6 +163,10 @@ describe('TransportService', () => {
     const mockEmit = jest.fn();
     const mockTo = jest.fn().mockReturnValue({ emit: mockEmit });
     mockGateway.server.to = mockTo;
+    // Reset mockSettlement.settle's implementation after clearAllMocks (clearAllMocks
+    // does not remove a custom .mockImplementation set by an earlier test).
+    mockSettlement.settle.mockResolvedValue({ status: 'SETTLED', platformAmountNgn: 0, recipientCredits: [] });
+    mockSettlement.resolveMinistryWallet.mockResolvedValue({ id: 'WAL-MINISTRY' });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -163,6 +176,7 @@ describe('TransportService', () => {
         { provide: WalletService, useValue: mockWallet },
         { provide: SchedulerRegistry, useValue: mockScheduler },
         { provide: TransportGateway, useValue: mockGateway },
+        { provide: SettlementService, useValue: mockSettlement },
       ],
     }).compile();
 
@@ -626,13 +640,49 @@ describe('TransportService', () => {
   // ── completeTrip ───────────────────────────────────────────────────────────
 
   describe('completeTrip', () => {
-    it('credits driver wallet 85% and marks trip COMPLETED via atomic transaction', async () => {
+    it('delegates to SettlementService.settle() with DRIVER/MINISTRY recipients when transport.settlement_engine_enabled is true', async () => {
       mockPrisma.trip.findFirst.mockResolvedValue({ ...mockTrip, status: 'IN_PROGRESS' });
       mockPrisma.driver.findFirst.mockResolvedValue(mockDriver);
       mockPrisma.wallet.findFirst.mockResolvedValue({ id: WALLET_ID, userId: USER_ID, balance: 0 });
-      mockPrisma.platformConfig.findUnique.mockResolvedValue(
-        mockPlatformConfig('transport_platform_fee_pct', 15),
+      mockPrisma.platformConfig.findUnique.mockImplementation((args: any) => {
+        const key = args.where.key;
+        if (key === 'transport.settlement_engine_enabled') return mockPlatformConfig(key, true);
+        if (key === 'transport.govt_levy_pct') return mockPlatformConfig(key, 5);
+        if (key === 'transport.platform_fee_pct') return mockPlatformConfig(key, 10);
+        return null;
+      });
+      mockSettlement.settle.mockImplementation(async (input: any) => {
+        const tx = { trip: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) }, tripEvent: { create: jest.fn() } };
+        await input.onSettled?.(tx);
+        return { status: 'SETTLED', platformAmountNgn: 0, recipientCredits: [] };
+      });
+
+      await service.completeTrip(TRIP_ID, USER_ID);
+
+      // fare=1500: govtLevy 5%=75, platformFee 10%=150, driverEarnings=1500-225=1275
+      expect(mockSettlement.settle).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reference: `ISY-TRP-${TRIP_ID}`,
+          recipients: expect.arrayContaining([
+            expect.objectContaining({ tag: 'DRIVER', amountNgn: 1275 }),
+            expect.objectContaining({ tag: 'MINISTRY', amountNgn: 75 }),
+          ]),
+        }),
       );
+    });
+
+    it('credits driver wallet 85% and writes a Stage-2 shadow comparison when transport.settlement_engine_enabled is false/unset', async () => {
+      mockPrisma.trip.findFirst.mockResolvedValue({ ...mockTrip, status: 'IN_PROGRESS' });
+      mockPrisma.driver.findFirst.mockResolvedValue(mockDriver);
+      mockPrisma.wallet.findFirst.mockResolvedValue({ id: WALLET_ID, userId: USER_ID, balance: 0 });
+      mockPrisma.platformConfig.findUnique.mockImplementation((args: any) => {
+        const key = args.where.key;
+        if (key === 'transport.settlement_engine_enabled') return null; // unset → false
+        if (key === 'transport_platform_fee_pct') return mockPlatformConfig(key, 15);
+        if (key === 'transport.govt_levy_pct') return mockPlatformConfig(key, 5);
+        if (key === 'transport.platform_fee_pct') return mockPlatformConfig(key, 10);
+        return null;
+      });
       const mockTripUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
       const mockWalletFindUnique = jest.fn().mockResolvedValue({ id: WALLET_ID, balance: 0 });
       const mockWalletUpdate = jest.fn().mockResolvedValue({});
@@ -658,13 +708,23 @@ describe('TransportService', () => {
       expect(mockWalletUpdate).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ balance: 1275 }) }),
       );
+      expect(mockPrisma.shadowSettlementComparison.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ module: 'transport', matched: true }),
+        }),
+      );
     });
 
     it('throws BadRequestException when trip is already completed (count=0 from updateMany)', async () => {
       mockPrisma.trip.findFirst.mockResolvedValue({ ...mockTrip, status: 'IN_PROGRESS', driverId: mockDriver.id });
       mockPrisma.driver.findFirst.mockResolvedValue(mockDriver);
       mockPrisma.wallet.findFirst.mockResolvedValue({ id: WALLET_ID, userId: USER_ID, balance: 0 });
-      mockPrisma.platformConfig.findUnique.mockResolvedValue(mockPlatformConfig('transport_platform_fee_pct', 15));
+      mockPrisma.platformConfig.findUnique.mockImplementation((args: any) => {
+        const key = args.where.key;
+        if (key === 'transport.settlement_engine_enabled') return null; // unset → false
+        if (key === 'transport_platform_fee_pct') return mockPlatformConfig(key, 15);
+        return null;
+      });
       mockPrisma.$transaction.mockImplementation(async (fn) => {
         const tx = {
           trip: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
