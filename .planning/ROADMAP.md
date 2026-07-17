@@ -27,7 +27,7 @@ Sprint 1 is shipped. This roadmap covers the six remaining sprints: infrastructu
 - [x] **Phase 10: Documentation Correction + gRPC Build Fix** - Correct the false "8 services extracted" claim, make all 8 service scaffolds actually build, and author `.proto` contracts for the 7 never-stubbed modules (completed 2026-07-15)
 - [x] **Phase 11: Resilience Wrapping** - Circuit-breaker + retry + timeout + fallback around every external vendor call (Paystack, Termii, Anthropic, R2/S3, FCM), visible in observability
  (completed 2026-07-16)
-- [ ] **Phase 12: Settlement Engine Foundation** - Generalized `SettlementService` + standing Ministry wallet, plus fixing two pre-existing revenue bugs (Stays escrow fee leak, missing Marketplace/Events/Studio webhook consumers)
+- [x] **Phase 12: Settlement Engine Foundation** - Generalized `SettlementService` + standing Ministry wallet, plus fixing two pre-existing revenue bugs (Stays escrow fee leak, missing Marketplace/Events/Studio webhook consumers) (completed 2026-07-17)
 - [ ] **Phase 13: Settlement Cutover — Transport & Delivery** - Transport and Delivery's live payouts move onto the three-way settlement engine, shadow-mode verified before cutover
 - [ ] **Phase 14: Ministry Dashboard** - `MINISTRY_VIEWER` role + read-only dashboard: visitor counts, purpose-of-visit, revenue-to-government-share, CSV/PDF export, zero PII leakage
 - [ ] **Phase 15: Multi-Channel OTP** - Users choose WhatsApp/Email/SMS for OTP verification at registration, with bounded-timeout SMS fallback and identity-scoped brute-force protection
@@ -471,7 +471,7 @@ Plans:
 - [x] 12-08-PLAN.md — Settlement statement endpoint (SETTLE-07) with IDOR-proof access control
 
 **Wave 3** *(blocked on Wave 2)*
-- [ ] 12-09-PLAN.md — Full regression suite + source-level security audit gate
+- [x] 12-09-PLAN.md — Full regression suite + source-level security audit gate
 
 **Cross-cutting constraints:**
 - Platform fees/levies always read from PlatformConfig — never hardcoded
@@ -560,7 +560,7 @@ Phases 11, 12 (Settlement Foundation), and 15 (WhatsApp OTP) are independent of 
 | 9. Tour Packages & Tour Guides | 12/13 | In Progress (09-13 human checkpoint pending) | - |
 | 10. Documentation Correction + gRPC Build Fix | 3/3 | Complete    | 2026-07-15 |
 | 11. Resilience Wrapping | 11/11 | Complete   | 2026-07-16 |
-| 12. Settlement Engine Foundation | 8/9 | In Progress|  |
+| 12. Settlement Engine Foundation | 9/9 | Complete   | 2026-07-17 |
 | 13. Settlement Cutover — Transport & Delivery | 0/0 | Not started | - |
 | 14. Ministry Dashboard | 0/0 | Not started | - |
 | 15. Multi-Channel OTP | 0/0 | Not started | - |
