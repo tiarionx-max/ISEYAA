@@ -8,6 +8,7 @@ import {
   ServiceUnavailableException,
   OnModuleInit,
 } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import { KafkaService } from '../../kafka/kafka.service';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { v4 as uuidv4 } from 'uuid';
@@ -17,6 +18,7 @@ import { PaystackService } from '../../common/services/paystack.service';
 import { S3Service } from '../../common/services/s3.service';
 import { SendgridService } from '../../common/services/sendgrid.service';
 import { ImageService } from '../../common/services/image.service';
+import { SettlementService } from '../../common/services/settlement.service';
 import { CreatePropertyDto } from './dto/create-property.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
 import { CreateBookingDto } from './dto/create-booking.dto';
@@ -37,6 +39,7 @@ export class StaysService implements OnModuleInit {
     private sendgrid: SendgridService,
     private imageService: ImageService,
     private kafka: KafkaService,
+    private settlementService: SettlementService,
   ) {}
 
   async onModuleInit() {
@@ -183,6 +186,9 @@ export class StaysService implements OnModuleInit {
       throw new BadRequestException(`Maximum ${property.maxGuests} guests allowed`);
     }
 
+    const levyCfg = await this.prisma.platformConfig.findUnique({ where: { key: 'stays.govt_levy_pct' } });
+    const govtLevyPct = levyCfg ? Number(levyCfg.value) : 0.05;
+
     const nights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (86400 * 1000));
     const totalPrice = Number(property.pricePerNight) * nights;
     const paystackRef = `ISY-STY-${uuidv4().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
@@ -213,6 +219,7 @@ export class StaysService implements OnModuleInit {
           checkOut,
           guests: dto.guests,
           totalPrice,
+          govtLevyPct,
           paystackRef,
           status: 'PENDING',
           metadata: { propertyName: property.name, nights },
@@ -245,6 +252,7 @@ export class StaysService implements OnModuleInit {
     return { booking, payment };
   }
 
+  @OnEvent('payment.stay_booking')
   async handleStayPayment(payload: { reference: string }) {
     try {
       const booking = await this.prisma.booking.findUnique({
@@ -324,37 +332,29 @@ export class StaysService implements OnModuleInit {
         const hostWallet = await this.prisma.wallet.findUnique({ where: { userId: hostUserId } });
         if (!hostWallet) continue;
 
-        const amount = Number(booking.totalPrice);
-        const balanceBefore = Number(hostWallet.balance);
-        const balanceAfter = balanceBefore + amount;
+        const total = Number(booking.totalPrice);
+        const govtLevyPct = Number(booking.govtLevyPct);
+        const govtLevyNgn = +(total * govtLevyPct).toFixed(2);
+        const hostAmountNgn = +(total - govtLevyNgn).toFixed(2);
+        const ministryWallet = await this.settlementService.resolveMinistryWallet();
         const reference = `ISY-ESC-${booking.id.slice(0, 8).toUpperCase()}`;
 
-        await this.prisma.$transaction([
-          this.prisma.wallet.update({
-            where: { id: hostWallet.id },
-            data: { balance: balanceAfter },
-          }),
-          this.prisma.transaction.create({
-            data: {
-              walletId: hostWallet.id,
-              type: 'CREDIT',
-              status: 'SUCCESS',
-              amount,
-              currency: 'NGN',
-              reference,
-              gateway: 'INTERNAL',
-              description: `Escrow release — booking ${booking.id}`,
-              balanceBefore,
-              balanceAfter,
-            },
-          }),
-          this.prisma.booking.update({
-            where: { id: booking.id },
-            data: { escrowReleasedAt: new Date() },
-          }),
-        ]);
+        await this.settlementService.settle({
+          module: 'stays',
+          reference,
+          gateway: 'INTERNAL',
+          amountKobo: total * 100,
+          recipients: [
+            { tag: 'HOST', refSuffix: 'HOST', walletId: hostWallet.id, amountNgn: hostAmountNgn, metadata: { bookingId: booking.id } },
+            { tag: 'MINISTRY', refSuffix: 'MINISTRY', walletId: ministryWallet?.id ?? null, amountNgn: govtLevyNgn, metadata: { bookingId: booking.id } },
+          ],
+          description: 'Escrow release',
+          onSettled: async (tx) => {
+            await tx.booking.update({ where: { id: booking.id }, data: { escrowReleasedAt: new Date() } });
+          },
+        });
 
-        this.logger.log(`Escrow ₦${amount} released for booking ${booking.id}`);
+        this.logger.log(`Escrow settlement dispatched for booking ${booking.id} (host: ₦${hostAmountNgn}, govt: ₦${govtLevyNgn})`);
       } catch (err) {
         this.logger.error(`Escrow release failed — booking ${booking.id}`, err.message);
       }
