@@ -17,6 +17,7 @@ import { RedisService } from '../../redis/redis.service';
 import { WalletService } from '../wallet/wallet.service';
 import { S3Service } from '../../common/services/s3.service';
 import { ResilienceService } from '../../resilience/resilience.service';
+import { SettlementService, SettlementRecipient } from '../../common/services/settlement.service';
 import { DeliveryGateway } from './delivery.gateway';
 import { CreateDeliveryRiderDto } from './dto/create-delivery-rider.dto';
 import { ApproveDeliveryRiderDto } from './dto/approve-delivery-rider.dto';
@@ -64,6 +65,7 @@ export class DeliveryService {
     private config: ConfigService,
     private resilience: ResilienceService,
     private schedulerRegistry: SchedulerRegistry,
+    private settlementService: SettlementService,
     @Inject(forwardRef(() => DeliveryGateway)) private gateway: DeliveryGateway,
   ) {}
 
@@ -545,67 +547,179 @@ export class DeliveryService {
       'image/jpeg',
     );
 
-    // Read platform fee from platformConfig — NEVER hardcode
-    const feeCfg = await this.prisma.platformConfig.findUnique({
-      where: { key: 'delivery_platform_fee_pct' },
-    });
-    const feePct = feeCfg ? Number(feeCfg.value) : 20;
-
-    const fee = Number(order.fee);
-    const riderEarnings = Math.round(fee * (1 - feePct / 100) * 100) / 100;
-    const platformFee = Math.round((fee - riderEarnings) * 100) / 100;
-
-    const ref = `ISY-RDR-${uuidv4().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
     const now = new Date();
-
-    // C-09: run order status update AND wallet credit inside the same interactive
-    // transaction so a crash between the two cannot leave the order DELIVERED but
-    // the rider unpaid (or paid twice on retry).
+    const fee = Number(order.fee);
     const riderWallet = await this.prisma.wallet.findFirst({ where: { userId: riderUserId } });
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.deliveryOrder.update({
-        where: { id: orderId },
-        data: {
-          status: 'DELIVERED' as any,
-          completedAt: now,
-          proofPhotoUrl,
-          platformFee,
-          riderEarnings,
-          ...(dto.senderRating && { senderRating: dto.senderRating }),
-        },
-      });
-      await tx.deliveryEvent.create({
-        data: { orderId, event: 'DELIVERY_COMPLETED' },
-      });
+    let riderEarnings: number;
+    let totalCommission: number;
 
-      // Credit rider wallet within the same transaction (SELECT FOR UPDATE inside creditWallet
-      // handles the row-lock, but since we are already inside a transaction, use raw update here)
-      if (riderWallet) {
-        await tx.$executeRaw`SELECT id FROM wallets WHERE id = ${riderWallet.id} FOR UPDATE`;
-        const lockedWallet = await tx.wallet.findUnique({ where: { id: riderWallet.id } });
-        if (lockedWallet) {
-          const balanceBefore = Number(lockedWallet.balance);
-          const balanceAfter = balanceBefore + riderEarnings;
-          await tx.wallet.update({ where: { id: riderWallet.id }, data: { balance: balanceAfter } });
-          await tx.transaction.create({
+    // 13-03: read the cutover flag from PlatformConfig — NEVER hardcode.
+    const cutoverCfg = await this.prisma.platformConfig.findUnique({
+      where: { key: 'delivery.settlement_engine_enabled' },
+    });
+    const cutoverEnabled = cutoverCfg ? Boolean(cutoverCfg.value) : false;
+
+    if (cutoverEnabled) {
+      // ── Post-cutover: delegate the rider/Ministry/platform 3-way split to
+      //    SettlementService.settle() (Phase 12). Preserve Delivery's own
+      //    MULTIPLY-FIRST rounding order exactly (Pitfall 1 — do not switch to
+      //    Transport's subtract-first order).
+      const levyCfg = await this.prisma.platformConfig.findUnique({
+        where: { key: 'delivery.govt_levy_pct' },
+      });
+      const platformFeeCfg = await this.prisma.platformConfig.findUnique({
+        where: { key: 'delivery.platform_fee_pct' },
+      });
+      const govtLevyPct = levyCfg ? Number(levyCfg.value) : 5;
+      const platformFeePct = platformFeeCfg ? Number(platformFeeCfg.value) : 15;
+      const totalCommissionPct = govtLevyPct + platformFeePct; // = 20, matches today's feePct
+
+      riderEarnings = Math.round(fee * (1 - totalCommissionPct / 100) * 100) / 100;
+      totalCommission = Math.round((fee - riderEarnings) * 100) / 100;
+      const govtLevyNgn = Math.round(fee * (govtLevyPct / 100) * 100) / 100;
+
+      const ministryWallet = await this.settlementService.resolveMinistryWallet();
+
+      const recipients: SettlementRecipient[] = [
+        {
+          tag: 'RIDER',
+          refSuffix: 'RDR',
+          walletId: riderWallet?.id ?? null,
+          amountNgn: riderEarnings,
+          metadata: { orderId },
+        },
+        {
+          tag: 'MINISTRY',
+          refSuffix: 'MINISTRY',
+          walletId: ministryWallet?.id ?? null,
+          amountNgn: govtLevyNgn,
+          metadata: { orderId },
+        },
+      ];
+
+      await this.settlementService.settle({
+        module: 'delivery',
+        reference: `ISY-DLV-${orderId}`, // deterministic — SettlementService idempotency precheck (Pitfall 2)
+        gateway: 'INTERNAL',
+        amountKobo: fee * 100,
+        recipients,
+        buyerWalletId: null, // D-04 — no real buyer wallet debit exists for a delivery fee
+        description: 'Delivery completion settlement',
+        platformMetadata: { orderId, riderUserId },
+        onSettled: async (tx) => {
+          await tx.deliveryOrder.update({
+            where: { id: orderId },
             data: {
-              walletId: riderWallet.id,
-              type: 'CREDIT',
-              status: 'SUCCESS',
-              amount: riderEarnings,
-              currency: 'NGN',
-              reference: ref,
-              gateway: 'INTERNAL',
-              description: `Delivery earnings — ${orderId}`,
-              balanceBefore,
-              balanceAfter,
-              metadata: { module: 'delivery' },
+              status: 'DELIVERED' as any,
+              completedAt: now,
+              proofPhotoUrl,
+              platformFee: totalCommission,
+              riderEarnings,
+              ...(dto.senderRating && { senderRating: dto.senderRating }),
             },
           });
+          await tx.deliveryEvent.create({
+            data: { orderId, event: 'DELIVERY_COMPLETED' },
+          });
+        },
+        onFailure: async () => {
+          // Revert to a retryable status — SettlementService's idempotency precheck
+          // makes a client retry's wallet-crediting half a safe no-op replay (Pitfall 4).
+          await this.prisma.deliveryOrder.update({
+            where: { id: orderId },
+            data: { status: 'PICKED_UP' as any },
+          });
+        },
+      });
+    } else {
+      // ── Pre-cutover: EXISTING inline $transaction path, byte-for-byte unchanged.
+      const feeCfg = await this.prisma.platformConfig.findUnique({
+        where: { key: 'delivery_platform_fee_pct' },
+      });
+      const feePct = feeCfg ? Number(feeCfg.value) : 20;
+
+      riderEarnings = Math.round(fee * (1 - feePct / 100) * 100) / 100;
+      totalCommission = Math.round((fee - riderEarnings) * 100) / 100;
+
+      const ref = `ISY-RDR-${uuidv4().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
+
+      // C-09: run order status update AND wallet credit inside the same interactive
+      // transaction so a crash between the two cannot leave the order DELIVERED but
+      // the rider unpaid (or paid twice on retry).
+      await this.prisma.$transaction(async (tx) => {
+        await tx.deliveryOrder.update({
+          where: { id: orderId },
+          data: {
+            status: 'DELIVERED' as any,
+            completedAt: now,
+            proofPhotoUrl,
+            platformFee: totalCommission,
+            riderEarnings,
+            ...(dto.senderRating && { senderRating: dto.senderRating }),
+          },
+        });
+        await tx.deliveryEvent.create({
+          data: { orderId, event: 'DELIVERY_COMPLETED' },
+        });
+
+        // Credit rider wallet within the same transaction (SELECT FOR UPDATE inside creditWallet
+        // handles the row-lock, but since we are already inside a transaction, use raw update here)
+        if (riderWallet) {
+          await tx.$executeRaw`SELECT id FROM wallets WHERE id = ${riderWallet.id} FOR UPDATE`;
+          const lockedWallet = await tx.wallet.findUnique({ where: { id: riderWallet.id } });
+          if (lockedWallet) {
+            const balanceBefore = Number(lockedWallet.balance);
+            const balanceAfter = balanceBefore + riderEarnings;
+            await tx.wallet.update({ where: { id: riderWallet.id }, data: { balance: balanceAfter } });
+            await tx.transaction.create({
+              data: {
+                walletId: riderWallet.id,
+                type: 'CREDIT',
+                status: 'SUCCESS',
+                amount: riderEarnings,
+                currency: 'NGN',
+                reference: ref,
+                gateway: 'INTERNAL',
+                description: `Delivery earnings — ${orderId}`,
+                balanceBefore,
+                balanceAfter,
+                metadata: { module: 'delivery' },
+              },
+            });
+          }
         }
+      });
+
+      // Stage-2 shadow comparison — best-effort, fire-and-forget, OUTSIDE the
+      // $transaction above so a shadow-write failure can never roll back or block
+      // the live rider credit (Pitfall 5 — matches the project's existing
+      // audit-log-failures-are-swallowed convention).
+      try {
+        const shadowLevyCfg = await this.prisma.platformConfig.findUnique({
+          where: { key: 'delivery.govt_levy_pct' },
+        });
+        const shadowPlatformFeeCfg = await this.prisma.platformConfig.findUnique({
+          where: { key: 'delivery.platform_fee_pct' },
+        });
+        const shadowGovtLevyPct = shadowLevyCfg ? Number(shadowLevyCfg.value) : 5;
+        const shadowPlatformFeePct = shadowPlatformFeeCfg ? Number(shadowPlatformFeeCfg.value) : 15;
+        const shadowTotalCommissionPct = shadowGovtLevyPct + shadowPlatformFeePct;
+        const shadowRiderEarnings = Math.round(fee * (1 - shadowTotalCommissionPct / 100) * 100) / 100;
+
+        await this.prisma.shadowSettlementComparison.create({
+          data: {
+            module: 'delivery',
+            sourceId: orderId,
+            oldEarnerAmount: riderEarnings,
+            newEarnerAmount: shadowRiderEarnings,
+            matched: riderEarnings === shadowRiderEarnings,
+          },
+        });
+      } catch (err) {
+        this.logger.error(`Stage-2 shadow-settlement write failed for order ${orderId}`, (err as Error).message);
       }
-    });
+    }
 
     this.logger.log(`Order ${orderId} completed — ₦${riderEarnings} credited to rider ${riderUserId}`);
 
