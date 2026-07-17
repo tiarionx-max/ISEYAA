@@ -6,6 +6,7 @@ import {
 } from '../tour-settlement.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { RefundService } from '../../../common/services/refund.service';
+import { SettlementService } from '../../../common/services/settlement.service';
 import { KafkaService } from '../../../kafka/kafka.service';
 
 /**
@@ -186,6 +187,7 @@ async function makeService(): Promise<TourSettlementService> {
   const moduleRef: TestingModule = await Test.createTestingModule({
     providers: [
       TourSettlementService,
+      SettlementService,
       { provide: PrismaService, useValue: mockPrisma },
       { provide: RefundService, useValue: mockRefund },
       { provide: EventEmitter2, useValue: mockEvents },
@@ -193,7 +195,9 @@ async function makeService(): Promise<TourSettlementService> {
     ],
   }).compile();
   const svc = moduleRef.get(TourSettlementService);
-  await svc.onModuleInit(); // resolves systemWalletId
+  await svc.onModuleInit(); // wires the Kafka consumer registration (no-op body)
+  const settlementSvc = moduleRef.get(SettlementService);
+  await settlementSvc.onModuleInit(); // resolves systemWalletId
   return svc;
 }
 
