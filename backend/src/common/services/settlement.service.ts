@@ -122,9 +122,25 @@ export class SettlementService implements OnModuleInit {
       const result = await this.prisma.$transaction(async (tx) => {
         const recipientCredits: SettlementResult['recipientCredits'] = [];
 
-        for (const r of input.recipients.filter((x) => x.walletId)) {
+        // Lock recipient wallets in a canonical (sorted by walletId) order — NOT the
+        // caller-supplied array order — so every concurrent settle() call acquires
+        // locks in one global, deterministic sequence. Without this, two settlements
+        // sharing the same two wallets but built in opposite array order (e.g. two
+        // TourPackages with reversed settlementSplit orderings) can deadlock in
+        // Postgres; the resulting raw error is NOT a P2002 and falls through to a
+        // spurious buyer refund on what should have been a clean settlement (CR-01).
+        const recipientsWithWallet = input.recipients.filter((x) => x.walletId);
+        const lockOrder = [...recipientsWithWallet].sort((a, b) =>
+          a.walletId! < b.walletId! ? -1 : a.walletId! > b.walletId! ? 1 : 0,
+        );
+        for (const r of lockOrder) {
           // SELECT FOR UPDATE — prevents concurrent writes to the same recipient wallet.
           await tx.$executeRaw`SELECT id FROM wallets WHERE id = ${r.walletId} FOR UPDATE`;
+        }
+
+        // Credit rows are still created/ordered by the original caller-supplied array
+        // (only the locking order above needed to be canonicalized).
+        for (const r of recipientsWithWallet) {
           const w = await tx.wallet.findUnique({ where: { id: r.walletId! } });
           if (!w) {
             throw new Error(`Recipient wallet vanished mid-transaction: ${r.walletId}`);
