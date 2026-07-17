@@ -128,3 +128,8 @@ None - no external service configuration required.
 ---
 *Phase: 12-settlement-engine-foundation*
 *Completed: 2026-07-17*
+
+## Self-Check: PASSED
+
+- FOUND: .planning/phases/12-settlement-engine-foundation/12-09-SUMMARY.md
+- FOUND: b9d2cb8 (docs(12-09): complete full-suite regression + security audit plan)
