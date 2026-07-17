@@ -43,6 +43,9 @@ coverage/
 # Prisma
 backend/prisma/*.db
 
+# Shadow settlement verification reports (generated at runtime, per-run)
+backend/shadow-report-*.json
+
 # TypeScript incremental build cache
 *.tsbuildinfo
 
