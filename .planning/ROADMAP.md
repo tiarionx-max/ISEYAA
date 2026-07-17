@@ -28,7 +28,7 @@ Sprint 1 is shipped. This roadmap covers the six remaining sprints: infrastructu
 - [x] **Phase 11: Resilience Wrapping** - Circuit-breaker + retry + timeout + fallback around every external vendor call (Paystack, Termii, Anthropic, R2/S3, FCM), visible in observability
  (completed 2026-07-16)
 - [x] **Phase 12: Settlement Engine Foundation** - Generalized `SettlementService` + standing Ministry wallet, plus fixing two pre-existing revenue bugs (Stays escrow fee leak, missing Marketplace/Events/Studio webhook consumers) (completed 2026-07-17)
-- [ ] **Phase 13: Settlement Cutover — Transport & Delivery** - Transport and Delivery's live payouts move onto the three-way settlement engine, shadow-mode verified before cutover
+- [x] **Phase 13: Settlement Cutover — Transport & Delivery** - Transport and Delivery's live payouts move onto the three-way settlement engine, shadow-mode verified before cutover (completed 2026-07-17)
 - [ ] **Phase 14: Ministry Dashboard** - `MINISTRY_VIEWER` role + read-only dashboard: visitor counts, purpose-of-visit, revenue-to-government-share, CSV/PDF export, zero PII leakage
 - [ ] **Phase 15: Multi-Channel OTP** - Users choose WhatsApp/Email/SMS for OTP verification at registration, with bounded-timeout SMS fallback and identity-scoped brute-force protection
 - [ ] **Phase 16: Connection Pooling Infrastructure** - Every Prisma client on a pooled connection string, combined-topology load test under Neon's connection ceiling
@@ -499,7 +499,7 @@ Plans:
 - [x] 13-03-PLAN.md — Delivery completeDelivery() cutover onto SettlementService (SETTLE-04) + Stage-2 shadow write + spec rewrite
 
 **Wave 3** *(blocked on Wave 2)*
-- [ ] 13-04-PLAN.md — Stage 1 shadow-verify batch script (SETTLE-09) + full regression + source-level settlement-delegation audit
+- [x] 13-04-PLAN.md — Stage 1 shadow-verify batch script (SETTLE-09) + full regression + source-level settlement-delegation audit
 
 **Cross-cutting constraints:**
 - Driver/rider payout amounts stay bit-for-bit unchanged from today's formula (D-01) in both the pre- and post-cutover code paths
@@ -577,7 +577,7 @@ Phases 11, 12 (Settlement Foundation), and 15 (WhatsApp OTP) are independent of 
 | 10. Documentation Correction + gRPC Build Fix | 3/3 | Complete    | 2026-07-15 |
 | 11. Resilience Wrapping | 11/11 | Complete   | 2026-07-16 |
 | 12. Settlement Engine Foundation | 9/9 | Complete   | 2026-07-17 |
-| 13. Settlement Cutover — Transport & Delivery | 3/4 | In Progress|  |
+| 13. Settlement Cutover — Transport & Delivery | 4/4 | Complete   | 2026-07-17 |
 | 14. Ministry Dashboard | 0/0 | Not started | - |
 | 15. Multi-Channel OTP | 0/0 | Not started | - |
 | 16. Connection Pooling Infrastructure | 0/0 | Not started | - |
