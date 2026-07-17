@@ -420,6 +420,21 @@ describe('StaysService', () => {
         data: { escrowReleasedAt: expect.any(Date) },
       });
     });
+
+    it('WR-05: escrow reference carries 16 hex chars of entropy, not a truncated 8-char slice', async () => {
+      const uuidBooking = {
+        ...dueBooking,
+        id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+      };
+      mockPrisma.booking.findMany.mockResolvedValue([uuidBooking]);
+      mockPrisma.wallet.findUnique.mockResolvedValue(hostWallet);
+
+      await service.releaseEscrow();
+
+      const call = mockSettlement.settle.mock.calls[0][0];
+      expect(call.reference).toBe('ISY-ESC-A1B2C3D4E5F67890');
+      expect(call.reference.replace('ISY-ESC-', '')).toHaveLength(16);
+    });
   });
 
   // ── createReview ───────────────────────────────────────────────────────────

@@ -337,7 +337,12 @@ export class StaysService implements OnModuleInit {
         const govtLevyNgn = +(total * govtLevyPct).toFixed(2);
         const hostAmountNgn = +(total - govtLevyNgn).toFixed(2);
         const ministryWallet = await this.settlementService.resolveMinistryWallet();
-        const reference = `ISY-ESC-${booking.id.slice(0, 8).toUpperCase()}`;
+        // This reference is the settlement idempotency key (SettlementService.settle()
+        // precheck is a startsWith match on it), not just a display label — an 8-char
+        // hex slice (32 bits) is collision-prone at platform scale, silently stalling a
+        // colliding booking's escrow release forever. Use 16 hex chars (64 bits) instead
+        // (WR-05).
+        const reference = `ISY-ESC-${booking.id.replace(/-/g, '').slice(0, 16).toUpperCase()}`;
 
         await this.settlementService.settle({
           module: 'stays',
