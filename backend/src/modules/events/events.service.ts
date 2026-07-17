@@ -257,7 +257,7 @@ export class EventsService implements OnModuleInit {
       const ministryWallet = await this.settlementService.resolveMinistryWallet();
       const buyerWallet = await this.prisma.wallet.findUnique({ where: { userId: ticket.userId } });
 
-      await this.settlementService.settle({
+      const settlementResult = await this.settlementService.settle({
         module: 'events',
         reference: payload.reference,
         gateway: 'PAYSTACK',
@@ -296,7 +296,10 @@ export class EventsService implements OnModuleInit {
         },
       });
 
-      if (ticket.user.email) {
+      // Only send the confirmation on a genuine first-time settlement — a REPLAYED
+      // result means a duplicate webhook delivery already settled this ticket, and
+      // re-sending here would email the buyer twice (WR-04).
+      if (settlementResult.status === 'SETTLED' && ticket.user.email) {
         await this.sendgrid.sendTicketConfirmation({
           to: ticket.user.email,
           firstName: ticket.user.firstName,

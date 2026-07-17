@@ -278,7 +278,7 @@ export class MarketplaceService implements OnModuleInit {
       const ministryWallet = await this.settlementService.resolveMinistryWallet();
       const buyerWallet = await this.prisma.wallet.findUnique({ where: { userId: order.userId } });
 
-      await this.settlementService.settle({
+      const settlementResult = await this.settlementService.settle({
         module: 'marketplace',
         reference: payload.reference,
         gateway: 'PAYSTACK',
@@ -322,7 +322,12 @@ export class MarketplaceService implements OnModuleInit {
         },
       });
 
-      await this.notifyOrderUpdate(order.id, 'PROCESSING');
+      // Only notify on a genuine first-time settlement — a REPLAYED result means a
+      // duplicate webhook delivery already settled this order, and re-notifying here
+      // would send the buyer/vendor duplicate order-update messages (WR-04).
+      if (settlementResult.status === 'SETTLED') {
+        await this.notifyOrderUpdate(order.id, 'PROCESSING');
+      }
     } catch (err) {
       this.logger.error(`handleOrderPayment failed for ref ${payload.reference}`, err.message);
     }

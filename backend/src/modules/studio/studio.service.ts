@@ -179,7 +179,7 @@ export class StudioService implements OnModuleInit {
       const ministryWallet = await this.settlementService.resolveMinistryWallet();
       const buyerWallet = await this.prisma.wallet.findUnique({ where: { userId: booking.userId } });
 
-      await this.settlementService.settle({
+      const settlementResult = await this.settlementService.settle({
         module: 'studio',
         reference: payload.reference,
         gateway: 'PAYSTACK',
@@ -210,7 +210,10 @@ export class StudioService implements OnModuleInit {
         },
       });
 
-      if (booking.user.email) {
+      // Only send the confirmation on a genuine first-time settlement — a REPLAYED
+      // result means a duplicate webhook delivery already settled this booking, and
+      // re-sending here would email the buyer twice (WR-04).
+      if (settlementResult.status === 'SETTLED' && booking.user.email) {
         await this.sendgrid.sendStudioBookingConfirmation({
           to: booking.user.email,
           firstName: booking.user.firstName,

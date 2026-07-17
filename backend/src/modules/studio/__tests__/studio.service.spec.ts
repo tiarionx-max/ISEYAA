@@ -282,6 +282,22 @@ describe('StudioService', () => {
         }),
       );
     });
+
+    it('WR-04: does not re-send confirmation email when settle() reports a REPLAYED duplicate delivery', async () => {
+      mockPrisma.studioBooking.findUnique.mockResolvedValue({ ...mockBooking, status: 'PENDING' });
+      mockPrisma.platformConfig.findUnique.mockResolvedValue(null);
+      mockPrisma.wallet.findUnique.mockResolvedValue({ id: 'WAL-BUYER' });
+      mockSettlement.settle.mockResolvedValueOnce({
+        status: 'REPLAYED',
+        platformAmountNgn: 0,
+        recipientCredits: [],
+      });
+
+      await service.handleStudioPayment({ reference: PAYSTACK_REF });
+
+      expect(mockSettlement.settle).toHaveBeenCalledTimes(1);
+      expect(mockSendgrid.sendStudioBookingConfirmation).not.toHaveBeenCalled();
+    });
   });
 
   // ── uploadContent ──────────────────────────────────────────────────────────

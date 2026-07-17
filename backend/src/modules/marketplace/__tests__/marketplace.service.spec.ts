@@ -321,6 +321,26 @@ describe('MarketplaceService', () => {
         expect.objectContaining({ where: { id: PRODUCT_ID } }),
       );
     });
+
+    it('WR-04: does not re-notify the order update when settle() reports a REPLAYED duplicate delivery', async () => {
+      mockPrisma.order.findUnique.mockResolvedValueOnce({ ...mockOrder, status: 'PENDING' });
+      mockPrisma.wallet.findUnique
+        .mockResolvedValueOnce({ id: 'WAL-VENDOR' })
+        .mockResolvedValueOnce({ id: 'WAL-BUYER' });
+      mockPrisma.vendor.findUnique.mockResolvedValue(mockVendor);
+      mockSettlement.settle.mockResolvedValueOnce({
+        status: 'REPLAYED',
+        platformAmountNgn: 0,
+        recipientCredits: [],
+      });
+
+      await service.handleOrderPayment({ reference: PAYSTACK_REF });
+
+      expect(mockSettlement.settle).toHaveBeenCalledTimes(1);
+      // notifyOrderUpdate's own order.findUnique lookup would be a 2nd call — it must
+      // not happen on a replayed settlement.
+      expect(mockPrisma.order.findUnique).toHaveBeenCalledTimes(1);
+    });
   });
 
   // ── updateOrderStatus ──────────────────────────────────────────────────────

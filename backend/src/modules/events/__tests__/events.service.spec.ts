@@ -439,6 +439,21 @@ describe('EventsService', () => {
 
       expect(mockSendgrid.sendTicketConfirmation).not.toHaveBeenCalled();
     });
+
+    it('WR-04: does not re-send confirmation email when settle() reports a REPLAYED duplicate delivery', async () => {
+      mockPrisma.ticket.findUnique.mockResolvedValue(mockTicket);
+      mockPrisma.platformConfig.findUnique.mockResolvedValue(null);
+      mockSettlement.settle.mockResolvedValueOnce({
+        status: 'REPLAYED',
+        platformAmountNgn: 0,
+        recipientCredits: [],
+      });
+
+      await service.handleTicketPayment({ reference: PAYSTACK_REF });
+
+      expect(mockSettlement.settle).toHaveBeenCalledTimes(1);
+      expect(mockSendgrid.sendTicketConfirmation).not.toHaveBeenCalled();
+    });
   });
 
   // ── checkin ──────────────────────────────────────────────────────────────────
