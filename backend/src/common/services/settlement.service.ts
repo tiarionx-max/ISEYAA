@@ -208,11 +208,23 @@ export class SettlementService implements OnModuleInit {
       return { status: 'SETTLED', ...result };
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-        this.logger.warn(
-          `Settlement race detected for ${input.reference} (module: ${input.module}) — ` +
-            `concurrent duplicate delivery lost to a unique-constraint winner; treating as benign replay`,
-        );
-        return { status: 'REPLAYED', platformAmountNgn: 0, recipientCredits: [] };
+        // Only treat this as a benign duplicate-delivery replay if the violated unique
+        // constraint is actually Transaction.reference (the idempotency key this
+        // fallback is designed for). A P2002 on any other constraint is a real
+        // programming error (e.g. two recipients sharing a refSuffix) and must NOT be
+        // silently swallowed as "already settled" — that would roll back the whole
+        // transaction while reporting success (WR-01).
+        const target = err.meta?.target as string[] | string | undefined;
+        const isReferenceConflict = Array.isArray(target)
+          ? target.includes('reference')
+          : typeof target === 'string' && target.includes('reference');
+        if (isReferenceConflict) {
+          this.logger.warn(
+            `Settlement race detected for ${input.reference} (module: ${input.module}) — ` +
+              `concurrent duplicate delivery lost to a unique-constraint winner; treating as benign replay`,
+          );
+          return { status: 'REPLAYED', platformAmountNgn: 0, recipientCredits: [] };
+        }
       }
       await this.handleSettlementFailure(input, err as Error);
       throw err;

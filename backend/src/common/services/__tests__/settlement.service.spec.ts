@@ -99,9 +99,12 @@ function wireTransaction(
         update: jest.fn(async ({ where, data }: any) => {
           if (opts.failOnWalletId && where.id === opts.failOnWalletId) {
             if (opts.failWithP2002) {
+              // meta.target mirrors what Prisma actually populates for a real Postgres
+              // unique-constraint violation on Transaction.reference — WR-01 narrows the
+              // catch to inspect this field, so the mock must set it realistically.
               throw new Prisma.PrismaClientKnownRequestError(
                 'Unique constraint failed on the fields: (`reference`)',
-                { code: 'P2002', clientVersion: '5.11.0' },
+                { code: 'P2002', clientVersion: '5.11.0', meta: { target: ['reference'] } },
               );
             }
             throw new Error('boom — settlement transaction failed');
