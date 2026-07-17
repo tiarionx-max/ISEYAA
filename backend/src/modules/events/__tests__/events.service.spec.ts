@@ -8,6 +8,7 @@ import { SendgridService } from '../../../common/services/sendgrid.service';
 import { QrService } from '../../../common/services/qr.service';
 import { ImageService } from '../../../common/services/image.service';
 import { KafkaService } from '../../../kafka/kafka.service';
+import { SettlementService } from '../../../common/services/settlement.service';
 
 const mockKafka = { emit: jest.fn().mockResolvedValue(undefined), consume: jest.fn().mockResolvedValue(undefined) };
 
@@ -86,6 +87,12 @@ const mockPrisma = {
     create: jest.fn(),
     update: jest.fn(),
   },
+  platformConfig: {
+    findUnique: jest.fn(),
+  },
+  wallet: {
+    findUnique: jest.fn(),
+  },
   $transaction: jest.fn(),
 };
 
@@ -94,6 +101,10 @@ const mockS3 = { upload: jest.fn() };
 const mockSendgrid = { sendTicketConfirmation: jest.fn(), sendEmail: jest.fn() };
 const mockQr = { generatePng: jest.fn() };
 const mockImage = { validateEventImage: jest.fn(), resizeEventCover: jest.fn() };
+const mockSettlement = {
+  settle: jest.fn().mockResolvedValue({ status: 'SETTLED', platformAmountNgn: 0, recipientCredits: [] }),
+  resolveMinistryWallet: jest.fn().mockResolvedValue({ id: 'WAL-MINISTRY' }),
+};
 
 describe('EventsService', () => {
   let service: EventsService;
@@ -110,6 +121,7 @@ describe('EventsService', () => {
         { provide: QrService, useValue: mockQr },
         { provide: ImageService, useValue: mockImage },
         { provide: KafkaService, useValue: mockKafka },
+        { provide: SettlementService, useValue: mockSettlement },
       ],
     }).compile();
 
@@ -311,23 +323,37 @@ describe('EventsService', () => {
   // ── handleTicketPayment ──────────────────────────────────────────────────────
 
   describe('handleTicketPayment', () => {
+    beforeEach(() => {
+      mockQr.generatePng.mockResolvedValue(Buffer.from('png'));
+      mockS3.upload.mockResolvedValue('https://cdn.iseyaa.gov.ng/qr-codes/ticket-001.png');
+      mockPrisma.wallet.findUnique.mockImplementation(({ where }: any) => {
+        if (where.userId === ORG_ID) return Promise.resolve({ id: 'WAL-ORG' });
+        if (where.userId === USER_ID) return Promise.resolve({ id: 'WAL-BUYER' });
+        return Promise.resolve(null);
+      });
+    });
+
     it('returns early when ticket not found', async () => {
       mockPrisma.ticket.findUnique.mockResolvedValue(null);
       await service.handleTicketPayment({ reference: 'UNKNOWN' });
       expect(mockQr.generatePng).not.toHaveBeenCalled();
+      expect(mockSettlement.settle).not.toHaveBeenCalled();
     });
 
     it('returns early when ticket already ISSUED', async () => {
       mockPrisma.ticket.findUnique.mockResolvedValue({ ...mockTicket, status: 'ISSUED' });
       await service.handleTicketPayment({ reference: PAYSTACK_REF });
       expect(mockQr.generatePng).not.toHaveBeenCalled();
+      expect(mockSettlement.settle).not.toHaveBeenCalled();
     });
 
-    it('generates QR, uploads to S3, marks ISSUED, sends email', async () => {
+    it('splits organiser/Ministry amounts using configured PlatformConfig percentages and sends email', async () => {
       mockPrisma.ticket.findUnique.mockResolvedValue(mockTicket);
-      mockQr.generatePng.mockResolvedValue(Buffer.from('png'));
-      mockS3.upload.mockResolvedValue('https://cdn.iseyaa.gov.ng/qr-codes/ticket-001.png');
-      mockPrisma.$transaction.mockResolvedValue([{}, {}]);
+      mockPrisma.platformConfig.findUnique.mockImplementation(({ where }: any) => {
+        if (where.key === 'events.platform_fee_pct') return Promise.resolve({ value: 0.1 });
+        if (where.key === 'events.govt_levy_pct') return Promise.resolve({ value: 0.05 });
+        return Promise.resolve(null);
+      });
       mockSendgrid.sendTicketConfirmation.mockResolvedValue(undefined);
 
       await service.handleTicketPayment({ reference: PAYSTACK_REF });
@@ -338,9 +364,67 @@ describe('EventsService', () => {
         expect.any(Buffer),
         'image/png',
       );
-      expect(mockPrisma.$transaction).toHaveBeenCalled();
+      expect(mockSettlement.settle).toHaveBeenCalledTimes(1);
+      const settleArgs = mockSettlement.settle.mock.calls[0][0];
+      expect(settleArgs.recipients).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ tag: 'ORGANISER', amountNgn: mockTicketType.price * (1 - 0.1 - 0.05) }),
+          expect.objectContaining({ tag: 'MINISTRY', amountNgn: mockTicketType.price * 0.05 }),
+        ]),
+      );
       expect(mockSendgrid.sendTicketConfirmation).toHaveBeenCalledWith(
         expect.objectContaining({ to: 'buyer@example.com', qrCode: QR_HASH }),
+      );
+    });
+
+    it('falls back to documented defaults (0.10/0.05) when PlatformConfig keys are unset', async () => {
+      mockPrisma.ticket.findUnique.mockResolvedValue(mockTicket);
+      mockPrisma.platformConfig.findUnique.mockResolvedValue(null);
+
+      await service.handleTicketPayment({ reference: PAYSTACK_REF });
+
+      expect(mockSettlement.settle).toHaveBeenCalledTimes(1);
+      const settleArgs = mockSettlement.settle.mock.calls[0][0];
+      expect(settleArgs.recipients).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ tag: 'ORGANISER', amountNgn: mockTicketType.price * (1 - 0.1 - 0.05) }),
+          expect.objectContaining({ tag: 'MINISTRY', amountNgn: mockTicketType.price * 0.05 }),
+        ]),
+      );
+    });
+
+    it('does not call settlementService.settle on a non-PENDING ticket', async () => {
+      mockPrisma.ticket.findUnique.mockResolvedValue({ ...mockTicket, status: 'ISSUED' });
+
+      await service.handleTicketPayment({ reference: PAYSTACK_REF });
+
+      expect(mockSettlement.settle).not.toHaveBeenCalled();
+    });
+
+    it('marks the ticket ISSUED and increments TicketType.sold inside the onSettled callback', async () => {
+      mockPrisma.ticket.findUnique.mockResolvedValue(mockTicket);
+      mockPrisma.platformConfig.findUnique.mockResolvedValue(null);
+
+      await service.handleTicketPayment({ reference: PAYSTACK_REF });
+
+      const settleArgs = mockSettlement.settle.mock.calls[0][0];
+      const mockTx = {
+        ticket: { update: jest.fn().mockResolvedValue({}) },
+        ticketType: { update: jest.fn().mockResolvedValue({}) },
+      };
+      await settleArgs.onSettled(mockTx);
+
+      expect(mockTx.ticket.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: TICKET_ID },
+          data: expect.objectContaining({ status: 'ISSUED' }),
+        }),
+      );
+      expect(mockTx.ticketType.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: TICKET_TYPE_ID },
+          data: expect.objectContaining({ sold: { increment: 1 } }),
+        }),
       );
     });
 
@@ -349,9 +433,7 @@ describe('EventsService', () => {
         ...mockTicket,
         user: { email: null, firstName: 'Ade' },
       });
-      mockQr.generatePng.mockResolvedValue(Buffer.from('png'));
-      mockS3.upload.mockResolvedValue('https://cdn.iseyaa.gov.ng/qr.png');
-      mockPrisma.$transaction.mockResolvedValue([]);
+      mockPrisma.platformConfig.findUnique.mockResolvedValue(null);
 
       await service.handleTicketPayment({ reference: PAYSTACK_REF });
 
