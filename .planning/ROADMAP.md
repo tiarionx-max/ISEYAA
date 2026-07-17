@@ -463,12 +463,12 @@ Plans:
 - [x] 12-02-PLAN.md — [BLOCKING] Booking.govtLevyPct schema field + Ministry User/Wallet + fee/levy PlatformConfig seed + db push
 
 **Wave 2** *(blocked on Wave 1, parallel)*
-- [ ] 12-03-PLAN.md — TourSettlementService migrated onto SettlementService (D-01 proof, 12 existing scenarios preserved)
-- [ ] 12-04-PLAN.md — Marketplace settlement wiring (vendor + Ministry + platform)
-- [ ] 12-05-PLAN.md — Events settlement wiring (organiser + Ministry + platform, net-new fee config)
-- [ ] 12-06-PLAN.md — Studio settlement wiring (Ministry + platform, 2-way, no vendor leg)
-- [ ] 12-07-PLAN.md — Stays escrow-split fix (SETTLE-05) + payment.stay_booking @OnEvent wiring
-- [ ] 12-08-PLAN.md — Settlement statement endpoint (SETTLE-07) with IDOR-proof access control
+- [x] 12-03-PLAN.md — TourSettlementService migrated onto SettlementService (D-01 proof, 12 existing scenarios preserved)
+- [x] 12-04-PLAN.md — Marketplace settlement wiring (vendor + Ministry + platform)
+- [x] 12-05-PLAN.md — Events settlement wiring (organiser + Ministry + platform, net-new fee config)
+- [x] 12-06-PLAN.md — Studio settlement wiring (Ministry + platform, 2-way, no vendor leg)
+- [x] 12-07-PLAN.md — Stays escrow-split fix (SETTLE-05) + payment.stay_booking @OnEvent wiring
+- [x] 12-08-PLAN.md — Settlement statement endpoint (SETTLE-07) with IDOR-proof access control
 
 **Wave 3** *(blocked on Wave 2)*
 - [ ] 12-09-PLAN.md — Full regression suite + source-level security audit gate
@@ -560,7 +560,7 @@ Phases 11, 12 (Settlement Foundation), and 15 (WhatsApp OTP) are independent of 
 | 9. Tour Packages & Tour Guides | 12/13 | In Progress (09-13 human checkpoint pending) | - |
 | 10. Documentation Correction + gRPC Build Fix | 3/3 | Complete    | 2026-07-15 |
 | 11. Resilience Wrapping | 11/11 | Complete   | 2026-07-16 |
-| 12. Settlement Engine Foundation | 2/9 | In Progress|  |
+| 12. Settlement Engine Foundation | 8/9 | In Progress|  |
 | 13. Settlement Cutover — Transport & Delivery | 0/0 | Not started | - |
 | 14. Ministry Dashboard | 0/0 | Not started | - |
 | 15. Multi-Channel OTP | 0/0 | Not started | - |
