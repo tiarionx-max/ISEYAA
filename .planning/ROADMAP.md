@@ -456,7 +456,28 @@ Note: RESIL-02's live-observability human-verification item (Grafana/Sentry dash
   4. Stays' `releaseEscrow()` cron reads and applies `Booking.govtLevyPct` — hosts no longer receive 100% of the booking price, confirmed by an automated test
   5. Each settlement recipient (vendor/rider, Ministry, platform) can retrieve a per-recipient, itemized settlement statement
   6. An automated test asserts N-way split calculations sum exactly to the buyer's paid amount across a wide range of non-round amounts, with zero rounding/remainder drift
-**Plans**: TBD
+**Plans**: 9 plans
+Plans:
+**Wave 1** *(no dependencies — runs immediately, parallel)*
+- [ ] 12-01-PLAN.md — Generalized SettlementService (atomic N-way fan-out, idempotency, drift assertion) + CommonModule registration
+- [ ] 12-02-PLAN.md — [BLOCKING] Booking.govtLevyPct schema field + Ministry User/Wallet + fee/levy PlatformConfig seed + db push
+
+**Wave 2** *(blocked on Wave 1, parallel)*
+- [ ] 12-03-PLAN.md — TourSettlementService migrated onto SettlementService (D-01 proof, 12 existing scenarios preserved)
+- [ ] 12-04-PLAN.md — Marketplace settlement wiring (vendor + Ministry + platform)
+- [ ] 12-05-PLAN.md — Events settlement wiring (organiser + Ministry + platform, net-new fee config)
+- [ ] 12-06-PLAN.md — Studio settlement wiring (Ministry + platform, 2-way, no vendor leg)
+- [ ] 12-07-PLAN.md — Stays escrow-split fix (SETTLE-05) + payment.stay_booking @OnEvent wiring
+- [ ] 12-08-PLAN.md — Settlement statement endpoint (SETTLE-07) with IDOR-proof access control
+
+**Wave 3** *(blocked on Wave 2)*
+- [ ] 12-09-PLAN.md — Full regression suite + source-level security audit gate
+
+**Cross-cutting constraints:**
+- Platform fees/levies always read from PlatformConfig — never hardcoded
+- SELECT FOR UPDATE + idempotency precheck required on every wallet mutation; P2002 races treated as benign replay, not refund
+- Ministry wallet resolution is never cached — always a live PlatformConfig read
+- Tour reference format (<ref>-V-<idx>, <ref>-PLAT) is preserved byte-for-byte through the SettlementService migration
 **UI hint**: no
 
 ### Phase 13: Settlement Cutover — Transport & Delivery
