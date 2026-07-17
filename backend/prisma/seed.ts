@@ -1513,6 +1513,83 @@ async function main() {
   });
   process.stdout.write('  ✓ stays.govt_levy_pct = 0.05\n');
 
+  // NOTE: Transport/Delivery use WHOLE-PERCENT scale (15, 5, 10), NOT the 0-1 fraction
+  // scale used above by marketplace/events/studio/stays. This matches the legacy
+  // transport_platform_fee_pct=15 / delivery_platform_fee_pct=20 keys seeded above
+  // (read as `feePct / 100` by transport.service.ts / delivery.service.ts). The two
+  // new percentage keys per module sum to the existing legacy total.
+  await prisma.platformConfig.upsert({
+    where: { key: 'transport.govt_levy_pct' },
+    update: {},
+    create: {
+      key: 'transport.govt_levy_pct',
+      value: 5,
+      isPublic: false,
+      metadata: { module: 'transport' },
+    },
+  });
+  process.stdout.write('  ✓ transport.govt_levy_pct = 5\n');
+
+  await prisma.platformConfig.upsert({
+    where: { key: 'transport.platform_fee_pct' },
+    update: {},
+    create: {
+      key: 'transport.platform_fee_pct',
+      value: 10,
+      isPublic: false,
+      metadata: { module: 'transport' },
+    },
+  });
+  process.stdout.write('  ✓ transport.platform_fee_pct = 10\n');
+
+  await prisma.platformConfig.upsert({
+    where: { key: 'delivery.govt_levy_pct' },
+    update: {},
+    create: {
+      key: 'delivery.govt_levy_pct',
+      value: 5,
+      isPublic: false,
+      metadata: { module: 'delivery' },
+    },
+  });
+  process.stdout.write('  ✓ delivery.govt_levy_pct = 5\n');
+
+  await prisma.platformConfig.upsert({
+    where: { key: 'delivery.platform_fee_pct' },
+    update: {},
+    create: {
+      key: 'delivery.platform_fee_pct',
+      value: 15,
+      isPublic: false,
+      metadata: { module: 'delivery' },
+    },
+  });
+  process.stdout.write('  ✓ delivery.platform_fee_pct = 15\n');
+
+  await prisma.platformConfig.upsert({
+    where: { key: 'transport.settlement_engine_enabled' },
+    update: {},
+    create: {
+      key: 'transport.settlement_engine_enabled',
+      value: false,
+      isPublic: false,
+      metadata: { module: 'transport' },
+    },
+  });
+  process.stdout.write('  ✓ transport.settlement_engine_enabled = false\n');
+
+  await prisma.platformConfig.upsert({
+    where: { key: 'delivery.settlement_engine_enabled' },
+    update: {},
+    create: {
+      key: 'delivery.settlement_engine_enabled',
+      value: false,
+      isPublic: false,
+      metadata: { module: 'delivery' },
+    },
+  });
+  process.stdout.write('  ✓ delivery.settlement_engine_enabled = false\n');
+
   // ─── 6. Seed System User (organizer/host for demo events & properties) ──
   console.log('\n👤 Seeding system demo user...');
   const bcrypt = await import('bcrypt');
