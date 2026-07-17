@@ -10,6 +10,7 @@ import { ReferenceService } from './services/reference.service';
 import { RefundService } from './services/refund.service';
 import { S3Service } from './services/s3.service';
 import { SendgridService } from './services/sendgrid.service';
+import { SettlementService } from './services/settlement.service';
 import { UploadService } from './services/upload.service';
 import { VectorService } from './services/vector.service';
 
@@ -27,6 +28,7 @@ import { VectorService } from './services/vector.service';
     RefundService,
     S3Service,
     SendgridService,
+    SettlementService,
     UploadService,
     VectorService,
   ],
@@ -41,6 +43,7 @@ import { VectorService } from './services/vector.service';
     RefundService,
     S3Service,
     SendgridService,
+    SettlementService,
     UploadService,
     VectorService,
   ],
