@@ -62,7 +62,7 @@ const mockOrder = {
   orderItems: [{ productId: PRODUCT_ID, product: { name: 'Ankara Basket' }, quantity: 2 }],
 };
 
-const mockPlatformConfig = { key: 'PLATFORM_FEE_PCT', value: 0.10 };
+const mockPlatformConfig = { key: 'marketplace.platform_fee_pct', value: 0.10 };
 
 const mockPrisma = {
   vendor: { findUnique: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
@@ -219,6 +219,11 @@ describe('MarketplaceService', () => {
 
       const result = await service.createOrder(USER_ID, dto as any);
 
+      // WR-07: key follows the `module.key_name` convention (not the un-namespaced
+      // legacy `PLATFORM_FEE_PCT`), so it's actually resolvable via the seeded row.
+      expect(mockPrisma.platformConfig.findUnique).toHaveBeenCalledWith({
+        where: { key: 'marketplace.platform_fee_pct' },
+      });
       expect(mockPrisma.order.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({

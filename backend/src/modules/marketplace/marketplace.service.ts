@@ -186,8 +186,12 @@ export class MarketplaceService implements OnModuleInit {
     const vendor = products[0].vendor;
     if (vendor.status !== 'ACTIVE') throw new BadRequestException('Vendor is not active');
 
-    // Fetch fee config from platform_config — NEVER hardcode
-    const feeConfig = await this.prisma.platformConfig.findUnique({ where: { key: 'PLATFORM_FEE_PCT' } });
+    // Fetch fee config from platform_config — NEVER hardcode. Key follows the
+    // `module.key_name` convention used by every other module in this phase
+    // (events.platform_fee_pct, studio.platform_fee_pct, ...) — WR-07.
+    const feeConfig = await this.prisma.platformConfig.findUnique({
+      where: { key: 'marketplace.platform_fee_pct' },
+    });
     const platformFeePct = feeConfig ? Number(feeConfig.value) : 0.10;
     const govtLevyPct = Number(vendor.govtLevyPct);
 

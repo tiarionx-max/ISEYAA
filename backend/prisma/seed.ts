@@ -1442,6 +1442,18 @@ async function main() {
   process.stdout.write(`  ✓ tour.government_wallet_user_id = ${ministryUser.id}\n`);
 
   await prisma.platformConfig.upsert({
+    where: { key: 'marketplace.platform_fee_pct' },
+    update: {},
+    create: {
+      key: 'marketplace.platform_fee_pct',
+      value: 0.10,
+      isPublic: false,
+      metadata: { module: 'marketplace' },
+    },
+  });
+  process.stdout.write('  ✓ marketplace.platform_fee_pct = 0.10\n');
+
+  await prisma.platformConfig.upsert({
     where: { key: 'events.platform_fee_pct' },
     update: {},
     create: {
