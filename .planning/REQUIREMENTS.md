@@ -61,7 +61,7 @@ Requirements for milestone v2.0. Each maps to roadmap phases (Phase 10+, continu
 - [ ] **SETTLE-06**: Marketplace, Events, and Studio payment webhooks have working settlement consumers — currently no `@OnEvent` handler exists for `payment.order_payment`, `payment.ticket_purchase`, or `payment.studio_booking` anywhere in the codebase
 - [ ] **SETTLE-07**: Each settlement recipient (vendor/rider, Ministry, platform) can retrieve a per-recipient, itemized settlement statement
 - [ ] **SETTLE-08**: N-way split calculations sum exactly to the buyer's paid amount across a wide range of non-round amounts, verified by an automated test (no silent rounding/remainder drift)
-- [ ] **SETTLE-09**: Transport and Delivery's cutover to the generalized settlement engine is verified in shadow mode against their existing hardcoded-percentage output before going live, so no live driver/rider payout amount changes silently
+- [x] **SETTLE-09**: Transport and Delivery's cutover to the generalized settlement engine is verified in shadow mode against their existing hardcoded-percentage output before going live, so no live driver/rider payout amount changes silently
 
 ## v2 Requirements (Deferred beyond v2.0)
 
@@ -127,7 +127,7 @@ Requirements for milestone v2.0. Each maps to roadmap phases (Phase 10+, continu
 | SETTLE-06 | Phase 12 | Pending |
 | SETTLE-07 | Phase 12 | Pending |
 | SETTLE-08 | Phase 12 | Pending |
-| SETTLE-09 | Phase 13 | Pending |
+| SETTLE-09 | Phase 13 | Complete |
 
 **Coverage:**
 - v2.0 requirements: 30 total
