@@ -7,6 +7,7 @@ import { S3Service } from '../../../common/services/s3.service';
 import { SendgridService } from '../../../common/services/sendgrid.service';
 import { ImageService } from '../../../common/services/image.service';
 import { KafkaService } from '../../../kafka/kafka.service';
+import { SettlementService } from '../../../common/services/settlement.service';
 
 // ── Fixtures ───────────────────────────────────────────────────────────────
 
@@ -53,6 +54,10 @@ const mockPaystack = { initiatePayment: jest.fn() };
 const mockS3 = { upload: jest.fn() };
 const mockSendgrid = { sendBookingConfirmation: jest.fn() };
 const mockImage = { validateEventImage: jest.fn(), resizeEventCover: jest.fn() };
+const mockSettlement = {
+  settle: jest.fn().mockResolvedValue({ status: 'SETTLED', platformAmountNgn: 0, recipientCredits: [] }),
+  resolveMinistryWallet: jest.fn().mockResolvedValue({ id: 'WAL-MINISTRY' }),
+};
 
 // ── Suite ─────────────────────────────────────────────────────────────────
 
@@ -71,6 +76,7 @@ describe('Stays isolation — createReview', () => {
         { provide: SendgridService, useValue: mockSendgrid },
         { provide: ImageService, useValue: mockImage },
         { provide: KafkaService, useValue: mockKafka },
+        { provide: SettlementService, useValue: mockSettlement },
       ],
     }).compile();
 

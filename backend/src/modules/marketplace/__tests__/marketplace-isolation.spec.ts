@@ -5,6 +5,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { PaystackService } from '../../../common/services/paystack.service';
 import { SendgridService } from '../../../common/services/sendgrid.service';
 import { KafkaService } from '../../../kafka/kafka.service';
+import { SettlementService } from '../../../common/services/settlement.service';
 
 // ── Fixtures ───────────────────────────────────────────────────────────────
 
@@ -58,6 +59,10 @@ const mockPrisma = {
 const mockKafka = { emit: jest.fn().mockResolvedValue(undefined), consume: jest.fn().mockResolvedValue(undefined) };
 const mockPaystack = { initiatePayment: jest.fn() };
 const mockSendgrid = { sendEmail: jest.fn() };
+const mockSettlement = {
+  settle: jest.fn().mockResolvedValue({ status: 'SETTLED', platformAmountNgn: 0, recipientCredits: [] }),
+  resolveMinistryWallet: jest.fn().mockResolvedValue({ id: 'WAL-MINISTRY' }),
+};
 
 // ── Suite ─────────────────────────────────────────────────────────────────
 
@@ -74,6 +79,7 @@ describe('Marketplace isolation — product ownership', () => {
         { provide: PaystackService, useValue: mockPaystack },
         { provide: SendgridService, useValue: mockSendgrid },
         { provide: KafkaService, useValue: mockKafka },
+        { provide: SettlementService, useValue: mockSettlement },
       ],
     }).compile();
 
