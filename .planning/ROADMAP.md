@@ -495,8 +495,8 @@ Plans:
 - [x] 13-01-PLAN.md — ShadowSettlementComparison schema + [BLOCKING] migration + 6 new PlatformConfig seed keys (govt_levy_pct/platform_fee_pct/settlement_engine_enabled x2 modules)
 
 **Wave 2** *(blocked on Wave 1, parallel — disjoint files)*
-- [ ] 13-02-PLAN.md — Transport completeTrip() cutover onto SettlementService (SETTLE-03) + Stage-2 shadow write + spec rewrite
-- [ ] 13-03-PLAN.md — Delivery completeDelivery() cutover onto SettlementService (SETTLE-04) + Stage-2 shadow write + spec rewrite
+- [x] 13-02-PLAN.md — Transport completeTrip() cutover onto SettlementService (SETTLE-03) + Stage-2 shadow write + spec rewrite
+- [x] 13-03-PLAN.md — Delivery completeDelivery() cutover onto SettlementService (SETTLE-04) + Stage-2 shadow write + spec rewrite
 
 **Wave 3** *(blocked on Wave 2)*
 - [ ] 13-04-PLAN.md — Stage 1 shadow-verify batch script (SETTLE-09) + full regression + source-level settlement-delegation audit
@@ -577,7 +577,7 @@ Phases 11, 12 (Settlement Foundation), and 15 (WhatsApp OTP) are independent of 
 | 10. Documentation Correction + gRPC Build Fix | 3/3 | Complete    | 2026-07-15 |
 | 11. Resilience Wrapping | 11/11 | Complete   | 2026-07-16 |
 | 12. Settlement Engine Foundation | 9/9 | Complete   | 2026-07-17 |
-| 13. Settlement Cutover — Transport & Delivery | 1/4 | In Progress|  |
+| 13. Settlement Cutover — Transport & Delivery | 3/4 | In Progress|  |
 | 14. Ministry Dashboard | 0/0 | Not started | - |
 | 15. Multi-Channel OTP | 0/0 | Not started | - |
 | 16. Connection Pooling Infrastructure | 0/0 | Not started | - |
