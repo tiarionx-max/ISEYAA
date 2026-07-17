@@ -106,3 +106,12 @@ None - no external service configuration required.
 ---
 *Phase: 12-settlement-engine-foundation*
 *Completed: 2026-07-17*
+
+## Self-Check: PASSED
+
+- FOUND: backend/src/modules/stays/stays.service.ts
+- FOUND: backend/src/modules/stays/__tests__/stays.service.spec.ts
+- FOUND: .planning/phases/12-settlement-engine-foundation/12-07-SUMMARY.md
+- FOUND commit: bf2e5bc (Task 1)
+- FOUND commit: f37b779 (Task 2)
+- FOUND commit: 0a9f359 (docs: SUMMARY)
