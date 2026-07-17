@@ -1,4 +1,4 @@
-import { PrismaClient, Prisma, AttractionCategory } from '@prisma/client';
+import { PrismaClient, AttractionCategory } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
 
 const prisma = new PrismaClient();
@@ -1378,22 +1378,6 @@ async function main() {
   process.stdout.write('  ✓ tour.platform_commission_pct = 0.15\n');
 
   await prisma.platformConfig.upsert({
-    where: { key: 'tour.government_wallet_user_id' },
-    update: {},
-    create: {
-      key: 'tour.government_wallet_user_id',
-      // Operator MUST configure post-deploy. CONTEXT §Specifics: ATTRACTION-type
-      // settlement entries route here because attractions are government-owned
-      // for v1 (no per-attraction vendor onboarding yet — deferred per
-      // CONTEXT §deferred §Attraction-as-vendor wallet).
-      value: Prisma.JsonNull,
-      isPublic: false,
-      metadata: { module: 'tour', requires_operator_setup: true },
-    },
-  });
-  process.stdout.write('  ✓ tour.government_wallet_user_id = null (requires_operator_setup)\n');
-
-  await prisma.platformConfig.upsert({
     where: { key: 'tour.notify_t_minus_24h_hours' },
     update: {},
     create: {
@@ -1416,6 +1400,106 @@ async function main() {
     },
   });
   process.stdout.write('  ✓ tour.notify_t_minus_2h_hours = 2\n');
+
+  // ─── 5b. Seed Ministry Wallet + Settlement PlatformConfig Keys ──────────
+  // Standing government-owned wallet (Plan 12-02, D-06): a real, non-loginable
+  // User + Wallet row — no passwordHash, no phone — so settlement callers can
+  // credit the Ministry's cut atomically like any other wallet participant.
+  console.log('\n🏛️  Seeding Ministry settlement wallet...');
+  const ministryUser = await prisma.user.upsert({
+    where: { email: 'ministry@iseyaa.local' },
+    create: {
+      email: 'ministry@iseyaa.local',
+      firstName: 'Ogun State',
+      lastName: 'Ministry (Settlement Wallet)',
+      role: 'SUPER_ADMIN',
+      ndpaConsent: true,
+      ndpaConsentAt: new Date(),
+    },
+    update: {},
+    select: { id: true },
+  });
+  await prisma.wallet.upsert({
+    where: { userId: ministryUser.id },
+    create: { userId: ministryUser.id },
+    update: {},
+  });
+  console.log(`  ✓ Ministry user+wallet ready: ${ministryUser.id}`);
+
+  await prisma.platformConfig.upsert({
+    where: { key: 'tour.government_wallet_user_id' },
+    update: { value: ministryUser.id, metadata: { module: 'tour' } },
+    create: {
+      key: 'tour.government_wallet_user_id',
+      // ATTRACTION-type settlement entries route here because attractions
+      // are government-owned for v1 (no per-attraction vendor onboarding
+      // yet — deferred per CONTEXT §deferred §Attraction-as-vendor wallet).
+      value: ministryUser.id,
+      isPublic: false,
+      metadata: { module: 'tour' },
+    },
+  });
+  process.stdout.write(`  ✓ tour.government_wallet_user_id = ${ministryUser.id}\n`);
+
+  await prisma.platformConfig.upsert({
+    where: { key: 'events.platform_fee_pct' },
+    update: {},
+    create: {
+      key: 'events.platform_fee_pct',
+      value: 0.10,
+      isPublic: false,
+      metadata: { module: 'events' },
+    },
+  });
+  process.stdout.write('  ✓ events.platform_fee_pct = 0.10\n');
+
+  await prisma.platformConfig.upsert({
+    where: { key: 'events.govt_levy_pct' },
+    update: {},
+    create: {
+      key: 'events.govt_levy_pct',
+      value: 0.05,
+      isPublic: false,
+      metadata: { module: 'events' },
+    },
+  });
+  process.stdout.write('  ✓ events.govt_levy_pct = 0.05\n');
+
+  await prisma.platformConfig.upsert({
+    where: { key: 'studio.platform_fee_pct' },
+    update: {},
+    create: {
+      key: 'studio.platform_fee_pct',
+      value: 0.10,
+      isPublic: false,
+      metadata: { module: 'studio' },
+    },
+  });
+  process.stdout.write('  ✓ studio.platform_fee_pct = 0.10\n');
+
+  await prisma.platformConfig.upsert({
+    where: { key: 'studio.govt_levy_pct' },
+    update: {},
+    create: {
+      key: 'studio.govt_levy_pct',
+      value: 0.05,
+      isPublic: false,
+      metadata: { module: 'studio' },
+    },
+  });
+  process.stdout.write('  ✓ studio.govt_levy_pct = 0.05\n');
+
+  await prisma.platformConfig.upsert({
+    where: { key: 'stays.govt_levy_pct' },
+    update: {},
+    create: {
+      key: 'stays.govt_levy_pct',
+      value: 0.05,
+      isPublic: false,
+      metadata: { module: 'stays' },
+    },
+  });
+  process.stdout.write('  ✓ stays.govt_levy_pct = 0.05\n');
 
   // ─── 6. Seed System User (organizer/host for demo events & properties) ──
   console.log('\n👤 Seeding system demo user...');
