@@ -7,6 +7,7 @@ import {
   ServiceUnavailableException,
   OnModuleInit,
 } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import { KafkaService } from '../../kafka/kafka.service';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -15,6 +16,7 @@ import { S3Service } from '../../common/services/s3.service';
 import { SendgridService } from '../../common/services/sendgrid.service';
 import { QrService } from '../../common/services/qr.service';
 import { ImageService } from '../../common/services/image.service';
+import { SettlementService } from '../../common/services/settlement.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { PurchaseTicketDto } from './dto/purchase-ticket.dto';
@@ -38,6 +40,7 @@ export class EventsService implements OnModuleInit {
     private qr: QrService,
     private imageService: ImageService,
     private kafka: KafkaService,
+    private settlementService: SettlementService,
   ) {}
 
   async onModuleInit() {
@@ -214,6 +217,7 @@ export class EventsService implements OnModuleInit {
     return { ticket, payment };
   }
 
+  @OnEvent('payment.ticket_purchase')
   async handleTicketPayment(payload: { reference: string }) {
     try {
       const ticket = await this.prisma.ticket.findUnique({
@@ -221,7 +225,7 @@ export class EventsService implements OnModuleInit {
         include: {
           ticketType: {
             include: {
-              event: { select: { title: true, startDate: true, venue: true } },
+              event: { select: { title: true, startDate: true, venue: true, organizerId: true } },
             },
           },
           user: { select: { email: true, firstName: true } },
@@ -234,16 +238,63 @@ export class EventsService implements OnModuleInit {
       const s3Key = `qr-codes/${ticket.id}.png`;
       const qrImageUrl = await this.s3.upload(s3Key, qrBuffer, 'image/png');
 
-      await this.prisma.$transaction([
-        this.prisma.ticket.update({
-          where: { id: ticket.id },
-          data: { status: 'ISSUED', qrImageUrl },
-        }),
-        this.prisma.ticketType.update({
-          where: { id: ticket.ticketTypeId },
-          data: { sold: { increment: 1 } },
-        }),
-      ]);
+      // Fee/levy percentages always sourced from PlatformConfig — never hardcode
+      // (CLAUDE.md constraint); in-code fallback only applies when the key is unset.
+      const feeCfg = await this.prisma.platformConfig.findUnique({ where: { key: 'events.platform_fee_pct' } });
+      const platformFeePct = feeCfg ? Number(feeCfg.value) : 0.1;
+      const levyCfg = await this.prisma.platformConfig.findUnique({ where: { key: 'events.govt_levy_pct' } });
+      const govtLevyPct = levyCfg ? Number(levyCfg.value) : 0.05;
+      const ticketPrice = Number(ticket.ticketType.price);
+      const govtLevyNgn = +(ticketPrice * govtLevyPct).toFixed(2);
+      const platformFeeNgn = +(ticketPrice * platformFeePct).toFixed(2);
+      const organiserAmountNgn = +(ticketPrice - platformFeeNgn - govtLevyNgn).toFixed(2);
+
+      // Organiser/Ministry wallets resolved server-side via the FK chain and
+      // SettlementService — never from untrusted webhook metadata (T-12-12).
+      const organiserWallet = await this.prisma.wallet.findUnique({
+        where: { userId: ticket.ticketType.event.organizerId },
+      });
+      const ministryWallet = await this.settlementService.resolveMinistryWallet();
+      const buyerWallet = await this.prisma.wallet.findUnique({ where: { userId: ticket.userId } });
+
+      await this.settlementService.settle({
+        module: 'events',
+        reference: payload.reference,
+        gateway: 'PAYSTACK',
+        amountKobo: ticketPrice * 100,
+        recipients: [
+          {
+            tag: 'ORGANISER',
+            refSuffix: 'ORGANISER',
+            walletId: organiserWallet?.id ?? null,
+            amountNgn: organiserAmountNgn,
+            metadata: { eventId: ticket.ticketType.eventId, ticketId: ticket.id },
+          },
+          {
+            tag: 'MINISTRY',
+            refSuffix: 'MINISTRY',
+            walletId: ministryWallet?.id ?? null,
+            amountNgn: govtLevyNgn,
+            metadata: { ticketId: ticket.id },
+          },
+        ],
+        buyerWalletId: buyerWallet?.id,
+        description: 'Ticket purchase commission',
+        platformMetadata: { ticketId: ticket.id, configuredPlatformFeePct: platformFeePct },
+        onSettled: async (tx) => {
+          await tx.ticket.update({ where: { id: ticket.id }, data: { status: 'ISSUED', qrImageUrl } });
+          await tx.ticketType.update({ where: { id: ticket.ticketTypeId }, data: { sold: { increment: 1 } } });
+        },
+        onFailure: async (err) => {
+          await this.prisma.ticket.update({
+            where: { id: ticket.id },
+            data: {
+              status: 'REFUNDED',
+              metadata: { ...((ticket.metadata as any) ?? {}), settlementError: err.message },
+            },
+          });
+        },
+      });
 
       if (ticket.user.email) {
         await this.sendgrid.sendTicketConfirmation({
