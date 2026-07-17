@@ -84,6 +84,8 @@ Key decisions logged in PROJECT.md. Decisions affecting current v2.0 work:
 ### Pending Todos
 
 - **Docker build fix before Phase 17 (live extraction):** `docker build` fails for all 8 `apps/*-service` images with `TS2307: Cannot find module '@iseyaa/proto'` — `backend/package.json` never declares `@iseyaa/proto`, so the image's scoped `npm ci --workspace=backend --include=workspace=shared` never links it (works locally only via the unscoped repo-root `npm install`). Pre-existing, universal defect surfaced by Phase 10 verification; out of Phase 10's `nest build` scope. Fix: declare `@iseyaa/proto` as a `backend` dependency and widen the Docker `npm ci` workspace scope. See `.planning/phases/10-documentation-correction-grpc-build-fix/10-VERIFICATION.md`.
+- **INT-01 — Wire ResilienceModule into gRPC service scaffolds:** `ResilienceModule` is never imported by any of the 8 `backend/apps/*-service` scaffolds — latent today, will block Phase 17's first live extraction. See `.planning/todos/pending/2026-07-17-wire-resiliencemodule-into-grpc-service-scaffolds.md`.
+- **INT-02 — Add compile step to packages/proto:** `@iseyaa/proto` has no build script; `nest build` passes via lenient tsc resolution but `require('@iseyaa/proto')` fails at real Node.js runtime. Blocks Phase 16 and Phase 17. See `.planning/todos/pending/2026-07-17-add-compile-step-to-packages-proto.md`.
 
 ### Blockers/Concerns
 
