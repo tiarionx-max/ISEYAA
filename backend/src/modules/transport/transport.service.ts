@@ -13,6 +13,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 import { WalletService } from '../wallet/wallet.service';
+import { SettlementService, SettlementRecipient } from '../../common/services/settlement.service';
 import { TransportGateway } from './transport.gateway';
 import { TripStatus, VehicleType } from '@prisma/client';
 import { CreateDriverDto } from './dto/create-driver.dto';
@@ -51,6 +52,7 @@ export class TransportService {
     private walletService: WalletService,
     private schedulerRegistry: SchedulerRegistry,
     @Inject(forwardRef(() => TransportGateway)) private gateway: TransportGateway,
+    private settlementService: SettlementService,
   ) {}
 
   // ── haversineDistanceKm ──────────────────────────────────────────────────
@@ -513,69 +515,185 @@ export class TransportService {
       throw new ForbiddenException('You are not the assigned driver for this trip');
     }
 
-    // Read platform fee from PlatformConfig — NEVER hardcode
-    const feeCfg = await this.prisma.platformConfig.findUnique({
-      where: { key: 'transport_platform_fee_pct' },
-    });
-    const feePct = feeCfg ? Number(feeCfg.value) : 15;
-
-    const fare = Number(trip.fare);
-    const platformFee = Math.round(fare * (feePct / 100) * 100) / 100;
-    const driverEarnings = Math.round((fare - platformFee) * 100) / 100;
-
-    const ref = `ISY-DRV-${uuidv4().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
     const now = new Date();
+    const fare = Number(trip.fare);
 
-    // H-10: use updateMany with WHERE status='IN_PROGRESS' and check count to prevent
-    // double-earnings if completeTrip is called twice (e.g. retry after partial failure).
-    // C-09: driver wallet credit runs inside the same interactive transaction so a crash
-    // between the trip update and the credit cannot leave the driver unpaid.
+    // D-07: cutover-flag gate — read fresh on every call, never cached.
+    const cutoverCfg = await this.prisma.platformConfig.findUnique({
+      where: { key: 'transport.settlement_engine_enabled' },
+    });
+    const cutoverEnabled = cutoverCfg ? Boolean(cutoverCfg.value) : false;
+
+    // Fetched once, reused by both branches.
     const driverWallet = await this.prisma.wallet.findFirst({ where: { userId: driverUserId } });
 
-    await this.prisma.$transaction(async (tx) => {
-      // H-10: atomic update — only succeeds if trip is still IN_PROGRESS
-      const result = await tx.trip.updateMany({
-        where: { id: tripId, status: 'IN_PROGRESS' as any },
-        data: {
-          status: 'COMPLETED' as any,
-          completedAt: now,
-          platformFee,
-          driverEarnings,
-          ...(dto?.driverRating && { driverRating: dto.driverRating }),
-        },
+    let driverEarnings: number;
+    let totalCommission: number;
+
+    if (cutoverEnabled) {
+      // ── SettlementService-delegated path ────────────────────────────────
+      const levyCfg = await this.prisma.platformConfig.findUnique({
+        where: { key: 'transport.govt_levy_pct' },
       });
-      if (result.count === 0) {
-        throw new BadRequestException('Trip already completed or not in progress');
-      }
+      const govtLevyPct = levyCfg ? Number(levyCfg.value) : 5;
+      const platformFeeCfg = await this.prisma.platformConfig.findUnique({
+        where: { key: 'transport.platform_fee_pct' },
+      });
+      const platformFeePct = platformFeeCfg ? Number(platformFeeCfg.value) : 10;
 
-      await tx.tripEvent.create({ data: { tripId, event: 'TRIP_COMPLETED' } });
+      // D-01/Pitfall-1: SUBTRACT-FIRST — must match today's exact formula order.
+      const totalCommissionPct = govtLevyPct + platformFeePct;
+      totalCommission = Math.round(fare * (totalCommissionPct / 100) * 100) / 100;
+      driverEarnings = Math.round((fare - totalCommission) * 100) / 100;
+      const govtLevyNgn = Math.round(fare * (govtLevyPct / 100) * 100) / 100;
 
-      // C-09: credit driver wallet within the same transaction with row-lock
-      if (driverWallet) {
-        await tx.$executeRaw`SELECT id FROM wallets WHERE id = ${driverWallet.id} FOR UPDATE`;
-        const lockedWallet = await tx.wallet.findUnique({ where: { id: driverWallet.id } });
-        if (lockedWallet) {
-          const balanceBefore = Number(lockedWallet.balance);
-          const balanceAfter = balanceBefore + driverEarnings;
-          await tx.wallet.update({ where: { id: driverWallet.id }, data: { balance: balanceAfter } });
-          await tx.transaction.create({
+      const ministryWallet = await this.settlementService.resolveMinistryWallet();
+
+      const recipients: SettlementRecipient[] = [
+        {
+          tag: 'DRIVER',
+          refSuffix: 'DRV',
+          walletId: driverWallet?.id ?? null,
+          amountNgn: driverEarnings,
+          metadata: { tripId },
+        },
+        {
+          tag: 'MINISTRY',
+          refSuffix: 'MINISTRY',
+          walletId: ministryWallet?.id ?? null,
+          amountNgn: govtLevyNgn,
+          metadata: { tripId },
+        },
+      ];
+
+      const capturedDriverEarnings = driverEarnings;
+      const capturedTotalCommission = totalCommission;
+
+      await this.settlementService.settle({
+        module: 'transport',
+        reference: `ISY-TRP-${tripId}`,
+        gateway: 'INTERNAL',
+        amountKobo: fare * 100,
+        recipients,
+        buyerWalletId: null,
+        description: 'Trip completion settlement',
+        platformMetadata: { tripId, driverUserId },
+        onSettled: async (tx) => {
+          const result = await tx.trip.updateMany({
+            where: { id: tripId, status: 'IN_PROGRESS' as any },
             data: {
-              walletId: driverWallet.id,
-              type: 'CREDIT',
-              status: 'SUCCESS',
-              amount: driverEarnings,
-              currency: 'NGN',
-              reference: ref,
-              gateway: 'INTERNAL',
-              description: `Trip earnings — ${tripId}`,
-              balanceBefore,
-              balanceAfter,
-              metadata: { module: 'transport' },
+              status: 'COMPLETED' as any,
+              completedAt: now,
+              platformFee: capturedTotalCommission,
+              driverEarnings: capturedDriverEarnings,
+              ...(dto?.driverRating && { driverRating: dto.driverRating }),
             },
           });
+          if (result.count === 0) {
+            throw new BadRequestException('Trip already completed or not in progress');
+          }
+          await tx.tripEvent.create({ data: { tripId, event: 'TRIP_COMPLETED' } });
+        },
+        onFailure: async () => {
+          await this.prisma.trip.update({
+            where: { id: tripId },
+            data: { status: 'IN_PROGRESS' as any },
+          });
+        },
+      });
+    } else {
+      // ── Legacy inline-transaction path (UNCHANGED) ──────────────────────
+      // Read platform fee from PlatformConfig — NEVER hardcode
+      const feeCfg = await this.prisma.platformConfig.findUnique({
+        where: { key: 'transport_platform_fee_pct' },
+      });
+      const feePct = feeCfg ? Number(feeCfg.value) : 15;
+
+      const platformFee = Math.round(fare * (feePct / 100) * 100) / 100;
+      driverEarnings = Math.round((fare - platformFee) * 100) / 100;
+      totalCommission = platformFee;
+
+      const ref = `ISY-DRV-${uuidv4().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
+
+      // H-10: use updateMany with WHERE status='IN_PROGRESS' and check count to prevent
+      // double-earnings if completeTrip is called twice (e.g. retry after partial failure).
+      // C-09: driver wallet credit runs inside the same interactive transaction so a crash
+      // between the trip update and the credit cannot leave the driver unpaid.
+      await this.prisma.$transaction(async (tx) => {
+        // H-10: atomic update — only succeeds if trip is still IN_PROGRESS
+        const result = await tx.trip.updateMany({
+          where: { id: tripId, status: 'IN_PROGRESS' as any },
+          data: {
+            status: 'COMPLETED' as any,
+            completedAt: now,
+            platformFee,
+            driverEarnings,
+            ...(dto?.driverRating && { driverRating: dto.driverRating }),
+          },
+        });
+        if (result.count === 0) {
+          throw new BadRequestException('Trip already completed or not in progress');
         }
+
+        await tx.tripEvent.create({ data: { tripId, event: 'TRIP_COMPLETED' } });
+
+        // C-09: credit driver wallet within the same transaction with row-lock
+        if (driverWallet) {
+          await tx.$executeRaw`SELECT id FROM wallets WHERE id = ${driverWallet.id} FOR UPDATE`;
+          const lockedWallet = await tx.wallet.findUnique({ where: { id: driverWallet.id } });
+          if (lockedWallet) {
+            const balanceBefore = Number(lockedWallet.balance);
+            const balanceAfter = balanceBefore + driverEarnings;
+            await tx.wallet.update({ where: { id: driverWallet.id }, data: { balance: balanceAfter } });
+            await tx.transaction.create({
+              data: {
+                walletId: driverWallet.id,
+                type: 'CREDIT',
+                status: 'SUCCESS',
+                amount: driverEarnings,
+                currency: 'NGN',
+                reference: ref,
+                gateway: 'INTERNAL',
+                description: `Trip earnings — ${tripId}`,
+                balanceBefore,
+                balanceAfter,
+                metadata: { module: 'transport' },
+              },
+            });
+          }
+        }
+      });
+
+      // Stage-2 shadow-comparison write — best-effort, OUTSIDE the live-crediting
+      // transaction so a shadow-write failure never blocks or rolls back the real
+      // driver credit (Pitfall 5).
+      try {
+        const shadowLevyCfg = await this.prisma.platformConfig.findUnique({
+          where: { key: 'transport.govt_levy_pct' },
+        });
+        const shadowGovtLevyPct = shadowLevyCfg ? Number(shadowLevyCfg.value) : 5;
+        const shadowPlatformFeeCfg = await this.prisma.platformConfig.findUnique({
+          where: { key: 'transport.platform_fee_pct' },
+        });
+        const shadowPlatformFeePct = shadowPlatformFeeCfg ? Number(shadowPlatformFeeCfg.value) : 10;
+
+        const shadowTotalCommissionPct = shadowGovtLevyPct + shadowPlatformFeePct;
+        const shadowTotalCommission = Math.round(fare * (shadowTotalCommissionPct / 100) * 100) / 100;
+        const shadowDriverEarnings = Math.round((fare - shadowTotalCommission) * 100) / 100;
+
+        await this.prisma.shadowSettlementComparison.create({
+          data: {
+            module: 'transport',
+            sourceId: tripId,
+            oldEarnerAmount: driverEarnings,
+            newEarnerAmount: shadowDriverEarnings,
+            matched: driverEarnings === shadowDriverEarnings,
+          },
+        });
+      } catch (err) {
+        this.logger.error(`Stage-2 shadow settlement comparison failed for trip ${tripId}`, (err as Error).message);
       }
-    });
+    }
 
     this.logger.log(`Trip ${tripId} completed — ₦${driverEarnings} credited to driver ${driverUserId}`);
 
