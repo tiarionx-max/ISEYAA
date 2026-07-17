@@ -102,7 +102,20 @@ export class SettlementService implements OnModuleInit {
       return { status: 'REPLAYED', platformAmountNgn: 0, recipientCredits: [] };
     }
 
-    // 2. Compute platform commission (absorbs rounding drift + unresolved shares).
+    // 2. Defensive floor check — a negative recipient amount (e.g. from a misconfigured
+    //    PlatformConfig percentage summing to >100%) must never silently debit a wallet
+    //    under CREDIT transaction semantics (WR-02).
+    for (const r of input.recipients) {
+      if (r.amountNgn < 0) {
+        const err = new Error(
+          `Negative recipient amount for ${r.tag} (${r.refSuffix}), module=${input.module}, ref=${input.reference}) — programming error`,
+        );
+        await this.handleSettlementFailure(input, err);
+        throw err;
+      }
+    }
+
+    // 3. Compute platform commission (absorbs rounding drift + unresolved shares).
     const chargeAmountNgn = input.amountKobo / 100;
     const claimedAmountNgn = input.recipients
       .filter((r) => r.walletId)
@@ -116,8 +129,21 @@ export class SettlementService implements OnModuleInit {
       await this.handleSettlementFailure(input, err);
       throw err;
     }
+    // A platform commission that is *slightly* negative (within the same ±0.02
+    // tolerance as the drift assert above) is expected: per-recipient kobo rounding
+    // can legitimately over-allocate by a sub-kobo amount, which the platform wallet
+    // absorbs (D-03). Only a commission that goes meaningfully negative — i.e.
+    // recipients claim materially more than the charge, a real misconfiguration —
+    // should be rejected here.
+    if (platformAmountNgn < -0.02) {
+      const err = new Error(
+        `Negative platform commission (module=${input.module}, ref=${input.reference}) — programming error`,
+      );
+      await this.handleSettlementFailure(input, err);
+      throw err;
+    }
 
-    // 3. Atomic $transaction — recipient fan-out + platform commission.
+    // 4. Atomic $transaction — recipient fan-out + platform commission.
     try {
       const result = await this.prisma.$transaction(async (tx) => {
         const recipientCredits: SettlementResult['recipientCredits'] = [];
