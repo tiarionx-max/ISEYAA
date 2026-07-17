@@ -268,6 +268,9 @@ export class SettlementService implements OnModuleInit {
           walletId: input.buyerWalletId,
           reason: `${input.module}_settlement_failed: ${err.message}`,
           metadata: { module: input.module, failedAt: 'settlement_transaction' },
+          // Thread the original gateway through so RefundService can branch away from
+          // the Paystack API for a WALLET-gated settlement (WR-03).
+          gateway: input.gateway,
         });
       } catch (refundErr) {
         // Don't mask the original error — refund failures are logged, not rethrown.

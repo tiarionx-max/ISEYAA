@@ -14,6 +14,14 @@ export interface RefundInput {
   reason: string;
   /** Optional extra audit info (e.g. `{ bookingId, splitLegThatFailed }`). */
   metadata?: Record<string, any>;
+  /**
+   * Gateway the original settlement was charged through. Defaults to `'PAYSTACK'` for
+   * backward compatibility with existing callers. When `'WALLET'`, the buyer's
+   * in-app wallet — already debited before settlement — is credited back directly
+   * instead of calling the Paystack refund API, which was never a real charge for
+   * that payment (WR-03).
+   */
+  gateway?: 'PAYSTACK' | 'FLUTTERWAVE' | 'WALLET' | 'INTERNAL';
 }
 
 export interface RefundResult {
@@ -71,26 +79,38 @@ export class RefundService {
 
     const amountKobo = input.amountKobo;
     const amountNgn = amountKobo / 100;
+    const isWalletGateway = input.gateway === 'WALLET';
 
-    // 2. Call Paystack refund endpoint. Errors propagate — no ledger row written on failure.
-    const paystackResult = await this.paystack.refundCharge(
-      input.paystackReference,
-      amountKobo,
-      input.reason,
-    );
+    // 2. Call Paystack refund endpoint — skipped entirely for a WALLET-gated original
+    //    settlement, since that payment was never a real Paystack charge (WR-03).
+    //    Errors propagate — no ledger row written on failure.
+    const paystackResult = isWalletGateway
+      ? null
+      : await this.paystack.refundCharge(input.paystackReference, amountKobo, input.reason);
 
-    const txnStatus: 'SUCCESS' | 'PENDING' = paystackResult.status === 'processed' ? 'SUCCESS' : 'PENDING';
+    const txnStatus: 'SUCCESS' | 'PENDING' = isWalletGateway
+      ? 'SUCCESS'
+      : paystackResult!.status === 'processed'
+        ? 'SUCCESS'
+        : 'PENDING';
 
     // 3. Write REFUND Transaction row inside an interactive transaction with SELECT FOR UPDATE
-    //    on the buyer wallet — keeps us consistent with the wallet locking convention even
-    //    though we are not mutating the balance here (defense-in-depth for future code that
-    //    might toggle this row to also credit the wallet).
+    //    on the buyer wallet. For the WALLET gateway, this is where the actual credit-back
+    //    happens (the buyer's wallet balance is restored); for PAYSTACK/FLUTTERWAVE/INTERNAL
+    //    the row remains balance-neutral since money returns to the original card, not
+    //    the in-app wallet.
     const txn = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT id FROM wallets WHERE id = ${input.walletId} FOR UPDATE`;
       const wallet = await tx.wallet.findUnique({ where: { id: input.walletId } });
       if (!wallet) throw new NotFoundException('Wallet not found for refund');
 
-      const balance = Number(wallet.balance);
+      const balanceBefore = Number(wallet.balance);
+      const balanceAfter = isWalletGateway ? balanceBefore + amountNgn : balanceBefore;
+
+      if (isWalletGateway) {
+        await tx.wallet.update({ where: { id: input.walletId }, data: { balance: balanceAfter } });
+      }
+
       return tx.transaction.create({
         data: {
           walletId: input.walletId,
@@ -99,11 +119,11 @@ export class RefundService {
           amount: amountNgn,
           currency: 'NGN',
           reference: refundRef,
-          gateway: 'PAYSTACK',
-          gatewayRef: paystackResult.id,
+          gateway: isWalletGateway ? 'WALLET' : 'PAYSTACK',
+          gatewayRef: isWalletGateway ? null : paystackResult!.id,
           description: input.reason ?? 'Refund issued',
-          balanceBefore: balance,
-          balanceAfter: balance, // unchanged — money returns to card, not wallet
+          balanceBefore,
+          balanceAfter,
           metadata: {
             ...(input.metadata ?? {}),
             module: 'refund',
@@ -115,7 +135,7 @@ export class RefundService {
 
     return {
       refundReference: refundRef,
-      paystackRefundId: paystackResult.id,
+      paystackRefundId: isWalletGateway ? '' : paystackResult!.id,
       amountRefunded: amountNgn,
       status: txnStatus,
       transactionId: txn.id,

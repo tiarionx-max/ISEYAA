@@ -163,6 +163,57 @@ describe('RefundService', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
+  it('WR-03: gateway=WALLET credits the buyer wallet back directly, skipping Paystack entirely', async () => {
+    (prisma.transaction.findUnique as jest.Mock).mockResolvedValue(null);
+
+    const walletUpdateMock = jest.fn().mockResolvedValue({});
+    const createMock = jest.fn().mockResolvedValue({
+      id: 'txn-wallet-refund',
+      reference: REFUND_REF,
+      gatewayRef: null,
+      amount: 50,
+      status: 'SUCCESS',
+    });
+    (prisma.$transaction as jest.Mock).mockImplementation(async (cb: any) =>
+      cb({
+        $executeRaw: jest.fn().mockResolvedValue(1),
+        wallet: {
+          findUnique: jest.fn().mockResolvedValue({ id: WALLET_ID, balance: 1000 }),
+          update: walletUpdateMock,
+        },
+        transaction: { create: createMock },
+      }),
+    );
+
+    const result = await service.refund({
+      paystackReference: ORIGINAL_REF,
+      amountKobo: 5000,
+      walletId: WALLET_ID,
+      reason: 'wallet-funded settlement failed',
+      gateway: 'WALLET',
+    });
+
+    expect(paystack.refundCharge).not.toHaveBeenCalled();
+    expect(walletUpdateMock).toHaveBeenCalledWith({
+      where: { id: WALLET_ID },
+      data: { balance: 1050 },
+    });
+
+    const writeArgs = createMock.mock.calls[0][0].data;
+    expect(writeArgs.gateway).toBe('WALLET');
+    expect(writeArgs.gatewayRef).toBeNull();
+    expect(writeArgs.balanceBefore).toBe(1000);
+    expect(writeArgs.balanceAfter).toBe(1050); // wallet actually credited back
+
+    expect(result).toEqual({
+      refundReference: REFUND_REF,
+      paystackRefundId: '',
+      amountRefunded: 50,
+      status: 'SUCCESS',
+      transactionId: 'txn-wallet-refund',
+    });
+  });
+
   it('throws NotFoundException when buyer wallet does not exist', async () => {
     (prisma.transaction.findUnique as jest.Mock).mockResolvedValue(null);
     (paystack.refundCharge as jest.Mock).mockResolvedValue({
