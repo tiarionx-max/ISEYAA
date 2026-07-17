@@ -489,7 +489,23 @@ Plans:
   2. Delivery's settlement runs on a three-way, `PlatformConfig`-driven split, replacing the hardcoded 80/20
   3. A shadow-mode comparison run computes the new engine's payouts alongside the old hardcoded-percentage output for a representative sample of real Transport/Delivery transactions, with zero discrepancy, before cutover is marked complete
   4. Post-cutover, live driver and rider wallet credits match the shadow-mode-verified amounts exactly — no payout regression observed
-**Plans**: TBD
+**Plans**: 4 plans
+Plans:
+**Wave 1** *(no dependencies — runs immediately)*
+- [ ] 13-01-PLAN.md — ShadowSettlementComparison schema + [BLOCKING] migration + 6 new PlatformConfig seed keys (govt_levy_pct/platform_fee_pct/settlement_engine_enabled x2 modules)
+
+**Wave 2** *(blocked on Wave 1, parallel — disjoint files)*
+- [ ] 13-02-PLAN.md — Transport completeTrip() cutover onto SettlementService (SETTLE-03) + Stage-2 shadow write + spec rewrite
+- [ ] 13-03-PLAN.md — Delivery completeDelivery() cutover onto SettlementService (SETTLE-04) + Stage-2 shadow write + spec rewrite
+
+**Wave 3** *(blocked on Wave 2)*
+- [ ] 13-04-PLAN.md — Stage 1 shadow-verify batch script (SETTLE-09) + full regression + source-level settlement-delegation audit
+
+**Cross-cutting constraints:**
+- Driver/rider payout amounts stay bit-for-bit unchanged from today's formula (D-01) in both the pre- and post-cutover code paths
+- Platform fee/levy percentages always read from PlatformConfig — never hardcoded
+- Idempotency reference changes from random-UUID to deterministic (`ISY-TRP-<tripId>` / `ISY-DLV-<orderId>`) only on the cutover-enabled path
+- D-08's live bake-period gate (3 elapsed days OR 100 completed trips/deliveries, zero discrepancies) is a manual, post-deployment precondition before either `*.settlement_engine_enabled` flag flips to `true` — not code-enforced by this phase's plans
 **UI hint**: no
 
 ### Phase 14: Ministry Dashboard
@@ -561,7 +577,7 @@ Phases 11, 12 (Settlement Foundation), and 15 (WhatsApp OTP) are independent of 
 | 10. Documentation Correction + gRPC Build Fix | 3/3 | Complete    | 2026-07-15 |
 | 11. Resilience Wrapping | 11/11 | Complete   | 2026-07-16 |
 | 12. Settlement Engine Foundation | 9/9 | Complete   | 2026-07-17 |
-| 13. Settlement Cutover — Transport & Delivery | 0/0 | Not started | - |
+| 13. Settlement Cutover — Transport & Delivery | 0/4 | Not started | - |
 | 14. Ministry Dashboard | 0/0 | Not started | - |
 | 15. Multi-Channel OTP | 0/0 | Not started | - |
 | 16. Connection Pooling Infrastructure | 0/0 | Not started | - |
