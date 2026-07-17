@@ -8,11 +8,13 @@ import {
   ServiceUnavailableException,
   OnModuleInit,
 } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import { KafkaService } from '../../kafka/kafka.service';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PaystackService } from '../../common/services/paystack.service';
 import { SendgridService } from '../../common/services/sendgrid.service';
+import { SettlementService } from '../../common/services/settlement.service';
 import { CreateVendorDto } from './dto/create-vendor.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -31,6 +33,7 @@ export class MarketplaceService implements OnModuleInit {
     private paystack: PaystackService,
     private sendgrid: SendgridService,
     private kafka: KafkaService,
+    private settlementService: SettlementService,
   ) {}
 
   async onModuleInit() {
@@ -250,6 +253,7 @@ export class MarketplaceService implements OnModuleInit {
     return { order, payment };
   }
 
+  @OnEvent('payment.order_payment')
   async handleOrderPayment(payload: { reference: string }) {
     try {
       const order = await this.prisma.order.findUnique({
@@ -262,17 +266,61 @@ export class MarketplaceService implements OnModuleInit {
 
       if (!order || order.status !== 'PENDING') return;
 
-      await this.prisma.order.update({
-        where: { id: order.id },
-        data: { status: 'PROCESSING' },
-      });
+      // Order.vendorId has no Prisma relation defined (only a raw FK column, no
+      // DB constraint — see 12-04 deviation notes), so the vendor is resolved via
+      // a direct lookup rather than `include: { vendor: true }`.
+      const vendor = order.vendorId
+        ? await this.prisma.vendor.findUnique({ where: { id: order.vendorId } })
+        : null;
+      const vendorWallet = vendor
+        ? await this.prisma.wallet.findUnique({ where: { userId: vendor.userId } })
+        : null;
+      const ministryWallet = await this.settlementService.resolveMinistryWallet();
+      const buyerWallet = await this.prisma.wallet.findUnique({ where: { userId: order.userId } });
 
-      for (const item of order.orderItems) {
-        await this.prisma.product.update({
-          where: { id: item.productId },
-          data: { stock: { decrement: item.quantity } },
-        });
-      }
+      await this.settlementService.settle({
+        module: 'marketplace',
+        reference: payload.reference,
+        gateway: 'PAYSTACK',
+        amountKobo: Number(order.totalAmount) * 100,
+        recipients: [
+          {
+            tag: 'VENDOR',
+            refSuffix: 'VENDOR',
+            walletId: vendorWallet?.id ?? null,
+            amountNgn: Number(order.vendorPayout),
+            metadata: { vendorId: order.vendorId, orderId: order.id },
+          },
+          {
+            tag: 'MINISTRY',
+            refSuffix: 'MINISTRY',
+            walletId: ministryWallet?.id ?? null,
+            amountNgn: Number(order.govtLevy),
+            metadata: { orderId: order.id },
+          },
+        ],
+        buyerWalletId: buyerWallet?.id,
+        description: 'Marketplace order commission',
+        platformMetadata: { orderId: order.id },
+        onSettled: async (tx) => {
+          await tx.order.update({ where: { id: order.id }, data: { status: 'PROCESSING' } });
+          for (const item of order.orderItems) {
+            await tx.product.update({
+              where: { id: item.productId },
+              data: { stock: { decrement: item.quantity } },
+            });
+          }
+        },
+        onFailure: async (err) => {
+          await this.prisma.order.update({
+            where: { id: order.id },
+            data: {
+              status: 'CANCELLED',
+              metadata: { ...((order.metadata as any) ?? {}), settlementError: err.message },
+            },
+          });
+        },
+      });
 
       await this.notifyOrderUpdate(order.id, 'PROCESSING');
     } catch (err) {
