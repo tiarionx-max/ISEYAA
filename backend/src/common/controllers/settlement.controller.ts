@@ -1,4 +1,4 @@
-import { Controller, Get, NotFoundException, Query, UseGuards } from '@nestjs/common';
+import { Controller, ForbiddenException, Get, NotFoundException, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../modules/auth/guards/jwt-auth.guard';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -42,9 +42,27 @@ export class SettlementController {
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
   ) {
-    const isAdmin = user.role === UserRole.SUPER_ADMIN || user.role === UserRole.LGA_ADMIN;
+    const isSuperAdmin = user.role === UserRole.SUPER_ADMIN;
+    const isLgaAdmin = user.role === UserRole.LGA_ADMIN;
     let targetWalletId: string;
-    if (isAdmin && walletId) {
+    if (isSuperAdmin && walletId) {
+      // SUPER_ADMIN retains unrestricted, state-wide access (WR-06).
+      targetWalletId = walletId;
+    } else if (isLgaAdmin && walletId) {
+      // LGA_ADMIN is a scoped role elsewhere in the codebase — restrict the override
+      // to wallets whose owning user belongs to the admin's own LGA (WR-06).
+      const [admin, targetWallet] = await Promise.all([
+        this.prisma.user.findUnique({ where: { id: user.userId }, select: { lgaId: true } }),
+        this.prisma.wallet.findUnique({
+          where: { id: walletId },
+          select: { user: { select: { lgaId: true } } },
+        }),
+      ]);
+      if (!admin?.lgaId || !targetWallet?.user?.lgaId || admin.lgaId !== targetWallet.user.lgaId) {
+        throw new ForbiddenException(
+          'LGA_ADMIN may only view settlement statements for wallets within their own LGA',
+        );
+      }
       targetWalletId = walletId;
     } else {
       const wallet = await this.prisma.wallet.findUnique({

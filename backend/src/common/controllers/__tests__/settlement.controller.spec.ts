@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { SettlementService } from '../../services/settlement.service';
@@ -8,6 +8,9 @@ const VENDOR_WALLET_ID = 'WAL-VENDOR-SELF';
 const ATTACKER_TARGET_WALLET_ID = 'WAL-SOMEONE-ELSE';
 const ADMIN_TARGET_WALLET_ID = 'WAL-ANY-TARGET';
 const ADMIN_OWN_WALLET_ID = 'WAL-ADMIN-SELF';
+const LGA_TARGET_WALLET_ID = 'WAL-LGA-TARGET';
+const LGA_ID_A = 'LGA-A';
+const LGA_ID_B = 'LGA-B';
 
 const vendorUser = { userId: 'USR-VENDOR', role: 'VENDOR' };
 const superAdminUser = { userId: 'USR-SUPER-ADMIN', role: 'SUPER_ADMIN' };
@@ -18,6 +21,7 @@ const mockStatementRows = [{ id: 'TXN-1', amount: 100 }];
 
 const mockPrisma = {
   wallet: { findUnique: jest.fn() },
+  user: { findUnique: jest.fn() },
 };
 
 const mockSettlementService = {
@@ -87,14 +91,45 @@ describe('SettlementController', () => {
     });
   });
 
-  it('LGA_ADMIN supplying an explicit walletId bypasses self-resolution entirely', async () => {
-    await controller.getStatement(lgaAdminUser, ADMIN_TARGET_WALLET_ID);
+  it('WR-06: LGA_ADMIN supplying an explicit walletId for a wallet within their own LGA is allowed', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ lgaId: LGA_ID_A });
+    mockPrisma.wallet.findUnique.mockResolvedValue({ user: { lgaId: LGA_ID_A } });
 
-    expect(mockPrisma.wallet.findUnique).not.toHaveBeenCalled();
-    expect(mockSettlementService.getStatement).toHaveBeenCalledWith(ADMIN_TARGET_WALLET_ID, {
+    const result = await controller.getStatement(lgaAdminUser, LGA_TARGET_WALLET_ID);
+
+    expect(mockPrisma.user.findUnique).toHaveBeenCalledWith({
+      where: { id: lgaAdminUser.userId },
+      select: { lgaId: true },
+    });
+    expect(mockPrisma.wallet.findUnique).toHaveBeenCalledWith({
+      where: { id: LGA_TARGET_WALLET_ID },
+      select: { user: { select: { lgaId: true } } },
+    });
+    expect(mockSettlementService.getStatement).toHaveBeenCalledWith(LGA_TARGET_WALLET_ID, {
       dateFrom: undefined,
       dateTo: undefined,
     });
+    expect(result).toBe(mockStatementRows);
+  });
+
+  it('WR-06: LGA_ADMIN supplying a walletId outside their own LGA is forbidden', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ lgaId: LGA_ID_A });
+    mockPrisma.wallet.findUnique.mockResolvedValue({ user: { lgaId: LGA_ID_B } });
+
+    await expect(
+      controller.getStatement(lgaAdminUser, ADMIN_TARGET_WALLET_ID),
+    ).rejects.toThrow(ForbiddenException);
+    expect(mockSettlementService.getStatement).not.toHaveBeenCalled();
+  });
+
+  it('WR-06: LGA_ADMIN with no lgaId of their own is forbidden from any override', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ lgaId: null });
+    mockPrisma.wallet.findUnique.mockResolvedValue({ user: { lgaId: LGA_ID_A } });
+
+    await expect(
+      controller.getStatement(lgaAdminUser, ADMIN_TARGET_WALLET_ID),
+    ).rejects.toThrow(ForbiddenException);
+    expect(mockSettlementService.getStatement).not.toHaveBeenCalled();
   });
 
   it('SUPER_ADMIN with no walletId falls back to self-resolution', async () => {
