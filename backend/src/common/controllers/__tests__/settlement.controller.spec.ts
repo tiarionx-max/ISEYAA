@@ -1,4 +1,4 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { SettlementService } from '../../services/settlement.service';
@@ -154,5 +154,30 @@ describe('SettlementController', () => {
       NotFoundException,
     );
     expect(mockSettlementService.getStatement).not.toHaveBeenCalled();
+  });
+
+  it('WR-08: rejects an unparseable dateFrom with BadRequestException', async () => {
+    await expect(
+      controller.getStatement(vendorUser, undefined, 'not-a-date'),
+    ).rejects.toThrow(BadRequestException);
+    expect(mockSettlementService.getStatement).not.toHaveBeenCalled();
+  });
+
+  it('WR-08: rejects an unparseable dateTo with BadRequestException', async () => {
+    await expect(
+      controller.getStatement(vendorUser, undefined, undefined, 'not-a-date'),
+    ).rejects.toThrow(BadRequestException);
+    expect(mockSettlementService.getStatement).not.toHaveBeenCalled();
+  });
+
+  it('WR-08: accepts valid ISO 8601 dateFrom/dateTo', async () => {
+    mockPrisma.wallet.findUnique.mockResolvedValue({ id: VENDOR_WALLET_ID });
+
+    await controller.getStatement(vendorUser, undefined, '2026-01-01', '2026-06-30');
+
+    expect(mockSettlementService.getStatement).toHaveBeenCalledWith(VENDOR_WALLET_ID, {
+      dateFrom: '2026-01-01',
+      dateTo: '2026-06-30',
+    });
   });
 });

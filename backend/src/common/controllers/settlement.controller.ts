@@ -1,4 +1,12 @@
-import { Controller, ForbiddenException, Get, NotFoundException, Query, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  ForbiddenException,
+  Get,
+  NotFoundException,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../modules/auth/guards/jwt-auth.guard';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -42,6 +50,16 @@ export class SettlementController {
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
   ) {
+    // Reject unparseable date strings with a clean 400 instead of letting an
+    // `Invalid Date` reach Prisma's gte/lte filter and surface as an unhandled 500
+    // (WR-08).
+    if (dateFrom !== undefined && isNaN(new Date(dateFrom).getTime())) {
+      throw new BadRequestException('dateFrom must be a valid ISO 8601 date string');
+    }
+    if (dateTo !== undefined && isNaN(new Date(dateTo).getTime())) {
+      throw new BadRequestException('dateTo must be a valid ISO 8601 date string');
+    }
+
     const isSuperAdmin = user.role === UserRole.SUPER_ADMIN;
     const isLgaAdmin = user.role === UserRole.LGA_ADMIN;
     let targetWalletId: string;
