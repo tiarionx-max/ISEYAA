@@ -154,6 +154,8 @@ Operated by LJ Entertainment under contract with Ogun State. Confidential govern
 - Order payment: `ISY-ORD-<12-char-uppercase>`
 - Escrow release: `ISY-ESC-<8-char-uppercase>`
 - Studio booking: `ISY-SBO-<12-char-uppercase>`
+- Trip settlement (deterministic idempotency ref, Phase 13 SETTLE-09): `ISY-TRP-<tripId>` (raw trip UUID, not a random 12-char suffix — required by SettlementService's idempotency precheck; intentional deviation from the standard `ISY-<TYPE>-<12-char-uppercase>` pattern)
+- Delivery settlement (deterministic idempotency ref, Phase 13 SETTLE-09): `ISY-DLV-<orderId>` (raw order UUID, same rationale as Trip settlement above)
 ## Code Style
 - ESLint with `@typescript-eslint/recommended` (`backend/.eslintrc.js`)
 - No Prettier config detected — indentation follows 2-space convention throughout
