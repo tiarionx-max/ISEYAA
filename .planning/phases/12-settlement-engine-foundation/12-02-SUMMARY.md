@@ -143,3 +143,13 @@ None - no external service configuration required. The database work in this pla
 ---
 *Phase: 12-settlement-engine-foundation*
 *Completed: 2026-07-17*
+
+## Self-Check: PASSED
+
+- FOUND: backend/prisma/schema.prisma (contains `govtLevyPct`)
+- FOUND: backend/prisma/seed.ts (contains `ministry@iseyaa.local`)
+- FOUND: backend/prisma/migrations/20260717170330_settle_02_booking_govt_levy_pct/migration.sql
+- FOUND: .planning/phases/12-settlement-engine-foundation/12-02-SUMMARY.md
+- FOUND commit: 35334d9 (Task 1)
+- FOUND commit: 141ab80 (Task 2)
+- FOUND commit: 801489b (SUMMARY.md)
