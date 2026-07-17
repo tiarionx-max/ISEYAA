@@ -459,8 +459,8 @@ Note: RESIL-02's live-observability human-verification item (Grafana/Sentry dash
 **Plans**: 9 plans
 Plans:
 **Wave 1** *(no dependencies — runs immediately, parallel)*
-- [ ] 12-01-PLAN.md — Generalized SettlementService (atomic N-way fan-out, idempotency, drift assertion) + CommonModule registration
-- [ ] 12-02-PLAN.md — [BLOCKING] Booking.govtLevyPct schema field + Ministry User/Wallet + fee/levy PlatformConfig seed + db push
+- [x] 12-01-PLAN.md — Generalized SettlementService (atomic N-way fan-out, idempotency, drift assertion) + CommonModule registration
+- [x] 12-02-PLAN.md — [BLOCKING] Booking.govtLevyPct schema field + Ministry User/Wallet + fee/levy PlatformConfig seed + db push
 
 **Wave 2** *(blocked on Wave 1, parallel)*
 - [ ] 12-03-PLAN.md — TourSettlementService migrated onto SettlementService (D-01 proof, 12 existing scenarios preserved)
@@ -560,7 +560,7 @@ Phases 11, 12 (Settlement Foundation), and 15 (WhatsApp OTP) are independent of 
 | 9. Tour Packages & Tour Guides | 12/13 | In Progress (09-13 human checkpoint pending) | - |
 | 10. Documentation Correction + gRPC Build Fix | 3/3 | Complete    | 2026-07-15 |
 | 11. Resilience Wrapping | 11/11 | Complete   | 2026-07-16 |
-| 12. Settlement Engine Foundation | 0/0 | Not started | - |
+| 12. Settlement Engine Foundation | 2/9 | In Progress|  |
 | 13. Settlement Cutover — Transport & Delivery | 0/0 | Not started | - |
 | 14. Ministry Dashboard | 0/0 | Not started | - |
 | 15. Multi-Channel OTP | 0/0 | Not started | - |
