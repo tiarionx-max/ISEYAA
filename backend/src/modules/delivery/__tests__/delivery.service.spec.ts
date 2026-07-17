@@ -12,6 +12,7 @@ import { DeliveryGateway } from '../delivery.gateway';
 import { ConfigService } from '@nestjs/config';
 import { S3Service } from '../../../common/services/s3.service';
 import { ResilienceService } from '../../../resilience/resilience.service';
+import { SettlementService } from '../../../common/services/settlement.service';
 
 // ── Fixture IDs ────────────────────────────────────────────────────────────────
 
@@ -65,7 +66,7 @@ const mockOrder = {
   deletedAt: null,
 };
 
-const mockPlatformConfig = (key: string, value: number) => ({
+const mockPlatformConfig = (key: string, value: number | boolean) => ({
   id: `cfg-${key}`,
   key,
   value,
@@ -110,7 +111,15 @@ const mockPrisma = {
   platformConfig: {
     findUnique: jest.fn(),
   },
+  shadowSettlementComparison: {
+    create: jest.fn().mockResolvedValue({}),
+  },
   $transaction: jest.fn(),
+};
+
+const mockSettlement = {
+  settle: jest.fn().mockResolvedValue({ status: 'SETTLED', platformAmountNgn: 0, recipientCredits: [] }),
+  resolveMinistryWallet: jest.fn().mockResolvedValue({ id: 'WAL-MINISTRY' }),
 };
 
 const mockRedis = {
@@ -180,6 +189,7 @@ describe('DeliveryService', () => {
         { provide: ConfigService, useValue: mockConfig },
         { provide: S3Service, useValue: mockS3 },
         { provide: ResilienceService, useValue: mockResilience },
+        { provide: SettlementService, useValue: mockSettlement },
       ],
     }).compile();
 
@@ -348,7 +358,7 @@ describe('DeliveryService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('calls s3Service.upload("delivery-proof/...", buffer, "image/jpeg") and credits wallet with ISY-RDR- reference and INTERNAL gateway inside transaction', async () => {
+    it('delegates to settlementService.settle() with deterministic ISY-DLV reference and RIDER+MINISTRY recipients when delivery.settlement_engine_enabled is true', async () => {
       const base64Photo = Buffer.from('fake-jpeg-data').toString('base64');
       mockPrisma.deliveryOrder.findUnique.mockResolvedValue({
         ...mockOrder,
@@ -358,10 +368,15 @@ describe('DeliveryService', () => {
       });
       mockPrisma.deliveryRider.findFirst.mockResolvedValue(mockRider);
       mockPrisma.wallet.findFirst.mockResolvedValue({ id: WALLET_ID, userId: USER_ID });
-      mockTx.wallet.findUnique.mockResolvedValue({ id: WALLET_ID, balance: 0 });
-      mockPrisma.platformConfig.findUnique.mockResolvedValue(
-        mockPlatformConfig('delivery_platform_fee_pct', 20),
-      );
+      mockPrisma.platformConfig.findUnique.mockImplementation((args: any) => {
+        const key = args.where.key;
+        if (key === 'delivery.settlement_engine_enabled') {
+          return Promise.resolve(mockPlatformConfig(key, true));
+        }
+        if (key === 'delivery.govt_levy_pct') return Promise.resolve(mockPlatformConfig(key, 5));
+        if (key === 'delivery.platform_fee_pct') return Promise.resolve(mockPlatformConfig(key, 15));
+        return Promise.resolve(null);
+      });
 
       await service.completeDelivery(ORDER_ID, USER_ID, {
         proofPhotoBase64: base64Photo,
@@ -372,51 +387,72 @@ describe('DeliveryService', () => {
         expect.any(Buffer),
         'image/jpeg',
       );
-      expect(mockTx.transaction.create).toHaveBeenCalledWith(
+      expect(mockSettlement.settle).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({
-            gateway: 'INTERNAL',
-            reference: expect.stringMatching(/^ISY-RDR-/),
-            metadata: expect.objectContaining({ module: 'delivery' }),
-          }),
+          module: 'delivery',
+          reference: `ISY-DLV-${ORDER_ID}`,
+          gateway: 'INTERNAL',
+          buyerWalletId: null,
+          recipients: expect.arrayContaining([
+            expect.objectContaining({ tag: 'RIDER', amountNgn: 640 }),
+            expect.objectContaining({ tag: 'MINISTRY', amountNgn: 40 }),
+          ]),
         }),
       );
+      // Post-cutover: no legacy inline wallet mutation may run alongside SettlementService.
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+      expect(mockPrisma.shadowSettlementComparison.create).not.toHaveBeenCalled();
     });
 
-    it('computes riderEarnings = fee × (1 - delivery_platform_fee_pct / 100) from platformConfig', async () => {
-      const fee = 1000;
-      const feePct = 20;
-      const expectedEarnings = fee * (1 - feePct / 100); // 800
-
+    it('credits the rider wallet 640 via the legacy $transaction and writes a matched Stage-2 shadow comparison when delivery.settlement_engine_enabled is false/unset', async () => {
       const base64Photo = Buffer.from('fake-jpeg-data').toString('base64');
       mockPrisma.deliveryOrder.findUnique.mockResolvedValue({
         ...mockOrder,
         status: 'IN_TRANSIT',
         otpVerifiedAt: new Date(),
-        fee,
+        fee: 800,
       });
       mockPrisma.deliveryRider.findFirst.mockResolvedValue(mockRider);
       mockPrisma.wallet.findFirst.mockResolvedValue({ id: WALLET_ID, userId: USER_ID });
       mockTx.wallet.findUnique.mockResolvedValue({ id: WALLET_ID, balance: 0 });
-      mockPrisma.platformConfig.findUnique.mockResolvedValue(
-        mockPlatformConfig('delivery_platform_fee_pct', feePct),
-      );
+      mockPrisma.platformConfig.findUnique.mockImplementation((args: any) => {
+        const key = args.where.key;
+        if (key === 'delivery.settlement_engine_enabled') return Promise.resolve(null); // unset -> false
+        if (key === 'delivery_platform_fee_pct') return Promise.resolve(mockPlatformConfig(key, 20));
+        if (key === 'delivery.govt_levy_pct') return Promise.resolve(mockPlatformConfig(key, 5));
+        if (key === 'delivery.platform_fee_pct') return Promise.resolve(mockPlatformConfig(key, 15));
+        return Promise.resolve(null);
+      });
 
       await service.completeDelivery(ORDER_ID, USER_ID, {
         proofPhotoBase64: base64Photo,
       } as any);
 
-      expect(mockPrisma.platformConfig.findUnique).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { key: 'delivery_platform_fee_pct' } }),
+      expect(mockS3.upload).toHaveBeenCalledWith(
+        expect.stringMatching(/^delivery-proof\//),
+        expect.any(Buffer),
+        'image/jpeg',
       );
+      expect(mockTx.wallet.update).toHaveBeenCalledWith({
+        where: { id: WALLET_ID },
+        data: { balance: 640 },
+      });
       expect(mockTx.transaction.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            amount: expectedEarnings,
             gateway: 'INTERNAL',
+            reference: expect.stringMatching(/^ISY-RDR-/),
+            amount: 640,
+            metadata: expect.objectContaining({ module: 'delivery' }),
           }),
         }),
       );
+      expect(mockPrisma.shadowSettlementComparison.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ module: 'delivery', matched: true }),
+        }),
+      );
+      expect(mockSettlement.settle).not.toHaveBeenCalled();
     });
   });
 
