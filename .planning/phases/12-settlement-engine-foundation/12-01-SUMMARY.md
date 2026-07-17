@@ -115,3 +115,12 @@ None - no external service configuration required.
 ---
 *Phase: 12-settlement-engine-foundation*
 *Completed: 2026-07-17*
+
+## Self-Check: PASSED
+
+- FOUND: backend/src/common/services/settlement.service.ts
+- FOUND: backend/src/common/services/__tests__/settlement.service.spec.ts
+- FOUND: .planning/phases/12-settlement-engine-foundation/12-01-SUMMARY.md
+- FOUND: d33057c (test commit)
+- FOUND: c04e38e (feat commit)
+- FOUND: 77decb8 (docs commit)
