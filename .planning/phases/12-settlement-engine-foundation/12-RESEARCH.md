@@ -403,17 +403,15 @@ This exact technique (mock `$transaction`'s callback, capture every `tx.transact
 
 **If this table is empty:** N/A — see above.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Does Events settlement pay the organizer, or is it Ministry+platform only like Studio?**
+1. **RESOLVED — Does Events settlement pay the organizer, or is it Ministry+platform only like Studio?**
    - What we know: `Event.organizerId` exists (an organizer to pay); Studio's 2-way design is explicitly justified by `StudioSlot` having no owner field, which does not apply to Events.
-   - What's unclear: CONTEXT.md's D-09 doesn't state the recipient count explicitly, unlike D-10 (Studio, explicit 2-way) and the implicit-but-clear 3-way for Marketplace/Stays.
-   - Recommendation: Default to 3-way (organizer + Ministry + platform) per A1 above unless the user/planner explicitly confirms otherwise during plan-checking or discuss-phase follow-up.
+   - Resolution: Confirmed 3-way (organizer + Ministry + platform) via user clarification during `/gsd-plan-phase 12`. Recorded as a CONTEXT.md D-09 amendment and implemented in Plan 12-05.
 
-2. **Exact `PlatformConfig` key names for the four net-new fee/levy pairs (Events x2, Studio x2) and Stays' `govtLevyPct` snapshot source key.**
+2. **RESOLVED — Exact `PlatformConfig` key names for the four net-new fee/levy pairs (Events x2, Studio x2) and Stays' `govtLevyPct` snapshot source key.**
    - What we know: The KV pattern is well-established (`transport_platform_fee_pct`, `PLATFORM_FEE_PCT`, `tour.platform_commission_pct`) but the codebase mixes `snake_case` and `dot.case` naming conventions inconsistently across modules — there is no single canonical style to match.
-   - What's unclear: Which naming convention the planner should pick for the new keys.
-   - Recommendation: Follow the CONTEXT.md-suggested names literally (`events.platform_fee_pct`, `events.govt_levy_pct`, `studio.platform_fee_pct`, `studio.govt_levy_pct` — dot.case, module-prefixed) since these are already spelled out in D-09/D-10's text, for consistency with the `tour.*` keys they sit alongside conceptually.
+   - Resolution: Followed the CONTEXT.md-suggested names literally (`events.platform_fee_pct`, `events.govt_levy_pct`, `studio.platform_fee_pct`, `studio.govt_levy_pct` — dot.case, module-prefixed), consistent with the `tour.*` keys they sit alongside conceptually. Implemented in Plans 12-02, 12-05, 12-06, 12-07.
 
 ## Environment Availability
 
