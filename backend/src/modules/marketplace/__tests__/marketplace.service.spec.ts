@@ -7,8 +7,14 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { PaystackService } from '../../../common/services/paystack.service';
 import { SendgridService } from '../../../common/services/sendgrid.service';
 import { KafkaService } from '../../../kafka/kafka.service';
+import { SettlementService } from '../../../common/services/settlement.service';
 
 const mockKafka = { emit: jest.fn().mockResolvedValue(undefined), consume: jest.fn().mockResolvedValue(undefined) };
+
+const mockSettlement = {
+  settle: jest.fn().mockResolvedValue({ status: 'SETTLED', platformAmountNgn: 0, recipientCredits: [] }),
+  resolveMinistryWallet: jest.fn().mockResolvedValue({ id: 'WAL-MINISTRY' }),
+};
 
 const USER_ID = 'user-uuid-001';
 const VENDOR_ID = 'vendor-uuid-001';
@@ -50,8 +56,10 @@ const mockOrder = {
   paystackRef: PAYSTACK_REF,
   status: 'PENDING',
   deletedAt: null,
+  metadata: {},
   user: { email: 'buyer@example.com', firstName: 'Ade' },
-  orderItems: [{ product: { name: 'Ankara Basket' }, quantity: 2 }],
+  vendor: mockVendor,
+  orderItems: [{ productId: PRODUCT_ID, product: { name: 'Ankara Basket' }, quantity: 2 }],
 };
 
 const mockPlatformConfig = { key: 'PLATFORM_FEE_PCT', value: 0.10 };
@@ -65,6 +73,7 @@ const mockPrisma = {
   order: { findFirst: jest.fn(), findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
   platformConfig: { findUnique: jest.fn() },
   user: { findUnique: jest.fn() },
+  wallet: { findUnique: jest.fn() },
   $transaction: jest.fn(),
 };
 
@@ -83,6 +92,7 @@ describe('MarketplaceService', () => {
         { provide: PaystackService, useValue: mockPaystack },
         { provide: SendgridService, useValue: mockSendgrid },
         { provide: KafkaService, useValue: mockKafka },
+        { provide: SettlementService, useValue: mockSettlement },
       ],
     }).compile();
 
@@ -252,22 +262,63 @@ describe('MarketplaceService', () => {
     it('returns early when order not found', async () => {
       mockPrisma.order.findUnique.mockResolvedValue(null);
       await service.handleOrderPayment({ reference: 'UNKNOWN' });
-      expect(mockPrisma.order.update).not.toHaveBeenCalled();
+      expect(mockSettlement.settle).not.toHaveBeenCalled();
     });
 
-    it('marks order PROCESSING on payment success', async () => {
+    it('does not call settlementService.settle for a non-PENDING order (idempotency)', async () => {
+      mockPrisma.order.findUnique.mockResolvedValueOnce({ ...mockOrder, status: 'PROCESSING' });
+      await service.handleOrderPayment({ reference: PAYSTACK_REF });
+      expect(mockSettlement.settle).not.toHaveBeenCalled();
+    });
+
+    it('settles vendor + Ministry via SettlementService and marks order PROCESSING on payment success', async () => {
       mockPrisma.order.findUnique
         .mockResolvedValueOnce({ ...mockOrder, status: 'PENDING' }) // handleOrderPayment query
         .mockResolvedValueOnce({ ...mockOrder, status: 'PROCESSING' }); // notifyOrderUpdate query
-      mockPrisma.order.update.mockResolvedValue({});
+      mockPrisma.wallet.findUnique
+        .mockResolvedValueOnce({ id: 'WAL-VENDOR' }) // vendorWallet
+        .mockResolvedValueOnce({ id: 'WAL-BUYER' }); // buyerWallet
       mockPrisma.vendor.findUnique.mockResolvedValue(mockVendor);
       mockPrisma.user.findUnique.mockResolvedValue({ email: 'vendor@example.com', firstName: 'Vendor' });
       mockSendgrid.sendEmail.mockResolvedValue(undefined);
 
       await service.handleOrderPayment({ reference: PAYSTACK_REF });
 
-      expect(mockPrisma.order.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: { status: 'PROCESSING' } }),
+      expect(mockSettlement.settle).toHaveBeenCalledTimes(1);
+      const settleArgs = mockSettlement.settle.mock.calls[0][0];
+      expect(settleArgs.amountKobo).toBe(Number(mockOrder.totalAmount) * 100);
+      expect(settleArgs.recipients).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ tag: 'VENDOR', amountNgn: Number(mockOrder.vendorPayout) }),
+          expect.objectContaining({ tag: 'MINISTRY', amountNgn: Number(mockOrder.govtLevy) }),
+        ]),
+      );
+    });
+
+    it('wires status flip and stock decrement into the onSettled callback', async () => {
+      mockPrisma.order.findUnique
+        .mockResolvedValueOnce({ ...mockOrder, status: 'PENDING' })
+        .mockResolvedValueOnce({ ...mockOrder, status: 'PROCESSING' });
+      mockPrisma.wallet.findUnique
+        .mockResolvedValueOnce({ id: 'WAL-VENDOR' })
+        .mockResolvedValueOnce({ id: 'WAL-BUYER' });
+      mockPrisma.vendor.findUnique.mockResolvedValue(mockVendor);
+      mockPrisma.user.findUnique.mockResolvedValue({ email: 'vendor@example.com', firstName: 'Vendor' });
+      mockSendgrid.sendEmail.mockResolvedValue(undefined);
+
+      await service.handleOrderPayment({ reference: PAYSTACK_REF });
+
+      const mockTx = {
+        order: { update: jest.fn().mockResolvedValue({}) },
+        product: { update: jest.fn().mockResolvedValue({}) },
+      };
+      await mockSettlement.settle.mock.calls[0][0].onSettled(mockTx);
+
+      expect(mockTx.order.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: ORDER_ID }, data: { status: 'PROCESSING' } }),
+      );
+      expect(mockTx.product.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: PRODUCT_ID } }),
       );
     });
   });
