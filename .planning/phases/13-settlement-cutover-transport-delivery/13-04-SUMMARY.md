@@ -130,3 +130,7 @@ None - no external service configuration required. This plan only touched a stan
 ---
 *Phase: 13-settlement-cutover-transport-delivery*
 *Completed: 2026-07-17*
+
+## Self-Check: PASSED
+
+All modified/created files verified present on disk (`backend/scripts/shadow-settlement-verify.ts`, `.gitignore`, `13-04-SUMMARY.md`); both commits (`3575c62`, `b00b800`) verified present in `git log --oneline --all`.
