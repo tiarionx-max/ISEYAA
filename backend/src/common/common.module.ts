@@ -1,4 +1,5 @@
 import { Global, Module } from '@nestjs/common';
+import { SettlementController } from './controllers/settlement.controller';
 import { UploadController } from './controllers/upload.controller';
 import { DojahService } from './services/dojah.service';
 import { EncryptionService } from './services/encryption.service';
@@ -16,7 +17,7 @@ import { VectorService } from './services/vector.service';
 
 @Global()
 @Module({
-  controllers: [UploadController],
+  controllers: [SettlementController, UploadController],
   providers: [
     DojahService,
     EncryptionService,

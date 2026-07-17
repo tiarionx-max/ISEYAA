@@ -238,6 +238,27 @@ export class SettlementService implements OnModuleInit {
     );
   }
 
+  // ── Statement query — SETTLE-07 itemized recipient statement (audit-trail read) ─
+
+  async getStatement(walletId: string, opts: { dateFrom?: string; dateTo?: string } = {}) {
+    return this.prisma.transaction.findMany({
+      where: {
+        walletId,
+        type: 'CREDIT',
+        ...(opts.dateFrom || opts.dateTo
+          ? {
+              createdAt: {
+                ...(opts.dateFrom && { gte: new Date(opts.dateFrom) }),
+                ...(opts.dateTo && { lte: new Date(opts.dateTo) }),
+              },
+            }
+          : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+  }
+
   // ── Ministry wallet resolution — always fresh, never cached (Pitfall 2) ────
 
   async resolveMinistryWallet(): Promise<{ id: string } | null> {
