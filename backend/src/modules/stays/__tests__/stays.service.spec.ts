@@ -10,8 +10,14 @@ import { S3Service } from '../../../common/services/s3.service';
 import { SendgridService } from '../../../common/services/sendgrid.service';
 import { ImageService } from '../../../common/services/image.service';
 import { KafkaService } from '../../../kafka/kafka.service';
+import { SettlementService } from '../../../common/services/settlement.service';
 
 const mockKafka = { emit: jest.fn().mockResolvedValue(undefined), consume: jest.fn().mockResolvedValue(undefined) };
+
+const mockSettlement = {
+  settle: jest.fn().mockResolvedValue({ status: 'SETTLED', platformAmountNgn: 0, recipientCredits: [] }),
+  resolveMinistryWallet: jest.fn().mockResolvedValue({ id: 'WAL-MINISTRY' }),
+};
 
 const HOST_ID = 'host-uuid-001';
 const PROP_ID = 'prop-uuid-001';
@@ -46,6 +52,7 @@ const mockBooking = {
   checkOut: futureCheckOut,
   guests: 2,
   totalPrice: 45000,
+  govtLevyPct: 0.05,
   status: 'CONFIRMED',
   paystackRef: PAYSTACK_REF,
   escrowReleasedAt: null,
@@ -64,6 +71,7 @@ const mockPrisma = {
   wallet: { findUnique: jest.fn() },
   transaction: { create: jest.fn() },
   user: { findUnique: jest.fn() },
+  platformConfig: { findUnique: jest.fn() },
   $transaction: jest.fn(),
   $queryRaw: jest.fn(),
 };
@@ -87,6 +95,7 @@ describe('StaysService', () => {
         { provide: SendgridService, useValue: mockSendgrid },
         { provide: ImageService, useValue: mockImage },
         { provide: KafkaService, useValue: mockKafka },
+        { provide: SettlementService, useValue: mockSettlement },
       ],
     }).compile();
 
@@ -268,6 +277,63 @@ describe('StaysService', () => {
 
       await expect(service.createBooking(USER_ID, PROP_ID, dto as any)).rejects.toThrow(ConflictException);
     });
+
+    it('snapshots govtLevyPct from PlatformConfig onto the created booking', async () => {
+      mockPrisma.property.findFirst.mockResolvedValue(mockProperty);
+      mockPrisma.platformConfig.findUnique.mockResolvedValue({ key: 'stays.govt_levy_pct', value: 0.05 });
+      let createData: any;
+      mockPrisma.$transaction.mockImplementation(async (fn) => {
+        const txMock = {
+          $queryRaw: jest.fn().mockResolvedValue([]),
+          booking: {
+            create: jest.fn().mockImplementation((args) => {
+              createData = args.data;
+              return { ...mockBooking, status: 'PENDING' };
+            }),
+          },
+        };
+        return fn(txMock);
+      });
+      mockPaystack.initiatePayment.mockResolvedValue({
+        authorizationUrl: 'https://paystack.com/pay/xyz',
+        accessCode: 'xyz',
+        reference: PAYSTACK_REF,
+      });
+
+      await service.createBooking(USER_ID, PROP_ID, dto as any);
+
+      expect(mockPrisma.platformConfig.findUnique).toHaveBeenCalledWith({
+        where: { key: 'stays.govt_levy_pct' },
+      });
+      expect(createData.govtLevyPct).toBe(0.05);
+    });
+
+    it('falls back to 0.05 govtLevyPct when PlatformConfig has no key set', async () => {
+      mockPrisma.property.findFirst.mockResolvedValue(mockProperty);
+      mockPrisma.platformConfig.findUnique.mockResolvedValue(null);
+      let createData: any;
+      mockPrisma.$transaction.mockImplementation(async (fn) => {
+        const txMock = {
+          $queryRaw: jest.fn().mockResolvedValue([]),
+          booking: {
+            create: jest.fn().mockImplementation((args) => {
+              createData = args.data;
+              return { ...mockBooking, status: 'PENDING' };
+            }),
+          },
+        };
+        return fn(txMock);
+      });
+      mockPaystack.initiatePayment.mockResolvedValue({
+        authorizationUrl: 'https://paystack.com/pay/xyz',
+        accessCode: 'xyz',
+        reference: PAYSTACK_REF,
+      });
+
+      await service.createBooking(USER_ID, PROP_ID, dto as any);
+
+      expect(createData.govtLevyPct).toBe(0.05);
+    });
   });
 
   // ── handleStayPayment ──────────────────────────────────────────────────────
@@ -297,6 +363,62 @@ describe('StaysService', () => {
       mockPrisma.booking.findUnique.mockResolvedValue({ ...mockBooking, status: 'CONFIRMED' });
       await service.handleStayPayment({ reference: PAYSTACK_REF });
       expect(mockPrisma.booking.update).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── releaseEscrow ──────────────────────────────────────────────────────────
+
+  describe('releaseEscrow', () => {
+    const dueBooking = {
+      ...mockBooking,
+      totalPrice: 45000,
+      govtLevyPct: 0.05,
+      property: { hostId: HOST_ID },
+    };
+    const hostWallet = { id: 'wallet-host-001', userId: HOST_ID, balance: 10000 };
+
+    it('SETTLE-05 regression: settles host at 42750 (NOT 100% of totalPrice) and Ministry at 2250 via a single SettlementService.settle call, gateway INTERNAL, no buyerWalletId', async () => {
+      mockPrisma.booking.findMany.mockResolvedValue([dueBooking]);
+      mockPrisma.wallet.findUnique.mockResolvedValue(hostWallet);
+
+      await service.releaseEscrow();
+
+      expect(mockSettlement.settle).toHaveBeenCalledTimes(1);
+      const call = mockSettlement.settle.mock.calls[0][0];
+      expect(call.gateway).toBe('INTERNAL');
+      expect(call.buyerWalletId).toBeUndefined();
+
+      const hostRecipient = call.recipients.find((r: any) => r.tag === 'HOST');
+      const ministryRecipient = call.recipients.find((r: any) => r.tag === 'MINISTRY');
+      expect(hostRecipient.amountNgn).toBe(42750);
+      expect(hostRecipient.amountNgn).toBeLessThan(45000);
+      expect(ministryRecipient.amountNgn).toBe(2250);
+    });
+
+    it('skips bookings with no resolvable host wallet without calling settle', async () => {
+      mockPrisma.booking.findMany.mockResolvedValue([dueBooking]);
+      mockPrisma.wallet.findUnique.mockResolvedValue(null);
+
+      await service.releaseEscrow();
+
+      expect(mockSettlement.settle).not.toHaveBeenCalled();
+    });
+
+    it('invokes onSettled callback which flips escrowReleasedAt on the booking', async () => {
+      mockPrisma.booking.findMany.mockResolvedValue([dueBooking]);
+      mockPrisma.wallet.findUnique.mockResolvedValue(hostWallet);
+      const txBookingUpdate = jest.fn().mockResolvedValue(undefined);
+      mockSettlement.settle.mockImplementationOnce(async (input: any) => {
+        await input.onSettled?.({ booking: { update: txBookingUpdate } });
+        return { status: 'SETTLED', platformAmountNgn: 0, recipientCredits: [] };
+      });
+
+      await service.releaseEscrow();
+
+      expect(txBookingUpdate).toHaveBeenCalledWith({
+        where: { id: dueBooking.id },
+        data: { escrowReleasedAt: expect.any(Date) },
+      });
     });
   });
 
