@@ -113,3 +113,12 @@ None - no external service configuration required.
 ---
 *Phase: 12-settlement-engine-foundation*
 *Completed: 2026-07-17*
+
+## Self-Check: PASSED
+
+- FOUND: backend/src/modules/marketplace/marketplace.service.ts
+- FOUND: backend/src/modules/marketplace/__tests__/marketplace.service.spec.ts
+- FOUND: .planning/phases/12-settlement-engine-foundation/12-04-SUMMARY.md
+- FOUND commit: 6d28cef (Task 1)
+- FOUND commit: f9c178d (Task 2)
+- FOUND commit: 14c4e6b (docs: SUMMARY)
