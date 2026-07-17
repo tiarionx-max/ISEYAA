@@ -660,6 +660,20 @@ model PlatformConfig {
   @@map("platform_configs")
 }
 
+model ShadowSettlementComparison {
+  id              String   @id @default(uuid())
+  module          String // 'transport' | 'delivery'
+  sourceId        String // Trip.id or DeliveryOrder.id this comparison is for
+  oldEarnerAmount Decimal
+  newEarnerAmount Decimal
+  matched         Boolean
+  comparedAt      DateTime @default(now())
+
+  @@index([module, comparedAt])
+  @@index([module, matched])
+  @@map("shadow_settlement_comparisons")
+}
+
 model AuditLog {
   id        String    @id @default(uuid())
   userId    String?
