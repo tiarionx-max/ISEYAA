@@ -444,17 +444,19 @@ if (existing) {
 | A3 | A new `ShadowSettlementComparison` Prisma table (not log-scraping) is the right persistence mechanism for Stage 2's multi-day bake-period gate | Pattern 3, Alternatives Considered | If wrong (e.g., team prefers zero-schema-change and is fine querying Grafana/OTel logs), the planner should size a schema migration for this table as part of Phase 13's task list, which is additional scope not explicitly named in CONTEXT.md's Decisions — CONTEXT.md's D-06 language ("script output file or simple summary") leans toward file/log output specifically for Stage 1, and is ambiguous for Stage 2's cross-request persistence needs |
 | A4 | The two new `PlatformConfig` keys should use the Phase 12 dot-convention (`transport.govt_levy_pct`) rather than matching the OLD underscore convention already seeded (`transport_platform_fee_pct`) | State of the Art | If wrong, inconsistent naming persists; low risk either way since `PlatformConfig` keys are just DB rows, not compile-time constants |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Should `Trip.platformFee`/`DeliveryOrder.platformFee` be split into two DB columns (mirroring `govtLevy` on `Order`) instead of staying a combined total?**
    - What we know: No current code reads these fields outside Transport/Delivery's own modules and their specs.
    - What's unclear: Whether Phase 14 (Ministry Dashboard) will want to query `Trip`/`DeliveryOrder` directly for govt-share reporting rather than going through `SettlementService`'s `Transaction` audit trail exclusively.
    - Recommendation: Keep as a combined total this phase (Assumption A1) since Phase 14 is explicitly scoped to consume the Ministry wallet's `Transaction` ledger (per `MIN-04`: "sourced from the standing Ministry wallet's transaction ledger"), not `Trip`/`DeliveryOrder` fields directly — this is corroborated by REQUIREMENTS.md's MIN-04 wording. Low risk to defer any schema split.
+   - **RESOLVED:** Keep `Trip.platformFee`/`DeliveryOrder.platformFee` as the COMBINED (govt + platform) commission total, matching Assumption A1. Implemented in Plans 13-02 (`onSettled` sets `platformFee: totalCommission`) and 13-03 (same pattern for `DeliveryOrder`). No schema split performed this phase.
 
 2. **Should the `ShadowSettlementComparison` table (or equivalent) be a net-new addition, and should the planner size a migration for it in Wave 0?**
    - What we know: Zero shadow/dry-run infra exists; D-06 mentions "script output file or simple summary" for reporting, not explicitly a DB table.
    - What's unclear: Whether "simple summary" was intended to cover the entire Stage 2 multi-day bake period tracking, or only Stage 1's one-shot report.
    - Recommendation: Treat this as a planner decision informed by Assumption A3 above — a lightweight table is the most reliable mechanism for a programmatic go/no-go gate spanning multiple days and hundreds of live requests; a Logger-only approach works but requires manual/Grafana-assisted counting, which is more failure-prone for a government-payments go-live gate.
+   - **RESOLVED:** Adopted the durable `ShadowSettlementComparison` Prisma table (Assumption A3 accepted) over log-only output. Implemented in Plan 13-01 (schema model + migration, Task 1/Task 2) and consumed by Plans 13-02/13-03 (Stage 2 inline shadow-write, Task 1).
 
 ## Environment Availability
 

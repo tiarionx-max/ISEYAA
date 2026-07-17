@@ -1,9 +1,9 @@
 ---
 phase: 13
 slug: settlement-cutover-transport-delivery
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: final
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-07-17
 ---
 
@@ -38,14 +38,15 @@ created: 2026-07-17
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 13-01-XX | TBD | 0 | SETTLE-09 | T-13-01 | Rewrite of `transport.service.spec.ts`'s `completeTrip` mocks from direct-`$transaction` assertions to `SettlementService.settle()` call-shape assertions | unit | `npx jest transport.service.spec -t completeTrip` | ✅ existing spec, needs rewrite | ⬜ pending |
-| 13-01-XX | TBD | 0 | SETTLE-09 | T-13-01 | Rewrite of `delivery.service.spec.ts`'s `completeDelivery` mocks, same pattern | unit | `npx jest delivery.service.spec -t completeDelivery` | ✅ existing spec, needs rewrite | ⬜ pending |
-| 13-02-XX | TBD | 1 | SETTLE-03 | T-13-01 / T-13-02 | `completeTrip()` credits driver (unchanged 85%), Ministry (new), platform (implicit) via `SettlementService.settle()`, canonical lock ordering preserved | unit | `npx jest transport.service.spec -t completeTrip` | ✅ (post-rewrite) | ⬜ pending |
-| 13-02-XX | TBD | 1 | SETTLE-04 | T-13-01 / T-13-02 | `completeDelivery()` same 3-way pattern for RIDER | unit | `npx jest delivery.service.spec -t completeDelivery` | ✅ (post-rewrite) | ⬜ pending |
-| 13-02-XX | TBD | 1 | SETTLE-03/04 | — | Deterministic idempotency reference (`ISY-TRP-<tripId>` / `ISY-DLV-<orderId>`) replaces random-UUID scheme so replay-detection works | unit | `npx jest transport.service.spec delivery.service.spec -t idempoten` | ❌ Wave 0 gap | ⬜ pending |
-| 13-02-XX | TBD | 1 | SETTLE-03/04 | — | Cutover flag (`transport.settlement_engine_enabled` / `delivery.settlement_engine_enabled`) gates old-vs-new code path correctly for both `true`/`false` states, including instant rollback | unit | `npx jest transport.service.spec delivery.service.spec -t "settlement_engine_enabled"` | ❌ Wave 0 gap | ⬜ pending |
-| 13-03-XX | TBD | 1 | SETTLE-09 | T-13-03 | Shadow-mode Stage 1 batch script produces zero discrepancies against historical sample | integration/manual | `ts-node backend/scripts/shadow-settlement-verify.ts` | ❌ Wave 0 — net-new script | ⬜ pending |
-| 13-03-XX | TBD | 1 | SETTLE-09 | T-13-03 | Shadow-mode Stage 2 live dual-run persists comparison rows with `matched: true` for every real completion during bake period | unit + manual bake period | `npx jest transport.service.spec -t shadow` + live 3-day/100-tx observation | ❌ Wave 0 — net-new model + coverage | ⬜ pending |
+| 13-01-T1 | 13-01 | 1 | SETTLE-09 | — | Add `ShadowSettlementComparison` Prisma model (schema only) | n/a (schema) | `cd backend && npx prisma validate` | ✅ finalized | ⬜ pending |
+| 13-01-T2 | 13-01 | 1 | SETTLE-09 | T-13-01a | Apply migration; `shadowSettlementComparison` delegate available on generated Prisma Client | n/a (migration) | `cd backend && npx prisma migrate status` | ✅ finalized | ⬜ pending |
+| 13-01-T3 | 13-01 | 1 | SETTLE-09 | T-13-01a | Seed 6 new `PlatformConfig` rows (govt_levy_pct/platform_fee_pct/settlement_engine_enabled × 2 modules) | n/a (seed) | `cd backend && npx prisma db seed` | ✅ finalized | ⬜ pending |
+| 13-02-T1 | 13-02 | 2 | SETTLE-03, SETTLE-09 | T-13-01, T-13-02, T-13-03 | `completeTrip()` credits driver (unchanged 85%), Ministry (new), platform (implicit) via `SettlementService.settle()`, canonical lock ordering preserved; deterministic `ISY-TRP-<tripId>` idempotency reference; Stage-2 shadow write on the `false` path | unit (TDD) + typecheck | `cd backend && npx tsc --noEmit -p tsconfig.build.json` | ✅ finalized | ⬜ pending |
+| 13-02-T2 | 13-02 | 2 | SETTLE-03, SETTLE-09 | T-13-01, T-13-03 | Rewrite of `transport.service.spec.ts`'s `completeTrip` mocks from direct-`$transaction` assertions to `SettlementService.settle()` call-shape assertions; cutover-flag `true`/`false` coverage; shadow-write assertion | unit | `cd backend && npx jest transport.service.spec --silent` | ✅ finalized | ⬜ pending |
+| 13-03-T1 | 13-03 | 2 | SETTLE-04, SETTLE-09 | T-13-05, T-13-06, T-13-07 | `completeDelivery()` same 3-way pattern for RIDER (multiply-first formula preserved); deterministic `ISY-DLV-<orderId>` idempotency reference; Stage-2 shadow write on the `false` path | unit (TDD) + typecheck | `cd backend && npx tsc --noEmit -p tsconfig.build.json` | ✅ finalized | ⬜ pending |
+| 13-03-T2 | 13-03 | 2 | SETTLE-04, SETTLE-09 | T-13-05, T-13-07 | Rewrite of `delivery.service.spec.ts`'s `completeDelivery` mocks, same pattern; cutover-flag `true`/`false` coverage; shadow-write assertion | unit | `cd backend && npx jest delivery.service.spec --silent` | ✅ finalized | ⬜ pending |
+| 13-04-T1 | 13-04 | 3 | SETTLE-09 | T-13-09 | Shadow-mode Stage 1 batch script (`shadow-settlement-verify.ts`) produces zero discrepancies against historical sample; provably read-only (no `.settle(`/`wallet.update(`/`wallet.create(`) | integration (script run) | `cd backend && npx ts-node --compiler-options {\"module\":\"CommonJS\"} scripts/shadow-settlement-verify.ts` | ✅ finalized | ⬜ pending |
+| 13-04-T2 | 13-04 | 3 | SETTLE-03, SETTLE-04, SETTLE-09 | T-13-10 | Full backend suite green (zero regression to Phase 12 `SettlementService` callers); source-level audit confirms no surviving direct `tx.wallet.update` outside the legacy `else` branch in either service | unit (full suite) | `cd backend && npm test` | ✅ finalized | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -53,11 +54,13 @@ created: 2026-07-17
 
 ## Wave 0 Requirements
 
-- [ ] `backend/scripts/shadow-settlement-verify.ts` — Stage 1 batch script stub (net-new, follows `seed.ts`'s raw-`PrismaClient` convention; no `NestFactory.createApplicationContext` pattern exists yet in this codebase)
-- [ ] `ShadowSettlementComparison` Prisma model + migration (if planner accepts the recommended durable-persistence design for Stage 2 bake tracking) — net-new, needs `prisma migrate dev`
-- [ ] Rewrite `backend/src/modules/transport/__tests__/transport.service.spec.ts`'s `completeTrip` describe block — current mocks assert the OLD direct-`$transaction`/`wallet.update` shape; must mock `SettlementService.settle()` instead, mirroring how `studio.service.spec.ts:17` mocks `resolveMinistryWallet`
-- [ ] Rewrite `backend/src/modules/delivery/__tests__/delivery.service.spec.ts`'s `completeDelivery` describe block — same rewrite
-- [ ] New test coverage for the cutover flag branch (both `true`/`false` states) in both service spec files
+- [x] `backend/scripts/shadow-settlement-verify.ts` — Stage 1 batch script (follows `seed.ts`'s raw-`PrismaClient` convention; no `NestFactory.createApplicationContext` pattern exists yet in this codebase) — **planned in Plan 13-04, Task 1**
+- [x] `ShadowSettlementComparison` Prisma model + migration — **planned in Plan 13-01, Task 1 (model) + Task 2 (migration)**
+- [x] Rewrite `backend/src/modules/transport/__tests__/transport.service.spec.ts`'s `completeTrip` describe block — current mocks assert the OLD direct-`$transaction`/`wallet.update` shape; must mock `SettlementService.settle()` instead, mirroring how `studio.service.spec.ts:17` mocks `resolveMinistryWallet` — **planned in Plan 13-02, Task 2**
+- [x] Rewrite `backend/src/modules/delivery/__tests__/delivery.service.spec.ts`'s `completeDelivery` describe block — same rewrite — **planned in Plan 13-03, Task 2**
+- [x] New test coverage for the cutover flag branch (both `true`/`false` states) in both service spec files — **planned in Plan 13-02, Task 2 and Plan 13-03, Task 2**
+
+All Wave 0 gaps identified during research are now covered by concrete tasks across the finalized plan set (13-01 → 13-02/13-03 → 13-04, in dependency-ordered waves 1 → 2 → 3). `wave_0_complete: true` reflects planning-time coverage — execution status per task remains tracked in the Per-Task Verification Map above.
 
 ---
 
@@ -72,11 +75,11 @@ created: 2026-07-17
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 180s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 180s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved (revision iteration 1 — checker warnings W1/W2/W3/W6 addressed in Plans 13-02/13-03/13-04 and 13-RESEARCH.md; sign-off reflects finalized plan set, execution still pending)
