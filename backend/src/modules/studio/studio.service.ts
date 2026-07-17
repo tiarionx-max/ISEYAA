@@ -7,6 +7,7 @@ import {
   ServiceUnavailableException,
   OnModuleInit,
 } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import { KafkaService } from '../../kafka/kafka.service';
 import { v4 as uuidv4 } from 'uuid';
 import { Prisma } from '@prisma/client';
@@ -14,6 +15,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PaystackService } from '../../common/services/paystack.service';
 import { S3Service } from '../../common/services/s3.service';
 import { SendgridService } from '../../common/services/sendgrid.service';
+import { SettlementService } from '../../common/services/settlement.service';
 import { CreateStudioBookingDto } from './dto/create-studio-booking.dto';
 import { UploadContentDto } from './dto/upload-content.dto';
 
@@ -43,6 +45,7 @@ export class StudioService implements OnModuleInit {
     private s3: S3Service,
     private sendgrid: SendgridService,
     private kafka: KafkaService,
+    private settlementService: SettlementService,
   ) {}
 
   async onModuleInit() {
@@ -151,6 +154,7 @@ export class StudioService implements OnModuleInit {
     return { booking, payment };
   }
 
+  @OnEvent('payment.studio_booking')
   async handleStudioPayment(payload: { reference: string }) {
     try {
       const booking = await this.prisma.studioBooking.findUnique({
@@ -163,9 +167,47 @@ export class StudioService implements OnModuleInit {
 
       if (!booking || booking.status !== 'PENDING') return;
 
-      await this.prisma.studioBooking.update({
-        where: { id: booking.id },
-        data: { status: 'CONFIRMED' },
+      // studio.platform_fee_pct / studio.govt_levy_pct — always from PlatformConfig, never
+      // hardcoded (fallbacks below only apply if the config key is entirely unset).
+      const feeCfg = await this.prisma.platformConfig.findUnique({ where: { key: 'studio.platform_fee_pct' } });
+      const platformFeePct = feeCfg ? Number(feeCfg.value) : 0.10;
+      const levyCfg = await this.prisma.platformConfig.findUnique({ where: { key: 'studio.govt_levy_pct' } });
+      const govtLevyPct = levyCfg ? Number(levyCfg.value) : 0.05;
+      const total = Number(booking.totalPrice);
+      const govtLevyNgn = +(total * govtLevyPct).toFixed(2);
+
+      const ministryWallet = await this.settlementService.resolveMinistryWallet();
+      const buyerWallet = await this.prisma.wallet.findUnique({ where: { userId: booking.userId } });
+
+      await this.settlementService.settle({
+        module: 'studio',
+        reference: payload.reference,
+        gateway: 'PAYSTACK',
+        amountKobo: total * 100,
+        recipients: [
+          {
+            tag: 'MINISTRY',
+            refSuffix: 'MINISTRY',
+            walletId: ministryWallet?.id ?? null,
+            amountNgn: govtLevyNgn,
+            metadata: { bookingId: booking.id },
+          },
+        ],
+        buyerWalletId: buyerWallet?.id,
+        description: 'Studio booking commission',
+        platformMetadata: { bookingId: booking.id, configuredPlatformFeePct: platformFeePct },
+        onSettled: async (tx) => {
+          await tx.studioBooking.update({ where: { id: booking.id }, data: { status: 'CONFIRMED' } });
+        },
+        onFailure: async (err) => {
+          await this.prisma.studioBooking.update({
+            where: { id: booking.id },
+            data: {
+              status: 'CANCELLED',
+              metadata: { ...((booking.metadata as any) ?? {}), settlementError: err.message },
+            },
+          });
+        },
       });
 
       if (booking.user.email) {

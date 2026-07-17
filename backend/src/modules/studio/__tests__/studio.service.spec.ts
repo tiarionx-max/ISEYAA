@@ -7,9 +7,15 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { PaystackService } from '../../../common/services/paystack.service';
 import { S3Service } from '../../../common/services/s3.service';
 import { SendgridService } from '../../../common/services/sendgrid.service';
+import { SettlementService } from '../../../common/services/settlement.service';
 import { KafkaService } from '../../../kafka/kafka.service';
 
 const mockKafka = { emit: jest.fn().mockResolvedValue(undefined), consume: jest.fn().mockResolvedValue(undefined) };
+
+const mockSettlement = {
+  settle: jest.fn().mockResolvedValue({ status: 'SETTLED', platformAmountNgn: 0, recipientCredits: [] }),
+  resolveMinistryWallet: jest.fn().mockResolvedValue({ id: 'WAL-MINISTRY' }),
+};
 
 const USER_ID = 'user-uuid-001';
 const SLOT_ID = 'slot-uuid-001';
@@ -71,6 +77,8 @@ const mockPrisma = {
     findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn(),
     update: jest.fn(), count: jest.fn(),
   },
+  platformConfig: { findUnique: jest.fn() },
+  wallet: { findUnique: jest.fn() },
   $transaction: jest.fn(),
   $queryRaw: jest.fn(),
 };
@@ -92,6 +100,7 @@ describe('StudioService', () => {
         { provide: S3Service, useValue: mockS3 },
         { provide: SendgridService, useValue: mockSendgrid },
         { provide: KafkaService, useValue: mockKafka },
+        { provide: SettlementService, useValue: mockSettlement },
       ],
     }).compile();
 
@@ -200,19 +209,30 @@ describe('StudioService', () => {
     it('returns early when booking not found', async () => {
       mockPrisma.studioBooking.findUnique.mockResolvedValue(null);
       await service.handleStudioPayment({ reference: 'UNKNOWN' });
+      expect(mockSettlement.settle).not.toHaveBeenCalled();
       expect(mockPrisma.studioBooking.update).not.toHaveBeenCalled();
     });
 
-    it('confirms booking and sends email with prep checklist', async () => {
+    it('settles Ministry-only (2-way, D-10) with configured govt_levy_pct and sends confirmation email', async () => {
       mockPrisma.studioBooking.findUnique.mockResolvedValue({ ...mockBooking, status: 'PENDING' });
-      mockPrisma.studioBooking.update.mockResolvedValue({});
+      mockPrisma.platformConfig.findUnique.mockImplementation(({ where: { key } }: any) => {
+        if (key === 'studio.govt_levy_pct') return Promise.resolve({ value: 0.05 });
+        if (key === 'studio.platform_fee_pct') return Promise.resolve({ value: 0.10 });
+        return Promise.resolve(null);
+      });
+      mockPrisma.wallet.findUnique.mockResolvedValue({ id: 'WAL-BUYER' });
       mockSendgrid.sendStudioBookingConfirmation.mockResolvedValue(undefined);
 
       await service.handleStudioPayment({ reference: PAYSTACK_REF });
 
-      expect(mockPrisma.studioBooking.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: { status: 'CONFIRMED' } }),
-      );
+      expect(mockSettlement.settle).toHaveBeenCalledTimes(1);
+      const settleArgs = mockSettlement.settle.mock.calls[0][0];
+      expect(settleArgs.recipients).toHaveLength(1);
+      expect(settleArgs.recipients[0].tag).toBe('MINISTRY');
+      expect(settleArgs.recipients[0].amountNgn).toBe(mockBooking.totalPrice * 0.05);
+      // Proves the 2-way-only shape (D-10) — no vendor/owner recipient present.
+      expect(settleArgs.recipients.some((r: any) => ['VENDOR', 'HOST', 'OWNER'].includes(r.tag))).toBe(false);
+
       expect(mockSendgrid.sendStudioBookingConfirmation).toHaveBeenCalledWith(
         expect.objectContaining({
           to: 'creative@example.com',
@@ -221,10 +241,46 @@ describe('StudioService', () => {
       );
     });
 
+    it('falls back to 0.05 govt_levy_pct when PlatformConfig key is unset', async () => {
+      mockPrisma.studioBooking.findUnique.mockResolvedValue({ ...mockBooking, status: 'PENDING' });
+      mockPrisma.platformConfig.findUnique.mockResolvedValue(null);
+      mockPrisma.wallet.findUnique.mockResolvedValue({ id: 'WAL-BUYER' });
+      mockSendgrid.sendStudioBookingConfirmation.mockResolvedValue(undefined);
+
+      await service.handleStudioPayment({ reference: PAYSTACK_REF });
+
+      const settleArgs = mockSettlement.settle.mock.calls[0][0];
+      expect(settleArgs.recipients).toHaveLength(1);
+      expect(settleArgs.recipients[0].amountNgn).toBe(mockBooking.totalPrice * 0.05);
+    });
+
     it('returns early when booking is already confirmed', async () => {
       mockPrisma.studioBooking.findUnique.mockResolvedValue({ ...mockBooking, status: 'CONFIRMED' });
       await service.handleStudioPayment({ reference: PAYSTACK_REF });
+      expect(mockSettlement.settle).not.toHaveBeenCalled();
       expect(mockPrisma.studioBooking.update).not.toHaveBeenCalled();
+    });
+
+    it('transitions booking to CONFIRMED inside the onSettled callback', async () => {
+      mockPrisma.studioBooking.findUnique.mockResolvedValue({ ...mockBooking, status: 'PENDING' });
+      mockPrisma.platformConfig.findUnique.mockResolvedValue(null);
+      mockPrisma.wallet.findUnique.mockResolvedValue({ id: 'WAL-BUYER' });
+      mockSendgrid.sendStudioBookingConfirmation.mockResolvedValue(undefined);
+
+      await service.handleStudioPayment({ reference: PAYSTACK_REF });
+
+      const settleArgs = mockSettlement.settle.mock.calls[0][0];
+      const txStudioBookingUpdate = jest.fn().mockResolvedValue({});
+      const tx = { studioBooking: { update: txStudioBookingUpdate } };
+
+      await settleArgs.onSettled(tx);
+
+      expect(txStudioBookingUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: BOOKING_ID },
+          data: { status: 'CONFIRMED' },
+        }),
+      );
     });
   });
 
