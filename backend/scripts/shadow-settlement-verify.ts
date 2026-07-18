@@ -52,7 +52,10 @@ export async function verifyTransportShadow(sampleSize = 200): Promise<boolean> 
     const totalCommission = Math.round(fare * (totalCommissionPct / 100) * 100) / 100;
     const recomputedDriverEarnings = Math.round((fare - totalCommission) * 100) / 100;
     const storedDriverEarnings = Number(trip.driverEarnings);
-    const match = recomputedDriverEarnings === storedDriverEarnings; // EXACT match, D-06
+    // WR-07: compare at kobo (integer) precision — exact float `===` can produce a
+    // false-positive mismatch (or, less likely, mask a real one) purely from
+    // IEEE-754 representation noise, defeating this script's entire purpose.
+    const match = Math.round(recomputedDriverEarnings * 100) === Math.round(storedDriverEarnings * 100); // D-06
 
     if (!match) {
       mismatches++;
@@ -103,7 +106,10 @@ export async function verifyDeliveryShadow(sampleSize = 200): Promise<boolean> {
     // MULTIPLY-FIRST — must match delivery.service.ts's cutover-enabled path exactly.
     const recomputedRiderEarnings = Math.round(fee * (1 - totalCommissionPct / 100) * 100) / 100;
     const storedRiderEarnings = Number(order.riderEarnings);
-    const match = recomputedRiderEarnings === storedRiderEarnings; // EXACT match, D-06
+    // WR-07: compare at kobo (integer) precision — exact float `===` can produce a
+    // false-positive mismatch (or, less likely, mask a real one) purely from
+    // IEEE-754 representation noise, defeating this script's entire purpose.
+    const match = Math.round(recomputedRiderEarnings * 100) === Math.round(storedRiderEarnings * 100); // D-06
 
     if (!match) {
       mismatches++;
