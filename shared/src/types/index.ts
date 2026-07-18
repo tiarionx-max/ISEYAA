@@ -6,6 +6,7 @@ export enum UserRole {
   LGA_ADMIN = 'LGA_ADMIN',
   STATE_ADMIN = 'STATE_ADMIN',
   SUPER_ADMIN = 'SUPER_ADMIN',
+  MINISTRY_VIEWER = 'MINISTRY_VIEWER',
 }
 
 export enum UserStatus {
