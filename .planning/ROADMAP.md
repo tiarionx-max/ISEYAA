@@ -563,8 +563,8 @@ Plans:
 **Plans**: 6 plans
 Plans:
 **Wave 1** *(no dependencies — runs immediately, parallel)*
-- [ ] 15-01-PLAN.md — Schema & contract foundation: OtpChannel enum (Prisma + TS) + User.otpChannel, DTO channel/email fields, metaWhatsapp/sendgrid resilience vendors, .env.example + MANUAL-ACTIONS.md (Meta template deliverable, D-03)
-- [ ] 15-02-PLAN.md — SendgridService.sendOtpEmail() (throw-not-swallow, Pitfall 1 fix) + spec
+- [x] 15-01-PLAN.md — Schema & contract foundation: OtpChannel enum (Prisma + TS) + User.otpChannel, DTO channel/email fields, metaWhatsapp/sendgrid resilience vendors, .env.example + MANUAL-ACTIONS.md (Meta template deliverable, D-03)
+- [x] 15-02-PLAN.md — SendgridService.sendOtpEmail() (throw-not-swallow, Pitfall 1 fix) + spec
 
 **Wave 2** *(blocked on Wave 1, parallel)*
 - [ ] 15-03-PLAN.md — AuthService core: channel resolution, Redis composite OTP value, sendMetaWhatsapp(), dispatch-with-fallback, phoneAuth() channel persistence, lockout proof (OTP-01/02/03/04)
@@ -625,6 +625,6 @@ Phases 11, 12 (Settlement Foundation), and 15 (WhatsApp OTP) are independent of 
 | 12. Settlement Engine Foundation | 9/9 | Complete   | 2026-07-17 |
 | 13. Settlement Cutover — Transport & Delivery | 4/4 | Complete    | 2026-07-18 |
 | 14. Ministry Dashboard | 10/10 | Complete   | 2026-07-18 |
-| 15. Multi-Channel OTP | 0/6 | Planned | - |
+| 15. Multi-Channel OTP | 2/6 | In Progress|  |
 | 16. Connection Pooling Infrastructure | 0/0 | Not started | - |
 | 17. gRPC Proof-of-Pattern Extraction (notifications-service) | 0/0 | Not started | - |
