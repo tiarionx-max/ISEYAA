@@ -111,3 +111,12 @@ None - no new external service configuration required. This plan is presentation
 ---
 *Phase: 15-multi-channel-otp*
 *Completed: 2026-07-18*
+
+## Self-Check: PASSED
+
+- FOUND: mobile/app/auth/phone.tsx
+- FOUND: mobile/app/auth/otp.tsx
+- FOUND: .planning/phases/15-multi-channel-otp/15-05-SUMMARY.md
+- FOUND: commit 55fad51 (feat: phone.tsx channel picker + conditional email input)
+- FOUND: commit 97a63ab (feat: otp.tsx Fallback Notice Banner)
+- FOUND: commit 0aecc90 (docs: SUMMARY)
