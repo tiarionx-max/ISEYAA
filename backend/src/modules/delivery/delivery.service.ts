@@ -559,7 +559,9 @@ export class DeliveryService {
     const cutoverCfg = await this.prisma.platformConfig.findUnique({
       where: { key: 'delivery.settlement_engine_enabled' },
     });
-    const cutoverEnabled = cutoverCfg ? Boolean(cutoverCfg.value) : false;
+    // WR-01: strict equality avoids Boolean("false") === true footgun on the
+    // untyped Json PlatformConfig column for this safety-critical flag.
+    const cutoverEnabled = cutoverCfg?.value === true;
 
     if (cutoverEnabled) {
       // ── Post-cutover: delegate the rider/Ministry/platform 3-way split to

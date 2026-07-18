@@ -529,7 +529,9 @@ export class TransportService {
     const cutoverCfg = await this.prisma.platformConfig.findUnique({
       where: { key: 'transport.settlement_engine_enabled' },
     });
-    const cutoverEnabled = cutoverCfg ? Boolean(cutoverCfg.value) : false;
+    // WR-01: strict equality avoids Boolean("false") === true footgun on the
+    // untyped Json PlatformConfig column for this safety-critical flag.
+    const cutoverEnabled = cutoverCfg?.value === true;
 
     // Fetched once, reused by both branches.
     const driverWallet = await this.prisma.wallet.findFirst({ where: { userId: driverUserId } });
