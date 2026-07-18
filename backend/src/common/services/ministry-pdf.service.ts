@@ -38,6 +38,9 @@ export interface MinistryPdfInput {
 const PAGE_LEFT = 50;
 const PAGE_RIGHT = 545;
 const PAGE_WIDTH = PAGE_RIGHT - PAGE_LEFT;
+// CR-02 (14-10 gap-closure): floor row height so short/empty cells never
+// collapse to a zero-height row — roughly one line at 9pt Helvetica.
+const MIN_ROW_HEIGHT = 14;
 
 @Injectable()
 export class MinistryPdfService {
@@ -121,6 +124,15 @@ export class MinistryPdfService {
    * column count). Per RESEARCH.md, this is fine for 2-4 columns per
    * section — not a "don't hand-roll" violation (that guidance targets CSV
    * escaping, handled by `fast-csv` in `CsvExportService`).
+   *
+   * CR-02 (14-10 gap-closure): height-aware and page-break-aware, generically
+   * for ANY column set/row count — not a one-off fix scoped to a specific
+   * report shape. Each row's height is measured via `doc.heightOfString()`
+   * per cell (so wrapping content, e.g. a raw UUID column, reserves the
+   * vertical space it actually needs) and `doc.y` advances by the row's max
+   * cell height instead of a fixed `moveDown()` amount. When the next row
+   * would exceed the printable page area, a new page is started and the
+   * column header is re-printed before continuing.
    */
   private renderTable(doc: PDFKit.PDFDocument, section: MinistryPdfSection): void {
     if (section.rows.length === 0) {
@@ -130,22 +142,42 @@ export class MinistryPdfService {
 
     const colWidth = PAGE_WIDTH / section.columns.length;
 
-    // Header row.
-    const headerY = doc.y;
-    doc.fontSize(10).fillColor('#1A6B3C');
-    section.columns.forEach((col, i) => {
-      doc.text(col.label.toUpperCase(), PAGE_LEFT + i * colWidth, headerY, { width: colWidth });
-    });
-    doc.moveDown(0.5);
+    const printHeader = (): void => {
+      const headerY = doc.y;
+      doc.fontSize(10).fillColor('#1A6B3C');
+      section.columns.forEach((col, i) => {
+        doc.text(col.label.toUpperCase(), PAGE_LEFT + i * colWidth, headerY, { width: colWidth });
+      });
+      doc.moveDown(0.5);
+    };
+
+    printHeader();
+
+    // Page size/margins are fixed for the whole document (set once at
+    // construction in render()), so this does not need recomputing after
+    // an addPage() call.
+    const pageBottom = doc.page.height - doc.page.margins.bottom;
 
     // Data rows.
     for (const row of section.rows) {
-      const rowY = doc.y;
       doc.fontSize(9).fillColor('#1C2B2B');
+
+      const cellHeights = section.columns.map((col, i) =>
+        doc.heightOfString(String(row[col.key] ?? ''), { width: colWidth }),
+      );
+      const rowHeight = Math.max(MIN_ROW_HEIGHT, ...cellHeights);
+
+      if (doc.y + rowHeight > pageBottom) {
+        doc.addPage();
+        printHeader();
+        doc.fontSize(9).fillColor('#1C2B2B');
+      }
+
+      const rowY = doc.y;
       section.columns.forEach((col, i) => {
         doc.text(String(row[col.key] ?? ''), PAGE_LEFT + i * colWidth, rowY, { width: colWidth });
       });
-      doc.moveDown(0.4);
+      doc.y = rowY + rowHeight;
     }
   }
 }
