@@ -595,7 +595,7 @@ Plans:
 - [x] 16-02-PLAN.md — DbMetricsService (pg_stat_activity cron poll -> OTel postgres_open_connections gauge) + instrumentation.ts metricReader wiring (POOL-02 metric plumbing)
 
 **Wave 2** *(blocked on Wave 1)*
-- [ ] 16-03-PLAN.md — k6 native-gRPC notifications-service scenario wired into the combined-topology main.js run (POOL-02, D-06)
+- [x] 16-03-PLAN.md — k6 native-gRPC notifications-service scenario wired into the combined-topology main.js run (POOL-02, D-06)
 
 **Wave 3** *(blocked on Wave 2)*
 - [ ] 16-04-PLAN.md — Human verification checkpoint: Neon Console ceiling confirmation (D-03) + combined-topology load test run + Grafana gauge/alert confirmation (D-07, ROADMAP SC3)
@@ -642,5 +642,5 @@ Phases 11, 12 (Settlement Foundation), and 15 (WhatsApp OTP) are independent of 
 | 13. Settlement Cutover — Transport & Delivery | 4/4 | Complete    | 2026-07-18 |
 | 14. Ministry Dashboard | 10/10 | Complete   | 2026-07-18 |
 | 15. Multi-Channel OTP | 6/6 | Complete    | 2026-07-18 |
-| 16. Connection Pooling Infrastructure | 2/4 | In Progress|  |
+| 16. Connection Pooling Infrastructure | 3/4 | In Progress|  |
 | 17. gRPC Proof-of-Pattern Extraction (notifications-service) | 0/0 | Not started | - |
