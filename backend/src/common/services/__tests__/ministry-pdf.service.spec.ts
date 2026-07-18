@@ -173,4 +173,59 @@ describe('MinistryPdfService', () => {
       }),
     ).rejects.toThrow(ServiceUnavailableException);
   });
+
+  // CR-02 (14-10 gap-closure) — renderTable() must be height-aware: a cell
+  // long enough to wrap (e.g. a 36-char UUID in a narrow column) must be
+  // measured via doc.heightOfString() before the next row is positioned,
+  // instead of assuming a fixed single-line row height.
+  it('CR-02: measures row height via doc.heightOfString() for a UUID-length cell in a narrow 5-column table', async () => {
+    const heightOfStringSpy = jest.spyOn(PDFDocument.prototype, 'heightOfString');
+    const uuid = 'a1b2c3d4-e5f6-47a8-9b0c-1d2e3f4a5b6c';
+
+    await service.renderPdf({
+      title: 'Visitor Entries',
+      sections: [
+        {
+          columns: [
+            { key: 'lgaId', label: 'LGA ID' },
+            { key: 'lgaName', label: 'LGA' },
+            { key: 'month', label: 'Month' },
+            { key: 'userRole', label: 'Visitor Role' },
+            { key: 'count', label: 'Count' },
+          ],
+          rows: [{ lgaId: uuid, lgaName: 'Abeokuta North', month: '2026-01', userRole: 'TOURIST', count: 12 }],
+        },
+      ],
+    });
+
+    const calledWithUuid = heightOfStringSpy.mock.calls.some((call) => call[0] === uuid);
+    expect(calledWithUuid).toBe(true);
+  });
+
+  // CR-02 (14-10 gap-closure) — renderTable() must break to a new page (and
+  // re-print the column header) once accumulated row height would exceed
+  // the printable page area, instead of overlapping rows indefinitely.
+  it('CR-02: calls doc.addPage() and re-prints the header when enough rows overflow one page', async () => {
+    const addPageSpy = jest.spyOn(PDFDocument.prototype, 'addPage');
+    const textSpy = jest.spyOn(PDFDocument.prototype, 'text');
+
+    const rows = Array.from({ length: 80 }, (_, i) => ({ lgaName: `LGA ${i}`, count: i }));
+
+    await service.renderPdf({
+      title: 'Visitor Entries',
+      sections: [
+        {
+          columns: [
+            { key: 'lgaName', label: 'LGA' },
+            { key: 'count', label: 'Count' },
+          ],
+          rows,
+        },
+      ],
+    });
+
+    expect(addPageSpy).toHaveBeenCalled();
+    const headerOccurrences = textSpy.mock.calls.filter((call) => call[0] === 'LGA').length;
+    expect(headerOccurrences).toBeGreaterThan(1);
+  });
 });
