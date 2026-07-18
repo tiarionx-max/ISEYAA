@@ -62,10 +62,11 @@ v2.0 — Microservices, Multi-Channel Auth & Government Partnership (current mil
 - ✓ Settlement Engine Foundation — generalized `SettlementService` in `CommonModule` (single `$transaction`, `SELECT FOR UPDATE`, idempotency keys, drift-tolerance assertion) + standing Ministry wallet (SETTLE-01, SETTLE-02); fixed two pre-existing revenue bugs — Stays' `releaseEscrow()` govtLevyPct leak and missing Marketplace/Events/Studio webhook settlement consumers (SETTLE-05, SETTLE-06); per-recipient itemized statements + N-way split rounding tests (SETTLE-07, SETTLE-08) — Phase 12 (completed 2026-07-17).
 - ✓ Settlement Cutover — Transport & Delivery — `completeTrip()`/`completeDelivery()` cutover-flag-gated onto `SettlementService.settle()` for a three-way driver-or-rider/Ministry/platform split, replacing the hardcoded 85/15 and 80/20 (SETTLE-03, SETTLE-04); legacy paths preserved byte-for-byte; Stage 1 batch shadow-verify script + Stage 2 live dual-run comparison prove zero discrepancy before either cutover flag flips live (SETTLE-09) — Phase 13 (4/4 plans, completed 2026-07-17). Both `*.settlement_engine_enabled` flags seeded `false` — live cutover awaits the manual D-08 bake-period gate (3 days or 100 completions, zero discrepancies), not code-enforced by this phase.
 - ✓ Multi-Channel OTP — WhatsApp (direct Meta Graph API)/Email (SendGrid)/SMS (Termii) selectable at registration, returning-user channel preference persisted and honored, bounded-timeout automatic SMS fallback on delivery failure using the same code/expiry, per-identity lockout proven unbypassable by channel switching, post-registration settings screen to change channel (OTP-01, OTP-02, OTP-03, OTP-04) — Phase 15 (6/6 plans, completed 2026-07-18). Verified: 13/13 must-haves, 604 backend + 6 mobile tests passing. **Human verification pending:** live Meta WhatsApp template delivery (blocked on stakeholder template approval, not code) and on-device visual/UX check of the three new mobile screens — see `15-HUMAN-UAT.md`.
+- ✓ Connection Pooling Infrastructure — notifications-service boots cleanly (fixed the `packages/proto` compile-step gap and a `ResilienceModule` DI resolution gap), Neon pooled `-pooler` connection string pattern documented and config-tested (POOL-01), `postgres_open_connections` OTel gauge wired into the existing Grafana Cloud OTLP pipeline for both processes, combined-topology k6 scenario proves total connections stay under the confirmed Neon ceiling (POOL-02) — Phase 16 (4/4 plans, completed 2026-07-18). Verified: 15/15 must-haves, 610 backend tests passing. Operator confirmed the 104-connection baseline stands, the combined-topology load test + Grafana alert are live, and the production Railway monolith's `DATABASE_URL` has been changed to the pooled format and redeployed. Post-execution code review caught and fixed a real regression (OTLP exporter crash on unset endpoint env var) before merge — see `16-REVIEW.md`.
 
 ### Active
 
-v2.0 — Microservices, Multi-Channel Auth & Government Partnership: Phases 16-17 remain (Connection Pooling, gRPC Proof-of-Pattern).
+v2.0 — Microservices, Multi-Channel Auth & Government Partnership: Phase 17 remains (gRPC Proof-of-Pattern Extraction).
 
 ### Out of Scope
 
@@ -135,4 +136,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-18 — Phase 15 complete (multi-channel OTP); OTP-01, OTP-02, OTP-03, OTP-04 validated*
+*Last updated: 2026-07-18 — Phase 16 complete (connection pooling infrastructure); POOL-01, POOL-02 validated*
