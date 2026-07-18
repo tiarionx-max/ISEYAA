@@ -27,8 +27,8 @@ Sprint 1 is shipped. This roadmap covers the six remaining sprints: infrastructu
 - [x] **Phase 10: Documentation Correction + gRPC Build Fix** - Correct the false "8 services extracted" claim, make all 8 service scaffolds actually build, and author `.proto` contracts for the 7 never-stubbed modules (completed 2026-07-15)
 - [x] **Phase 11: Resilience Wrapping** - Circuit-breaker + retry + timeout + fallback around every external vendor call (Paystack, Termii, Anthropic, R2/S3, FCM), visible in observability
  (completed 2026-07-16)
-- [x] **Phase 12: Settlement Engine Foundation** - Generalized `SettlementService` + standing Ministry wallet, plus fixing two pre-existing revenue bugs (Stays escrow fee leak, missing Marketplace/Events/Studio webhook consumers) (completed 2026-07-17)
-- [x] **Phase 13: Settlement Cutover — Transport & Delivery** - Transport and Delivery's live payouts move onto the three-way settlement engine, shadow-mode verified before cutover (completed 2026-07-17)
+- [x] **Phase 12: Settlement Engine Foundation** - Generalized `SettlementService` + standing Ministry wallet, plus fixing two pre-existing revenue bugs (Stays escrow fee leak, missing Marketplace/Events/Studio webhook consumers) (completed 2026-07-17)
+- [x] **Phase 13: Settlement Cutover — Transport & Delivery** - Transport and Delivery's live payouts move onto the three-way settlement engine, shadow-mode verified before cutover (completed 2026-07-17)
 - [ ] **Phase 14: Ministry Dashboard** - `MINISTRY_VIEWER` role + read-only dashboard: visitor counts, purpose-of-visit, revenue-to-government-share, CSV/PDF export, zero PII leakage
 - [ ] **Phase 15: Multi-Channel OTP** - Users choose WhatsApp/Email/SMS for OTP verification at registration, with bounded-timeout SMS fallback and identity-scoped brute-force protection
 - [ ] **Phase 16: Connection Pooling Infrastructure** - Every Prisma client on a pooled connection string, combined-topology load test under Neon's connection ceiling
@@ -519,7 +519,32 @@ Plans:
   4. Ministry dashboard shows revenue-to-government-share, sourced from the standing Ministry wallet's transaction ledger
   5. Every Ministry dashboard report can be exported as CSV and as a formatted, Forest Green/Tropical Gold branded PDF
   6. A `MINISTRY_VIEWER` query response never contains row-level PII (BVN, NIN, phone, name) — verified by an automated field-allowlist/schema-shape test, not by ad hoc review
-**Plans**: TBD
+**Plans**: 8 plans
+Plans:
+**Wave 1** *(no dependencies — runs immediately)*
+- [ ] 14-01-PLAN.md — [BLOCKING] Schema: MINISTRY_VIEWER enum value + VisitorLog model/migration + 3-way enum sync (backend/shared)
+
+**Wave 2** *(blocked on Wave 1, parallel)*
+- [ ] 14-02-PLAN.md — CommonModule services: VisitorLogService (write path) + CsvExportService (fast-csv) + purpose taxonomy constant
+- [ ] 14-03-PLAN.md — MinistryModule core: controller/service/DTO + visitor-entries + purpose-breakdown queries + RBAC
+
+**Wave 3** *(blocked on Wave 2, parallel)*
+- [ ] 14-04-PLAN.md — VisitorLog write-site wiring: Events check-in + Stays payment confirmation (+ purpose capture at checkout)
+- [ ] 14-05-PLAN.md — VisitorLog write-site wiring: Tour Bookings (solo/group + split-bill-final, nullable lgaId)
+- [ ] 14-06-PLAN.md — Ministry revenue-to-government query (MIN-04) + automated PII field-allowlist test (MIN-07)
+
+**Wave 4** *(blocked on Wave 3)*
+- [ ] 14-07-PLAN.md — Export layer: MinistryPdfService (branded tabular renderer) + 6 CSV/PDF export routes
+
+**Wave 5** *(blocked on Wave 4)*
+- [ ] 14-08-PLAN.md — Web /admin/ministry dashboard: 3 report panels, charts, filters, 6 export buttons
+
+**Cross-cutting constraints:**
+- `MINISTRY_VIEWER` is provisioned by an admin, never self-registered — excluded from `REGISTERABLE_ROLES`
+- `MinistryController` never shares a route with a `@Patch`/`@Post`/`@Delete` handler, in this or any future phase (MIN-01)
+- `VisitorLog` carries zero PII columns by construction (D-07) — the structural half of MIN-07's guarantee
+- Purpose-of-visit taxonomy lives in one exported constant (`VISITOR_PURPOSE_VALUES`), never duplicated or baked into query logic (D-05)
+- Platform fees/levies feeding MIN-04's revenue figures always read from PlatformConfig — never hardcoded (inherited from Phase 12/13)
 **UI hint**: yes
 
 ### Phase 15: Multi-Channel OTP
@@ -578,8 +603,7 @@ Phases 11, 12 (Settlement Foundation), and 15 (WhatsApp OTP) are independent of 
 | 11. Resilience Wrapping | 11/11 | Complete   | 2026-07-16 |
 | 12. Settlement Engine Foundation | 9/9 | Complete   | 2026-07-17 |
 | 13. Settlement Cutover — Transport & Delivery | 4/4 | Complete    | 2026-07-18 |
-| 14. Ministry Dashboard | 0/0 | Not started | - |
+| 14. Ministry Dashboard | 0/8 | Planned | - |
 | 15. Multi-Channel OTP | 0/0 | Not started | - |
 | 16. Connection Pooling Infrastructure | 0/0 | Not started | - |
 | 17. gRPC Proof-of-Pattern Extraction (notifications-service) | 0/0 | Not started | - |
-</content>
