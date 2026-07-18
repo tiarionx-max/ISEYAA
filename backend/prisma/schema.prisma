@@ -39,6 +39,12 @@ enum KYCStatus {
   REJECTED
 }
 
+enum OtpChannel {
+  SMS
+  WHATSAPP
+  EMAIL
+}
+
 enum AttractionCategory {
   NATURAL
   CULTURAL
@@ -233,6 +239,7 @@ model User {
   registeredRoles       UserRole[]
   status                UserStatus @default(PENDING)
   kycStatus             KYCStatus  @default(NONE)
+  otpChannel            OtpChannel @default(SMS)
   lgaId                 String?
   lga                   LGA?       @relation(fields: [lgaId], references: [id])
   avatarUrl             String?
