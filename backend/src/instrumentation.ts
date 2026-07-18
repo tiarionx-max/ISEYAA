@@ -2,6 +2,8 @@
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
+import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 
 const sdk = new NodeSDK({
   traceExporter: new OTLPTraceExporter({
@@ -9,6 +11,15 @@ const sdk = new NodeSDK({
     headers: {
       Authorization: `Basic ${process.env.GRAFANA_CLOUD_OTLP_TOKEN ?? ''}`,
     },
+  }),
+  metricReader: new PeriodicExportingMetricReader({
+    exporter: new OTLPMetricExporter({
+      url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
+      headers: {
+        Authorization: `Basic ${process.env.GRAFANA_CLOUD_OTLP_TOKEN ?? ''}`,
+      },
+    }),
+    exportIntervalMillis: 30000,
   }),
   instrumentations: [getNodeAutoInstrumentations()],
 });
