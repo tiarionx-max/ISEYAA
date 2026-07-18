@@ -1,4 +1,4 @@
-import { IsOptional, IsDateString, IsUUID } from 'class-validator';
+import { IsOptional, IsDateString, IsUUID, IsIn } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class MinistryQueryDto {
@@ -16,4 +16,12 @@ export class MinistryQueryDto {
   @IsOptional()
   @IsUUID()
   lgaId?: string;
+
+  // 14-07 MIN-05/MIN-06: export routes only. `csv` is the default when
+  // omitted — @IsIn() rejects anything else with a 400 before any query or
+  // file-generation work runs (T-14-14).
+  @ApiPropertyOptional({ description: 'Export format — export routes only', enum: ['csv', 'pdf'] })
+  @IsOptional()
+  @IsIn(['csv', 'pdf'])
+  format?: 'csv' | 'pdf';
 }
