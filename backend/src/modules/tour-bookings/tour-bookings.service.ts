@@ -214,7 +214,7 @@ export class TourBookingService {
           splitBillEnabled: dto.splitBillEnabled ?? false,
           splitBillPaidUserIds: [],
           snapshot: pkg as any,
-          metadata: { module: 'tour' } as any,
+          metadata: { module: 'tour', ...(dto.purpose && { purpose: dto.purpose }) } as any,
         },
       });
       return [itinerary, newBooking];

@@ -339,6 +339,22 @@ describe('TourBookingService', () => {
         service.createTourBooking(ACTOR_USER_ID, baseDto()),
       ).rejects.toThrow(NotFoundException);
     });
+
+    it('25. dto.purpose set → booking.metadata.purpose matches dto.purpose', async () => {
+      const result = await service.createTourBooking(ACTOR_USER_ID, {
+        ...baseDto(),
+        purpose: 'Business',
+      });
+      expect(result.booking.metadata).toEqual(
+        expect.objectContaining({ module: 'tour', purpose: 'Business' }),
+      );
+    });
+
+    it('26. dto.purpose omitted → booking.metadata has no purpose key', async () => {
+      const result = await service.createTourBooking(ACTOR_USER_ID, baseDto());
+      expect(result.booking.metadata).toEqual({ module: 'tour' });
+      expect(result.booking.metadata).not.toHaveProperty('purpose');
+    });
   });
 
   // ── joinSplitBill ───────────────────────────────────────────────────────
