@@ -2,11 +2,13 @@
 // Full acceptance run (10K VUs): k6 run --env BASE_URL=https://staging.railway.app load-tests/k6/main.js
 // Requires: k6 binary installed (choco install k6 on Windows)
 // Requires: TEST_PHONE and TEST_PASSWORD env vars for authenticated endpoints
+// Requires: NOTIFICATIONS_GRPC_URL env var for the notifications-service gRPC target (default localhost:5008)
 
 import authFlow from './scenarios/auth-flow.js';
 import walletFlow from './scenarios/wallet-flow.js';
 import eventsFlow from './scenarios/events-flow.js';
 import transportFlow from './scenarios/transport-flow.js';
+import notificationsGrpcFlow from './scenarios/notifications-grpc-flow.js';
 
 export const options = {
   stages: [
@@ -21,6 +23,7 @@ export const options = {
     'http_req_duration{endpoint:wallet}': ['p(95)<500'],
     'http_req_duration{endpoint:events}': ['p(95)<500'],
     'http_req_duration{endpoint:auth}': ['p(95)<500'],
+    'grpc_req_duration': ['p(95)<500'],
   },
 };
 
@@ -31,4 +34,5 @@ export default function () {
   walletFlow();
   eventsFlow();
   transportFlow();
+  notificationsGrpcFlow();
 }
