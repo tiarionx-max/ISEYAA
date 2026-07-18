@@ -11,6 +11,8 @@ import {
   SettlementRecipient,
 } from '../../common/services/settlement.service';
 import { KafkaService } from '../../kafka/kafka.service';
+import { VisitorLogService } from '../../common/services/visitor-log.service';
+import { DEFAULT_VISITOR_PURPOSE } from '../../common/constants/visitor-purpose.constants';
 
 /**
  * 09-06 / 12-03 — Tour Settlement Service.
@@ -84,6 +86,7 @@ export class TourSettlementService implements OnModuleInit {
     private eventEmitter: EventEmitter2,
     private kafka: KafkaService,
     private settlementService: SettlementService,
+    private visitorLogService: VisitorLogService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -313,16 +316,63 @@ export class TourSettlementService implements OnModuleInit {
               payload.metadata?.parentReference ?? payload.reference,
           },
         });
+        await this.recordVisitorEntry(booking);
         this.eventEmitter.emit('tour_booking.confirmed', {
           bookingId: booking.id,
           reference: payload.metadata?.parentReference ?? payload.reference,
         });
       }
     } else {
+      await this.recordVisitorEntry(booking);
       this.eventEmitter.emit('tour_booking.confirmed', {
         bookingId: booking.id,
         reference: payload.reference,
       });
+    }
+  }
+
+  // ── D-01 visitor-entry capture — exactly once per confirmed booking ───────
+
+  /**
+   * Writes exactly one VisitorLog row for a booking that has just reached
+   * CONFIRMED — called from both the solo/group `else` branch and the
+   * split-bill final-share branch above, never from `onSettled` and never on
+   * intermediate split-bill share payments. `TourPackage.lgaId` is nullable
+   * (schema.prisma:950) and is passed through as-is. Never throws — a
+   * rejected lookup or `VisitorLogService.record()` call is caught and
+   * logged so the `tour_booking.confirmed` event still emits.
+   */
+  private async recordVisitorEntry(booking: {
+    id: string;
+    tourPackageId: string;
+    buyerUserId: string;
+    tourDate: Date;
+    metadata: any;
+  }): Promise<void> {
+    try {
+      const [tourPackage, buyer] = await Promise.all([
+        this.prisma.tourPackage.findUnique({
+          where: { id: booking.tourPackageId },
+          select: { lgaId: true },
+        }),
+        this.prisma.user.findUnique({
+          where: { id: booking.buyerUserId },
+          select: { role: true },
+        }),
+      ]);
+
+      await this.visitorLogService.record({
+        lgaId: tourPackage?.lgaId ?? null,
+        purpose: (booking.metadata as any)?.purpose ?? DEFAULT_VISITOR_PURPOSE.TOUR,
+        sourceType: 'TOUR',
+        sourceId: booking.id,
+        visitedAt: booking.tourDate,
+        userRole: buyer?.role as any,
+      });
+    } catch (err) {
+      this.logger.error(
+        `Failed to record VisitorLog for tour booking ${booking.id}: ${(err as Error).message}`,
+      );
     }
   }
 

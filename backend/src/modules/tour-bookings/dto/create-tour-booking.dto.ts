@@ -5,6 +5,7 @@ import {
   IsBoolean,
   IsDateString,
   IsEmail,
+  IsIn,
   IsInt,
   IsMobilePhone,
   IsOptional,
@@ -16,6 +17,7 @@ import {
   ValidateNested,
   ArrayMaxSize,
 } from 'class-validator';
+import { VISITOR_PURPOSE_VALUES } from '../../../common/constants/visitor-purpose.constants';
 
 /**
  * One passenger in a group booking (optional manifest).
@@ -84,4 +86,12 @@ export class CreateTourBookingDto {
   @Type(() => PassengerDto)
   @ArrayMaxSize(50)
   passengers?: PassengerDto[];
+
+  @ApiPropertyOptional({
+    description: 'Optional purpose-of-visit (D-06). Defaults to Tourism/Leisure when omitted.',
+    enum: VISITOR_PURPOSE_VALUES,
+  })
+  @IsOptional()
+  @IsIn(VISITOR_PURPOSE_VALUES)
+  purpose?: string;
 }
