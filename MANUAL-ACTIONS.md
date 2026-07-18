@@ -736,15 +736,18 @@ This signal is informational only — this phase's automated plans do not block 
 
 ---
 
-## Phase 16 -- Connection Pooling: Neon Console + Grafana Alert Confirmation
+## Phase 16 -- Connection Pooling: Neon Console + Grafana Alert Confirmation — COMPLETE
 
 Phase 16 documents Neon's built-in `-pooler` connection string pattern (POOL-01) — an explicit `connection_limit`/`pool_timeout` on both the monolith's and notifications-service's `DATABASE_URL`, replacing Prisma's silent default pool size of 10, with zero new infrastructure (D-01: Neon's managed pooler, not a self-hosted PgBouncer container).
 
-This section covers two manual steps, both walked in full step-by-step detail by Plan 16-04's checkpoint tasks:
+This section covered three manual verification steps, all completed by the operator per Plan 16-04's checkpoint tasks. Full detail (Neon plan/CU reading, k6 combined-topology run result, Grafana alert threshold, production Railway change) is recorded in `.planning/phases/16-connection-pooling-infrastructure/16-VERIFICATION.md`.
 
-1. **Neon Console plan/CU confirmation** — confirm the live Neon project's actual compute size and `max_connections` ceiling against the conservative 104-connection baseline assumed in `.env.example`'s comments (16-RESEARCH.md Assumptions Log A1/A2), and apply the `-pooler` endpoint DATABASE_URL to the live production Railway monolith service.
-2. **Grafana Cloud gauge + alert rule confirmation** — confirm the live open-connections gauge panel exists and the 83-connection (80% of baseline, D-07) alert rule is active and firing correctly.
+### Completed record
 
-This is a stub section only — Plan 16-04 fills in the full instructions when it runs.
+1. **Neon Console plan/CU confirmation** (`16-neon-confirmed`) — the operator confirmed the live Neon project's actual `max_connections` ceiling is at or above the conservative 104-connection baseline assumed in `.env.example`'s comments (16-RESEARCH.md Assumptions Log A1/A2). No changes needed to `connection_limit=20`/`5` or the 83-connection Grafana alert threshold — confirmed as-is.
+2. **Combined-topology k6 run + Grafana gauge/alert confirmation** (`16-load-confirmed`) — the operator ran the combined-topology k6 scenario (monolith HTTP + notifications-service gRPC, 50 VUs / 60s), confirmed `pg_stat_activity` stayed under the confirmed ceiling, confirmed the Grafana Cloud `postgres_open_connections` gauge showed live moving values during the run, and saved a Grafana alert rule firing at 83 connections (80% of 104).
+3. **Production Railway `DATABASE_URL` change** (`16-approved`) — the operator updated the monolith service's `DATABASE_URL` on Railway to the pooled `-pooler` format with `connection_limit=20&pool_timeout=10` (no `pgbouncer=true`), left `DIRECT_URL` unchanged, saved the variable, Railway redeployed, and confirmed the change took effect.
 
-**Resume Signal:** Reply: 16-approved
+### Resume Signal
+
+Received: **`16-approved`** — all three verification steps confirmed by the operator. Phase 16 (POOL-01, POOL-02) is complete. See `16-VERIFICATION.md` for the full recorded detail.
