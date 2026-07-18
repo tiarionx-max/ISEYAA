@@ -18,7 +18,7 @@ Full list of env vars that need real values before production (stub mode is acce
 
 | Variable | Service | Where to get it |
 |---|---|---|
-| `DATABASE_URL` | Neon PostgreSQL | Neon dashboard → Connection string (pooler URL with `?pgbouncer=true`) |
+| `DATABASE_URL` | Neon PostgreSQL | Neon dashboard → Connection string, `-pooler` endpoint, add `connection_limit`/`pool_timeout` query params (no legacy `pgbouncer` query parameter — that's for standalone PgBouncer, not Neon's managed proxy) |
 | `REDIS_URL` | Upstash Redis | Upstash Console → Redis database → REST URL |
 | `PAYSTACK_SECRET_KEY` | Paystack | Paystack dashboard → Settings → API Keys |
 | `PAYSTACK_WEBHOOK_SECRET` | Paystack | Paystack dashboard → Settings → Webhooks |
@@ -733,3 +733,18 @@ Until the template is APPROVED (Meta review typically takes minutes to a few hou
 Reply: **`15-meta-approved`** once the `iseyaa_otp_verification` template shows status APPROVED in Meta Business Manager and all three `META_WHATSAPP_*` secrets are live.
 
 This signal is informational only — this phase's automated plans do not block on it (D-03).
+
+---
+
+## Phase 16 -- Connection Pooling: Neon Console + Grafana Alert Confirmation
+
+Phase 16 documents Neon's built-in `-pooler` connection string pattern (POOL-01) — an explicit `connection_limit`/`pool_timeout` on both the monolith's and notifications-service's `DATABASE_URL`, replacing Prisma's silent default pool size of 10, with zero new infrastructure (D-01: Neon's managed pooler, not a self-hosted PgBouncer container).
+
+This section covers two manual steps, both walked in full step-by-step detail by Plan 16-04's checkpoint tasks:
+
+1. **Neon Console plan/CU confirmation** — confirm the live Neon project's actual compute size and `max_connections` ceiling against the conservative 104-connection baseline assumed in `.env.example`'s comments (16-RESEARCH.md Assumptions Log A1/A2), and apply the `-pooler` endpoint DATABASE_URL to the live production Railway monolith service.
+2. **Grafana Cloud gauge + alert rule confirmation** — confirm the live open-connections gauge panel exists and the 83-connection (80% of baseline, D-07) alert rule is active and firing correctly.
+
+This is a stub section only — Plan 16-04 fills in the full instructions when it runs.
+
+**Resume Signal:** Reply: 16-approved
