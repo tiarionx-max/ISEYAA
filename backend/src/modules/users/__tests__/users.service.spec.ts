@@ -3,6 +3,7 @@ import { UsersService } from '../users.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { NotFoundException, ForbiddenException } from '@nestjs/common';
 import { UserRole } from '../../../common/enums/user-role.enum';
+import { OtpChannel } from '../../../common/enums/otp-channel.enum';
 
 const mockPrisma = {
   user: {
@@ -61,6 +62,22 @@ describe('UsersService', () => {
       expect(result.role).toBe('VENDOR');
       expect(mockPrisma.user.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: { role: 'VENDOR' } }),
+      );
+    });
+  });
+
+  describe('updateOtpChannel', () => {
+    it('updates otpChannel and returns the updated user', async () => {
+      mockPrisma.user.update.mockResolvedValue({ id: 'u1', otpChannel: 'WHATSAPP' });
+
+      const result = await service.updateOtpChannel('u1', OtpChannel.WHATSAPP);
+
+      expect(result.otpChannel).toBe('WHATSAPP');
+      expect(mockPrisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'u1' },
+          data: { otpChannel: OtpChannel.WHATSAPP },
+        }),
       );
     });
   });
