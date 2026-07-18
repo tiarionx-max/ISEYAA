@@ -738,6 +738,83 @@ describe('TransportService', () => {
 
       await expect(service.completeTrip(TRIP_ID, USER_ID)).rejects.toThrow(BadRequestException);
     });
+
+    // CR-03 regression coverage — WR-04
+    it('throws BadRequestException before entering the cutover branch when trip is not IN_PROGRESS', async () => {
+      mockPrisma.trip.findFirst.mockResolvedValue({ ...mockTrip, status: 'CANCELLED', driverId: mockDriver.id });
+      mockPrisma.driver.findFirst.mockResolvedValue(mockDriver);
+
+      await expect(service.completeTrip(TRIP_ID, USER_ID)).rejects.toThrow(BadRequestException);
+
+      // Must fail before any settlement/earnings computation happens.
+      expect(mockPrisma.wallet.findFirst).not.toHaveBeenCalled();
+      expect(mockSettlement.settle).not.toHaveBeenCalled();
+    });
+
+    it('does not resurrect a trip already in a terminal state when the cutover onFailure handler runs', async () => {
+      mockPrisma.trip.findFirst.mockResolvedValue({ ...mockTrip, status: 'IN_PROGRESS' });
+      mockPrisma.driver.findFirst.mockResolvedValue(mockDriver);
+      mockPrisma.wallet.findFirst.mockResolvedValue({ id: WALLET_ID, userId: USER_ID, balance: 0 });
+      mockPrisma.platformConfig.findUnique.mockImplementation((args: any) => {
+        const key = args.where.key;
+        if (key === 'transport.settlement_engine_enabled') return mockPlatformConfig(key, true);
+        if (key === 'transport.govt_levy_pct') return mockPlatformConfig(key, 5);
+        if (key === 'transport.platform_fee_pct') return mockPlatformConfig(key, 10);
+        return null;
+      });
+      // Simulate: a concurrent duplicate completeTrip call already won the race and
+      // completed the trip — onSettled's guard already threw (count=0), so
+      // onFailure's own guarded revert must also find count=0 (trip is COMPLETED,
+      // which is excluded from the notIn revert filter) and must NOT force it
+      // back to IN_PROGRESS.
+      mockPrisma.trip.updateMany.mockResolvedValue({ count: 0 });
+      mockSettlement.settle.mockImplementation(async (input: any) => {
+        await input.onFailure?.(new Error('trip already completed or not in progress'));
+        throw new Error('trip already completed or not in progress');
+      });
+
+      await expect(service.completeTrip(TRIP_ID, USER_ID)).rejects.toThrow(
+        'trip already completed or not in progress',
+      );
+
+      expect(mockPrisma.trip.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: TRIP_ID, status: { notIn: ['COMPLETED', 'CANCELLED', 'EXPIRED'] } },
+          data: { status: 'IN_PROGRESS' },
+        }),
+      );
+    });
+
+    it('reverts trip to IN_PROGRESS when a non-guard settlement failure occurs and the trip is not terminal', async () => {
+      mockPrisma.trip.findFirst.mockResolvedValue({ ...mockTrip, status: 'IN_PROGRESS' });
+      mockPrisma.driver.findFirst.mockResolvedValue(mockDriver);
+      mockPrisma.wallet.findFirst.mockResolvedValue({ id: WALLET_ID, userId: USER_ID, balance: 0 });
+      mockPrisma.platformConfig.findUnique.mockImplementation((args: any) => {
+        const key = args.where.key;
+        if (key === 'transport.settlement_engine_enabled') return mockPlatformConfig(key, true);
+        if (key === 'transport.govt_levy_pct') return mockPlatformConfig(key, 5);
+        if (key === 'transport.platform_fee_pct') return mockPlatformConfig(key, 10);
+        return null;
+      });
+      // Simulate: an unrelated failure (e.g. DB error) before the atomic guard ever
+      // ran — the whole $transaction rolled back, so the trip is genuinely still
+      // IN_PROGRESS in the DB. The guarded revert (notIn terminal statuses) must
+      // find count=1 and safely set it back to IN_PROGRESS (a no-op in practice).
+      mockPrisma.trip.updateMany.mockResolvedValue({ count: 1 });
+      mockSettlement.settle.mockImplementation(async (input: any) => {
+        await input.onFailure?.(new Error('DB error'));
+        throw new Error('DB error');
+      });
+
+      await expect(service.completeTrip(TRIP_ID, USER_ID)).rejects.toThrow('DB error');
+
+      expect(mockPrisma.trip.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: TRIP_ID, status: { notIn: ['COMPLETED', 'CANCELLED', 'EXPIRED'] } },
+          data: { status: 'IN_PROGRESS' },
+        }),
+      );
+    });
   });
 
   // ── getDriverEarnings ──────────────────────────────────────────────────────

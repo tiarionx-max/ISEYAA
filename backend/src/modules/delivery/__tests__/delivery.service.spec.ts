@@ -454,6 +454,81 @@ describe('DeliveryService', () => {
       );
       expect(mockSettlement.settle).not.toHaveBeenCalled();
     });
+
+    // CR-01/CR-02 regression coverage — WR-04
+    it('onSettled throws when the atomic guard finds the order already delivered (double-complete race)', async () => {
+      const base64Photo = Buffer.from('fake-jpeg-data').toString('base64');
+      mockPrisma.deliveryOrder.findUnique.mockResolvedValue({
+        ...mockOrder,
+        status: 'IN_TRANSIT',
+        otpVerifiedAt: new Date(),
+        fee: 800,
+      });
+      mockPrisma.deliveryRider.findFirst.mockResolvedValue(mockRider);
+      mockPrisma.wallet.findFirst.mockResolvedValue({ id: WALLET_ID, userId: USER_ID });
+      mockPrisma.platformConfig.findUnique.mockImplementation((args: any) => {
+        const key = args.where.key;
+        if (key === 'delivery.settlement_engine_enabled') return Promise.resolve(mockPlatformConfig(key, true));
+        if (key === 'delivery.govt_levy_pct') return Promise.resolve(mockPlatformConfig(key, 5));
+        if (key === 'delivery.platform_fee_pct') return Promise.resolve(mockPlatformConfig(key, 15));
+        return Promise.resolve(null);
+      });
+      const fakeTxUpdateMany = jest.fn().mockResolvedValue({ count: 0 });
+      const fakeTxEventCreate = jest.fn();
+      mockSettlement.settle.mockImplementation(async (input: any) => {
+        const tx = {
+          deliveryOrder: { updateMany: fakeTxUpdateMany },
+          deliveryEvent: { create: fakeTxEventCreate },
+        };
+        await input.onSettled?.(tx);
+        return { status: 'SETTLED', platformAmountNgn: 0, recipientCredits: [] };
+      });
+
+      await expect(
+        service.completeDelivery(ORDER_ID, USER_ID, { proofPhotoBase64: base64Photo } as any),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(fakeTxUpdateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: ORDER_ID, status: { in: ['COLLECTING', 'IN_TRANSIT'] } },
+        }),
+      );
+      // The guard must reject before the completion event is ever written.
+      expect(fakeTxEventCreate).not.toHaveBeenCalled();
+    });
+
+    it('reverts order to a valid IN_TRANSIT status (not the removed PICKED_UP value) when settle() fails', async () => {
+      const base64Photo = Buffer.from('fake-jpeg-data').toString('base64');
+      mockPrisma.deliveryOrder.findUnique.mockResolvedValue({
+        ...mockOrder,
+        status: 'IN_TRANSIT',
+        otpVerifiedAt: new Date(),
+        fee: 800,
+      });
+      mockPrisma.deliveryRider.findFirst.mockResolvedValue(mockRider);
+      mockPrisma.wallet.findFirst.mockResolvedValue({ id: WALLET_ID, userId: USER_ID });
+      mockPrisma.platformConfig.findUnique.mockImplementation((args: any) => {
+        const key = args.where.key;
+        if (key === 'delivery.settlement_engine_enabled') return Promise.resolve(mockPlatformConfig(key, true));
+        if (key === 'delivery.govt_levy_pct') return Promise.resolve(mockPlatformConfig(key, 5));
+        if (key === 'delivery.platform_fee_pct') return Promise.resolve(mockPlatformConfig(key, 15));
+        return Promise.resolve(null);
+      });
+      mockPrisma.deliveryOrder.update.mockResolvedValue({});
+      mockSettlement.settle.mockImplementation(async (input: any) => {
+        await input.onFailure?.(new Error('settlement failed'));
+        throw new Error('settlement failed');
+      });
+
+      await expect(
+        service.completeDelivery(ORDER_ID, USER_ID, { proofPhotoBase64: base64Photo } as any),
+      ).rejects.toThrow('settlement failed');
+
+      expect(mockPrisma.deliveryOrder.update).toHaveBeenCalledWith({
+        where: { id: ORDER_ID },
+        data: { status: 'IN_TRANSIT' },
+      });
+    });
   });
 
   // ── sendTermiiDeliveryOtp ──────────────────────────────────────────────────
