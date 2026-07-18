@@ -3,6 +3,7 @@ import { AuthService } from '../auth.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { RedisService } from '../../../redis/redis.service';
 import { ResilienceService } from '../../../resilience/resilience.service';
+import { SendgridService } from '../../../common/services/sendgrid.service';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { ConflictException, UnauthorizedException, BadRequestException, ForbiddenException } from '@nestjs/common';
@@ -37,6 +38,9 @@ const mockConfig = {
       JWT_SECRET: 'test_secret',
       JWT_REFRESH_SECRET: 'test_refresh_secret',
       TERMII_API_KEY: 'test-termii-key',
+      META_WHATSAPP_ACCESS_TOKEN: 'test-meta-token',
+      META_WHATSAPP_PHONE_NUMBER_ID: '1234567890',
+      META_WHATSAPP_TEMPLATE_NAME: 'iseyaa_otp_verification',
     };
     return vals[key] ?? def;
   }),
@@ -48,6 +52,8 @@ const mockResilience = {
   ),
 };
 
+const mockSendgrid = { sendOtpEmail: jest.fn() };
+
 describe('AuthService', () => {
   let service: AuthService;
 
@@ -57,6 +63,15 @@ describe('AuthService', () => {
     // (needed for the resilience-wrapping tests below), which means sendOtp's
     // sendTermii() would otherwise issue a real fetch() to Termii's API on every test.
     jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true } as any);
+    mockSendgrid.sendOtpEmail.mockReset();
+    mockSendgrid.sendOtpEmail.mockResolvedValue(undefined);
+    mockPrisma.user.findFirst.mockResolvedValue(null);
+    // Restore the shared mockResilience.execute default implementation every test —
+    // individual tests below use mockImplementation/mockImplementationOnce to
+    // simulate vendor-specific rejections, which would otherwise leak into later tests.
+    mockResilience.execute.mockImplementation(
+      (vendor: string, fn: (context: { signal: AbortSignal | undefined }) => any) => fn({ signal: undefined }),
+    );
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
@@ -65,6 +80,7 @@ describe('AuthService', () => {
         { provide: JwtService, useValue: mockJwt },
         { provide: ConfigService, useValue: mockConfig },
         { provide: ResilienceService, useValue: mockResilience },
+        { provide: SendgridService, useValue: mockSendgrid },
       ],
     }).compile();
     service = module.get<AuthService>(AuthService);
@@ -169,7 +185,7 @@ describe('AuthService', () => {
       expect(result.message).toContain('OTP sent');
       expect(mockRedis.set).toHaveBeenCalledWith(
         'otp:+2348012345678',
-        expect.stringMatching(/^\d{6}:0$/),
+        expect.stringMatching(/^\d{6}:0:SMS:$/),
         300,
       );
     });
@@ -207,6 +223,98 @@ describe('AuthService', () => {
 
       const result = await service.sendOtp({ phone: '+2348012345678' });
       expect(result.message).toContain('OTP sent');
+    });
+
+    it('resolves the WHATSAPP channel from an existing user\'s persisted otpChannel even when the request channel is SMS or absent (channel)', async () => {
+      mockRedis.exists.mockResolvedValue(false);
+      mockRedis.set.mockResolvedValue(undefined);
+      mockPrisma.user.findFirst.mockResolvedValue({ otpChannel: 'WHATSAPP', email: null, firstName: 'Toye' });
+
+      await service.sendOtp({ phone: '+2348012345678', channel: 'SMS' as any });
+
+      expect(mockResilience.execute).toHaveBeenCalledWith('metaWhatsapp', expect.any(Function));
+    });
+
+    it('defaults to SMS via the termiiAuth vendor when no channel is requested and no existing user is found (channel)', async () => {
+      mockRedis.exists.mockResolvedValue(false);
+      mockRedis.set.mockResolvedValue(undefined);
+      mockPrisma.user.findFirst.mockResolvedValue(null);
+
+      await service.sendOtp({ phone: '+2348012345678' });
+
+      expect(mockResilience.execute).toHaveBeenCalledWith('termiiAuth', expect.any(Function));
+    });
+
+    it('falls back to SMS and reports fallbackUsed:true when the metaWhatsapp dispatch rejects (fallback)', async () => {
+      mockRedis.exists.mockResolvedValue(false);
+      mockRedis.set.mockResolvedValue(undefined);
+      mockPrisma.user.findFirst.mockResolvedValue(null);
+      mockResilience.execute.mockImplementation((vendor: string, fn: (context: { signal: AbortSignal | undefined }) => any) => {
+        if (vendor === 'metaWhatsapp') return Promise.reject(new Error('meta down'));
+        return fn({ signal: undefined });
+      });
+      jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true } as any);
+
+      const result = await service.sendOtp({ phone: '+2348012345678', channel: 'WHATSAPP' as any });
+
+      expect(result.fallbackUsed).toBe(true);
+      expect(global.fetch).toHaveBeenCalledWith('https://v3.api.termii.com/api/sms/send', expect.any(Object));
+    });
+
+    it('falls back to SMS and reports fallbackUsed:true when the sendgrid dispatch rejects (fallback)', async () => {
+      mockRedis.exists.mockResolvedValue(false);
+      mockRedis.set.mockResolvedValue(undefined);
+      mockPrisma.user.findFirst.mockResolvedValue(null);
+      mockSendgrid.sendOtpEmail.mockRejectedValueOnce(new Error('send failed'));
+      jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true } as any);
+
+      const result = await service.sendOtp({ phone: '+2348012345678', channel: 'EMAIL' as any, email: 'x@example.com' });
+
+      expect(result.fallbackUsed).toBe(true);
+      expect(global.fetch).toHaveBeenCalledWith('https://v3.api.termii.com/api/sms/send', expect.any(Object));
+    });
+
+    it('sends the WhatsApp template message shape via Meta Graph API with a url-type button, not copy_code (whatsapp)', async () => {
+      mockRedis.exists.mockResolvedValue(false);
+      mockRedis.set.mockResolvedValue(undefined);
+      mockPrisma.user.findFirst.mockResolvedValue(null);
+      jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true } as any);
+
+      await service.sendOtp({ phone: '+2348012345678', channel: 'WHATSAPP' as any });
+
+      expect(mockResilience.execute).toHaveBeenCalledWith('metaWhatsapp', expect.any(Function));
+      const call = (global.fetch as jest.Mock).mock.calls.find((c) => String(c[0]).includes('graph.facebook.com'));
+      expect(call).toBeDefined();
+      const body = JSON.parse(call![1].body);
+      expect(body.messaging_product).toBe('whatsapp');
+      expect(body.template.name).toBeDefined();
+      const bodyComponent = body.template.components.find((c: any) => c.type === 'body');
+      const buttonComponent = body.template.components.find((c: any) => c.type === 'button');
+      expect(bodyComponent).toBeDefined();
+      expect(buttonComponent).toBeDefined();
+      expect(buttonComponent.sub_type).toBe('url');
+    });
+
+    it('dispatches the Email OTP through the sendgrid vendor policy (sendgrid)', async () => {
+      mockRedis.exists.mockResolvedValue(false);
+      mockRedis.set.mockResolvedValue(undefined);
+      mockPrisma.user.findFirst.mockResolvedValue(null);
+      mockSendgrid.sendOtpEmail.mockResolvedValue(undefined);
+
+      const result = await service.sendOtp({ phone: '+2348012345678', channel: 'EMAIL' as any, email: 'x@example.com' });
+
+      expect(mockResilience.execute).toHaveBeenCalledWith('sendgrid', expect.any(Function));
+      expect(mockSendgrid.sendOtpEmail).toHaveBeenCalledWith('x@example.com', expect.any(String), expect.any(String));
+      expect(result.fallbackUsed).toBe(false);
+    });
+
+    it('throws BadRequestException when channel is EMAIL and no email is resolvable (channel)', async () => {
+      mockRedis.exists.mockResolvedValue(false);
+      mockPrisma.user.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.sendOtp({ phone: '+2348012345678', channel: 'EMAIL' as any }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
