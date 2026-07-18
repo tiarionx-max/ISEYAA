@@ -122,3 +122,12 @@ None - no new external service configuration required. This plan wires up dispat
 ---
 *Phase: 15-multi-channel-otp*
 *Completed: 2026-07-18*
+
+## Self-Check: PASSED
+
+- FOUND: backend/src/modules/auth/auth.service.ts
+- FOUND: backend/src/modules/auth/__tests__/auth.service.spec.ts
+- FOUND: backend/src/resilience/__tests__/resilience.service.spec.ts
+- FOUND: commit 1f883ad (feat: channel resolution + dispatch-with-fallback + sendMetaWhatsapp)
+- FOUND: commit ab02fa3 (feat: Redis round-trip preservation + channel persistence + duplicate-email handling)
+- FOUND: commit 602989b (docs: SUMMARY)
