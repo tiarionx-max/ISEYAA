@@ -37,6 +37,7 @@ import {
   Heart,
   Clock,
   Home,
+  MessageSquare,
   type LucideProps,
 } from 'lucide-react-native';
 
@@ -80,6 +81,7 @@ interface UserProfile {
   // 08-07: host detection — backend GET /users/me returns these.
   registeredRoles?: string[];
   isHost?: boolean;
+  otpChannel?: 'SMS' | 'WHATSAPP' | 'EMAIL';
 }
 
 interface WalletBalance {
@@ -114,6 +116,12 @@ function getHandle(name?: string, phone?: string): string {
   }
   if (phone) return phone.slice(-6);
   return 'damiola';
+}
+
+function otpChannelLabel(channel?: string): string {
+  if (channel === 'WHATSAPP') return 'WhatsApp';
+  if (channel === 'EMAIL') return 'Email';
+  return 'SMS';
 }
 
 // ── Adire Ornament ─────────────────────────────────
@@ -418,6 +426,12 @@ export default function ProfileScreen() {
       label: 'Activity',
       sub: 'All app activity',
       onPress: () => {},
+    },
+    {
+      icon: MessageSquare,
+      label: 'Verification Channel',
+      sub: otpChannelLabel(user?.otpChannel),
+      onPress: () => router.push('/otp-channel-settings' as any),
     },
     {
       icon: Shield,
