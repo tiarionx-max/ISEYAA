@@ -58,10 +58,13 @@ Phases 2-9 — Substantially shipped (per ROADMAP.md; several phases have plans 
 v2.0 — Microservices, Multi-Channel Auth & Government Partnership (current milestone):
 
 - ✓ Documentation Correction + gRPC Build Fix — corrected the false "8 services extracted" ROADMAP claim (DOC-01); made all 8 `apps/*-service` gRPC scaffolds build cleanly (`nest build` exit 0, Dockerfile error-masking removed); authored `.proto` contracts for the 7 never-stubbed modules so `generate.sh` produces working TypeScript for all 15 modules (GRPC-01, GRPC-02) — Phase 10 (3/3 plans). **Follow-up:** `docker build` still fails (`@iseyaa/proto` undeclared in `backend/package.json`) — address before Phase 17 live extraction (see STATE.md pending todos).
+- ✓ Resilience Wrapping — circuit-breaker + retry + timeout + fallback (cockatiel) around every external vendor call (Paystack, Termii, Anthropic, R2/S3, FCM) (RESIL-01) — Phase 11. RESIL-02 (Grafana/Sentry visibility) partial: code-side wiring/sanitization verified, live dashboard confirmation still pending — see `v2.0-MILESTONE-AUDIT.md`.
+- ✓ Settlement Engine Foundation — generalized `SettlementService` in `CommonModule` (single `$transaction`, `SELECT FOR UPDATE`, idempotency keys, drift-tolerance assertion) + standing Ministry wallet (SETTLE-01, SETTLE-02); fixed two pre-existing revenue bugs — Stays' `releaseEscrow()` govtLevyPct leak and missing Marketplace/Events/Studio webhook settlement consumers (SETTLE-05, SETTLE-06); per-recipient itemized statements + N-way split rounding tests (SETTLE-07, SETTLE-08) — Phase 12 (completed 2026-07-17).
+- ✓ Settlement Cutover — Transport & Delivery — `completeTrip()`/`completeDelivery()` cutover-flag-gated onto `SettlementService.settle()` for a three-way driver-or-rider/Ministry/platform split, replacing the hardcoded 85/15 and 80/20 (SETTLE-03, SETTLE-04); legacy paths preserved byte-for-byte; Stage 1 batch shadow-verify script + Stage 2 live dual-run comparison prove zero discrepancy before either cutover flag flips live (SETTLE-09) — Phase 13 (4/4 plans, completed 2026-07-17). Both `*.settlement_engine_enabled` flags seeded `false` — live cutover awaits the manual D-08 bake-period gate (3 days or 100 completions, zero discrepancies), not code-enforced by this phase.
 
 ### Active
 
-v2.0 — Microservices, Multi-Channel Auth & Government Partnership: Phases 11-17 remain (Resilience, Settlement, Ministry Dashboard, Multi-Channel OTP, Connection Pooling, gRPC Proof-of-Pattern).
+v2.0 — Microservices, Multi-Channel Auth & Government Partnership: Phases 14-17 remain (Ministry Dashboard, Multi-Channel OTP, Connection Pooling, gRPC Proof-of-Pattern).
 
 ### Out of Scope
 
@@ -79,7 +82,7 @@ v2.0 — Microservices, Multi-Channel Auth & Government Partnership: Phases 11-1
 
 - **Government client**: Ogun State Government, Nigeria — ~7M citizen addressable market
 - **Operated by**: LJ Entertainment
-- **Current state (2026-07-15)**: Phases 1-9 substantially built (see Validated above). Working on branch `microservices-redesign`. Backend confirmed live on Railway as a single monolith service (not the microservices split the roadmap claims). Web and mobile now have smoke-test coverage (added 2026-07-13); prior to that both had zero tests.
+- **Current state (2026-07-17)**: Phases 1-13 substantially built (see Validated above). Working on branch `microservices-redesign`. Backend confirmed live on Railway as a single monolith service (not the microservices split the roadmap claims). Web and mobile now have smoke-test coverage (added 2026-07-13); prior to that both had zero tests. Settlement engine generalized and Transport/Delivery cut over behind config flags (both still seeded `false` pending the manual D-08 bake-period gate).
 - **Stack**: Node.js 20 LTS + NestJS + TypeScript, Next.js 14 App Router, Expo SDK 51, Neon PostgreSQL 16 + Prisma ORM, Upstash Redis, Paystack + Flutterwave webhooks, Cloudflare R2 + SendGrid, Anthropic Claude API
 - **Architecture reality vs. plan**: `packages/proto/*.proto` contracts exist for auth/wallet/events/marketplace/notifications/stays/admin/ai but are unwired; transport/delivery/tour-packages/tour-guides/news/waitlist/reviews have no proto stubs at all. v2.0 commits to actually building the split.
 - **Revenue model (current)**: Two-way platform fees from `PlatformConfig` — Transport 15%, Accommodation 8%, Events 10%, Marketplace 8%, Delivery 20%. v2.0 generalizes this to three-way (vendor/rider, Ministry, platform) using the pattern already proven in Phase 9's tour settlement engine.
@@ -106,7 +109,7 @@ v2.0 — Microservices, Multi-Channel Auth & Government Partnership: Phases 11-1
 | NestJS modular monolith (Sprint 1) | Fastest path to working modules for Sprint 1 delivery | ✓ Good — 153 tests passing, all modules shipped |
 | Real gRPC microservice split (v2.0) | Stakeholder explicitly re-confirmed this requirement after learning Phase 2's extraction was proto-only; wants true blast-radius isolation from vendor API outages | — Pending |
 | Resilience-over-rewrite recommended, stakeholder chose full split anyway | Architect's initial recommendation was circuit-breakers on external calls as a cheaper path to the same isolation goal; stakeholder opted for the real split instead | — Decided; proceeding with full split |
-| Three-way settlement split reusing Phase 9's multi-vendor engine | Avoids building new payment plumbing; Tour Packages already proved atomic multi-recipient wallet credit in one SELECT FOR UPDATE transaction | — Pending |
+| Three-way settlement split reusing Phase 9's multi-vendor engine | Avoids building new payment plumbing; Tour Packages already proved atomic multi-recipient wallet credit in one SELECT FOR UPDATE transaction | ✓ Good — Phase 12 built `SettlementService`; Phase 13 cut Transport/Delivery over behind flags, shadow-verified with zero discrepancy |
 | Channel-choice OTP (WhatsApp/Email/SMS) | Client wants users to pick their preferred verification channel rather than SMS-only | — Pending |
 | SELECT FOR UPDATE on wallet debits | Prevent double-spend race conditions under concurrent load | ✓ Good — battle-tested since Sprint 1 |
 | Platform fees from DB platformConfig | Never hardcoded — fee changes don't require code deployments | ✓ Good |
@@ -131,4 +134,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-15 — Phase 10 complete (documentation correction + gRPC build fix); DOC-01, GRPC-01, GRPC-02 validated*
+*Last updated: 2026-07-17 — Phase 13 complete (settlement cutover — Transport & Delivery); SETTLE-03, SETTLE-04, SETTLE-09 validated (Phases 11-12 also folded in: RESIL-01, SETTLE-01/02/05/06/07/08 validated)*
