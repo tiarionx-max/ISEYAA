@@ -128,3 +128,7 @@ _No TDD tasks in this plan (schema/DTO/config scaffolding, tdd="false")._
 ---
 *Phase: 15-multi-channel-otp*
 *Completed: 2026-07-18*
+
+## Self-Check: PASSED
+
+All 10 claimed files verified present on disk; all 4 claimed commit hashes (d3cdc9c, 86ec73e, 29fa268, 2706ed5) verified present in git log.
