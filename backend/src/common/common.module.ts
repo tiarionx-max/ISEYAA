@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { SettlementController } from './controllers/settlement.controller';
 import { UploadController } from './controllers/upload.controller';
+import { CsvExportService } from './services/csv-export.service';
 import { DojahService } from './services/dojah.service';
 import { EncryptionService } from './services/encryption.service';
 import { ImageService } from './services/image.service';
@@ -14,11 +15,13 @@ import { SendgridService } from './services/sendgrid.service';
 import { SettlementService } from './services/settlement.service';
 import { UploadService } from './services/upload.service';
 import { VectorService } from './services/vector.service';
+import { VisitorLogService } from './services/visitor-log.service';
 
 @Global()
 @Module({
   controllers: [SettlementController, UploadController],
   providers: [
+    CsvExportService,
     DojahService,
     EncryptionService,
     ImageService,
@@ -32,8 +35,10 @@ import { VectorService } from './services/vector.service';
     SettlementService,
     UploadService,
     VectorService,
+    VisitorLogService,
   ],
   exports: [
+    CsvExportService,
     DojahService,
     EncryptionService,
     ImageService,
@@ -47,6 +52,7 @@ import { VectorService } from './services/vector.service';
     SettlementService,
     UploadService,
     VectorService,
+    VisitorLogService,
   ],
 })
 export class CommonModule {}
