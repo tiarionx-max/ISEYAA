@@ -124,3 +124,7 @@ None - no external service configuration required.
 ---
 *Phase: 14-ministry-dashboard*
 *Completed: 2026-07-18*
+
+## Self-Check: PASSED
+
+All 7 created/modified files verified present on disk; all 3 commit hashes (`a2df304`, `67322df`, `8bad2f2`) verified present in git history.
