@@ -12,9 +12,15 @@ export class DbMetricsService implements OnModuleInit {
 
   onModuleInit(): void {
     const meter = metrics.getMeter('iseyaa-db');
+    // NOTE: pg_stat_activity's count(*) is DATABASE-WIDE, not scoped to the
+    // querying process. Every process that reports this gauge (monolith,
+    // notifications-service, etc.) observes the SAME total. Dashboards MUST
+    // aggregate with max()/last() across the `service.name` resource
+    // attribute — NOT sum() — or the true connection count will be
+    // multiplied by the number of reporting processes.
     const gauge = meter.createObservableGauge('postgres_open_connections', {
       description:
-        'Combined open Postgres connection count across all processes (monolith + notifications-service), sourced from pg_stat_activity',
+        'Database-wide open Postgres connection count (pg_stat_activity), independently reported by every process. Use max()/last() across service.name when aggregating in dashboards — do NOT sum(), each process reports the same total.',
     });
     gauge.addCallback(result => {
       result.observe(this.currentOpenConnections);
