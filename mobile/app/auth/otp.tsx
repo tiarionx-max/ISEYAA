@@ -14,6 +14,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
+import { Info } from 'lucide-react-native';
 import { api } from '../../lib/api';
 import {
   SURFACE_DEEP,
@@ -24,7 +25,10 @@ import {
   INK,
   INK_MID,
   INK_FAINT,
+  INK_DIM,
   BORDER,
+  SUCCESS_DIM,
+  SUCCESS_TEXT,
   FONT_DISPLAY,
   FONT_MONO,
 } from '../../lib/tokens';
@@ -32,10 +36,14 @@ import {
 const OTP_LENGTH = 6;
 
 export default function OtpScreen() {
-  const { phone } = useLocalSearchParams<{ phone: string }>();
+  const { phone, fallbackUsed: fallbackUsedParam } = useLocalSearchParams<{
+    phone: string;
+    fallbackUsed?: string;
+  }>();
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [cooldown, setCooldown] = useState(60);
+  const [fallbackUsed, setFallbackUsed] = useState(fallbackUsedParam === 'true');
   const inputRef = useRef<TextInput>(null);
 
   useEffect(() => {
@@ -70,7 +78,9 @@ export default function OtpScreen() {
 
   async function resend() {
     try {
-      await api.post('/auth/otp/send', { phone });
+      const res = await api.post('/auth/otp/send', { phone });
+      const payload = res.data?.data ?? res.data ?? {};
+      setFallbackUsed(payload.fallbackUsed === true);
       setCooldown(60);
     } catch {
       Alert.alert('Error', 'Could not resend OTP.');
@@ -113,6 +123,20 @@ export default function OtpScreen() {
         <Text style={styles.kicker}>VERIFY</Text>
         <Text style={styles.title}>Enter the{'\n'}<Text style={styles.titleItalic}>6-digit code</Text></Text>
         <Text style={styles.sub}>Sent to {maskedPhone}</Text>
+
+        {fallbackUsed && (
+          <View
+            style={styles.fallbackBanner}
+            accessibilityLiveRegion="polite"
+            accessibilityRole="text"
+          >
+            <Info size={16} color={SUCCESS_TEXT} style={styles.fallbackIcon} />
+            <View style={styles.fallbackTextBlock}>
+              <Text style={styles.fallbackPrimary}>We sent your code via SMS instead</Text>
+              <Text style={styles.fallbackSecondary}>Your original channel didn't respond in time.</Text>
+            </View>
+          </View>
+        )}
 
         {/* OTP boxes — tap to focus hidden input */}
         <TouchableOpacity
@@ -208,6 +232,35 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.50)',
     lineHeight: 21,
     marginBottom: 36,
+  },
+  fallbackBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: SUCCESS_DIM,
+    borderWidth: 1,
+    borderColor: 'rgba(46,204,113,0.30)',
+    borderRadius: 12,
+    padding: 12,
+    paddingHorizontal: 16,
+    marginBottom: 20,
+  },
+  fallbackIcon: {
+    marginTop: 1,
+  },
+  fallbackTextBlock: {
+    flex: 1,
+  },
+  fallbackPrimary: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: INK,
+  },
+  fallbackSecondary: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: INK_DIM,
+    marginTop: 2,
   },
   otpRow: {
     flexDirection: 'row',

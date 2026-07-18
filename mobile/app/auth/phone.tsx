@@ -14,17 +14,27 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import Svg, { Rect, Line, Circle } from 'react-native-svg';
+import { MessageSquare, MessageCircle, Mail } from 'lucide-react-native';
 import { api } from '../../lib/api';
 import {
   SURFACE_DEEP,
   SURFACE_MID,
   GOLD,
+  GOLD_DIM,
   GOLD_LINE,
   CREAM,
   INK_MID,
   FONT_DISPLAY,
   FONT_MONO,
 } from '../../lib/tokens';
+
+type OtpChannel = 'SMS' | 'WHATSAPP' | 'EMAIL';
+
+const CHANNEL_OPTIONS: { value: OtpChannel; label: string; Icon: typeof MessageSquare }[] = [
+  { value: 'SMS', label: 'SMS', Icon: MessageSquare },
+  { value: 'WHATSAPP', label: 'WhatsApp', Icon: MessageCircle },
+  { value: 'EMAIL', label: 'Email', Icon: Mail },
+];
 
 function AdireOrnament({ size = 160, opacity = 0.12 }: { size?: number; opacity?: number }) {
   const s = size;
@@ -44,6 +54,8 @@ function AdireOrnament({ size = 160, opacity = 0.12 }: { size?: number; opacity?
 export default function PhoneScreen() {
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
+  const [channel, setChannel] = useState<OtpChannel>('SMS');
+  const [email, setEmail] = useState('');
 
   const formattedPhone = phone.startsWith('0')
     ? `+234${phone.slice(1)}`
@@ -60,8 +72,17 @@ export default function PhoneScreen() {
     }
     setLoading(true);
     try {
-      await api.post('/auth/otp/send', { phone: formattedPhone });
-      router.push({ pathname: '/auth/otp', params: { phone: formattedPhone } } as any);
+      const res = await api.post('/auth/otp/send', {
+        phone: formattedPhone,
+        channel,
+        ...(channel === 'EMAIL' ? { email } : {}),
+      });
+      const payload = res.data?.data ?? res.data ?? {};
+      const fallbackUsed = payload.fallbackUsed === true;
+      router.push({
+        pathname: '/auth/otp',
+        params: { phone: formattedPhone, fallbackUsed: String(fallbackUsed) },
+      } as any);
     } catch (err: any) {
       const msg = err.response?.data?.message ?? 'Could not send OTP. Please try again.';
       Alert.alert('Error', msg);
@@ -70,7 +91,9 @@ export default function PhoneScreen() {
     }
   }
 
-  const isReady = phone.replace(/\s/g, '').length >= 10;
+  const isReady =
+    phone.replace(/\s/g, '').length >= 10 &&
+    (channel !== 'EMAIL' || /\S+@\S+\.\S+/.test(email));
 
   return (
     <KeyboardAvoidingView
@@ -118,6 +141,43 @@ export default function PhoneScreen() {
             autoFocus
           />
         </View>
+
+        <Text style={styles.channelLabel}>How should we reach you?</Text>
+        <View style={styles.channelRow}>
+          {CHANNEL_OPTIONS.map(({ value, label, Icon }) => {
+            const selected = channel === value;
+            return (
+              <TouchableOpacity
+                key={value}
+                style={[styles.channelCard, selected && styles.channelCardSelected]}
+                onPress={() => setChannel(value)}
+                activeOpacity={0.85}
+                accessibilityRole="radio"
+                accessibilityState={{ selected }}
+                accessibilityLabel={`${label} verification channel`}
+              >
+                <Icon size={22} color={selected ? GOLD : INK_MID} />
+                <Text style={[styles.channelCardLabel, selected && styles.channelCardLabelSelected]}>
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {channel === 'EMAIL' && (
+          <View style={[styles.inputWrapper, email.length > 0 && styles.inputWrapperActive]}>
+            <TextInput
+              style={styles.phoneInput}
+              placeholder="you@example.com"
+              placeholderTextColor="rgba(245,237,214,0.25)"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              value={email}
+              onChangeText={setEmail}
+            />
+          </View>
+        )}
 
         <TouchableOpacity
           style={[styles.cta, !isReady && styles.ctaDisabled]}
@@ -196,6 +256,41 @@ const styles = StyleSheet.create({
   },
   inputWrapperActive: {
     borderColor: GOLD_LINE,
+  },
+  channelLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: INK_MID,
+    letterSpacing: 0.3,
+    marginBottom: 8,
+  },
+  channelRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
+  channelCard: {
+    flex: 1,
+    height: 76,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    backgroundColor: SURFACE_MID,
+    borderColor: 'rgba(255,255,255,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  channelCardSelected: {
+    backgroundColor: GOLD_DIM,
+    borderColor: GOLD_LINE,
+  },
+  channelCardLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: INK_MID,
+  },
+  channelCardLabelSelected: {
+    color: GOLD,
   },
   countryPill: {
     flexDirection: 'row',
