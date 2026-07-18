@@ -11,6 +11,7 @@ import { SendgridService } from '../../../common/services/sendgrid.service';
 import { ImageService } from '../../../common/services/image.service';
 import { KafkaService } from '../../../kafka/kafka.service';
 import { SettlementService } from '../../../common/services/settlement.service';
+import { VisitorLogService } from '../../../common/services/visitor-log.service';
 
 const mockKafka = { emit: jest.fn().mockResolvedValue(undefined), consume: jest.fn().mockResolvedValue(undefined) };
 
@@ -18,6 +19,8 @@ const mockSettlement = {
   settle: jest.fn().mockResolvedValue({ status: 'SETTLED', platformAmountNgn: 0, recipientCredits: [] }),
   resolveMinistryWallet: jest.fn().mockResolvedValue({ id: 'WAL-MINISTRY' }),
 };
+
+const mockVisitorLog = { record: jest.fn().mockResolvedValue(undefined) };
 
 const HOST_ID = 'host-uuid-001';
 const PROP_ID = 'prop-uuid-001';
@@ -58,8 +61,9 @@ const mockBooking = {
   escrowReleasedAt: null,
   reviewedAt: null,
   deletedAt: null,
-  property: { name: 'Abeokuta Villa', hostId: HOST_ID },
-  user: { email: 'guest@example.com', firstName: 'Ade' },
+  property: { name: 'Abeokuta Villa', hostId: HOST_ID, lgaId: 'lga-001' },
+  user: { email: 'guest@example.com', firstName: 'Ade', role: 'TOURIST' },
+  metadata: {},
 };
 
 const mockPrisma = {
@@ -96,6 +100,7 @@ describe('StaysService', () => {
         { provide: ImageService, useValue: mockImage },
         { provide: KafkaService, useValue: mockKafka },
         { provide: SettlementService, useValue: mockSettlement },
+        { provide: VisitorLogService, useValue: mockVisitorLog },
       ],
     }).compile();
 
@@ -363,6 +368,37 @@ describe('StaysService', () => {
       mockPrisma.booking.findUnique.mockResolvedValue({ ...mockBooking, status: 'CONFIRMED' });
       await service.handleStayPayment({ reference: PAYSTACK_REF });
       expect(mockPrisma.booking.update).not.toHaveBeenCalled();
+    });
+
+    it('D-01/MIN-02: writes a future-dated VisitorLog row exactly once on confirmation', async () => {
+      mockPrisma.booking.findUnique.mockResolvedValue({ ...mockBooking, status: 'PENDING' });
+      mockPrisma.booking.update.mockResolvedValue({ ...mockBooking, status: 'CONFIRMED' });
+      mockPrisma.user.findUnique.mockResolvedValue({ email: 'host@example.com', firstName: 'Host' });
+      mockSendgrid.sendBookingConfirmation.mockResolvedValue(undefined);
+
+      await service.handleStayPayment({ reference: PAYSTACK_REF });
+
+      expect(mockVisitorLog.record).toHaveBeenCalledTimes(1);
+      expect(mockVisitorLog.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceType: 'STAY',
+          sourceId: BOOKING_ID,
+          lgaId: 'lga-001',
+          visitedAt: mockBooking.checkIn,
+        }),
+      );
+    });
+
+    it('still sends guest/host confirmation emails when VisitorLogService.record() rejects', async () => {
+      mockPrisma.booking.findUnique.mockResolvedValue({ ...mockBooking, status: 'PENDING' });
+      mockPrisma.booking.update.mockResolvedValue({ ...mockBooking, status: 'CONFIRMED' });
+      mockPrisma.user.findUnique.mockResolvedValue({ email: 'host@example.com', firstName: 'Host' });
+      mockSendgrid.sendBookingConfirmation.mockResolvedValue(undefined);
+      mockVisitorLog.record.mockRejectedValueOnce(new Error('db down'));
+
+      await service.handleStayPayment({ reference: PAYSTACK_REF });
+
+      expect(mockSendgrid.sendBookingConfirmation).toHaveBeenCalledTimes(2);
     });
   });
 
