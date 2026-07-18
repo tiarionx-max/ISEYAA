@@ -127,3 +127,12 @@ None - no external service configuration required. Plan 16-04's checkpoint (sepa
 ---
 *Phase: 16-connection-pooling-infrastructure*
 *Completed: 2026-07-18*
+
+## Self-Check: PASSED
+
+- FOUND: backend/src/common/services/db-metrics.service.ts
+- FOUND: backend/src/common/services/__tests__/db-metrics.service.spec.ts
+- FOUND: .planning/phases/16-connection-pooling-infrastructure/16-02-SUMMARY.md
+- FOUND: commit 75aeb0a (Task 1)
+- FOUND: commit aca638b (Task 2)
+- FOUND: commit c50ef86 (SUMMARY.md)
