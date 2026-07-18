@@ -5,7 +5,8 @@
   "main": "generated/index.js",
   "types": "generated/index.d.ts",
   "scripts": {
-    "generate": "bash generate.sh"
+    "generate": "bash generate.sh",
+    "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
     "@bufbuild/protobuf": "^2.12.0",
@@ -14,6 +15,7 @@
     "rxjs": "^7.8.1"
   },
   "devDependencies": {
-    "grpc-tools": "^1.13.0"
+    "grpc-tools": "^1.13.0",
+    "typescript": "~5.3.3"
   }
 }
