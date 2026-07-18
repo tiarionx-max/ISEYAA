@@ -6,6 +6,7 @@ import { DojahService } from './services/dojah.service';
 import { EncryptionService } from './services/encryption.service';
 import { ImageService } from './services/image.service';
 import { ItineraryPdfService } from './services/itinerary-pdf.service';
+import { MinistryPdfService } from './services/ministry-pdf.service';
 import { PaystackService } from './services/paystack.service';
 import { QrService } from './services/qr.service';
 import { ReferenceService } from './services/reference.service';
@@ -26,6 +27,7 @@ import { VisitorLogService } from './services/visitor-log.service';
     EncryptionService,
     ImageService,
     ItineraryPdfService,
+    MinistryPdfService,
     PaystackService,
     QrService,
     ReferenceService,
@@ -43,6 +45,7 @@ import { VisitorLogService } from './services/visitor-log.service';
     EncryptionService,
     ImageService,
     ItineraryPdfService,
+    MinistryPdfService,
     PaystackService,
     QrService,
     ReferenceService,
