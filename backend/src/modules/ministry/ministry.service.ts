@@ -57,9 +57,20 @@ export class MinistryService {
 
   private buildFilters(from?: string, to?: string, lgaId?: string) {
     const fromFilter = from ? Prisma.sql`AND v."visitedAt" >= ${new Date(from)}` : Prisma.empty;
-    const toFilter = to ? Prisma.sql`AND v."visitedAt" <= ${new Date(to)}` : Prisma.empty;
+    const toFilter = to
+      ? Prisma.sql`AND v."visitedAt" < ${this.toExclusiveEndOfDayBoundary(to)}`
+      : Prisma.empty;
     const lgaFilter = lgaId ? Prisma.sql`AND v."lgaId" = ${lgaId}` : Prisma.empty;
     return { fromFilter, toFilter, lgaFilter };
+  }
+
+  // CR-01: `to` is a date-only string (e.g. "2026-07-18") that `new Date()`
+  // parses to UTC midnight. Comparing with `<=` against that midnight value
+  // silently drops nearly the entire `to` date. Instead, compute the
+  // exclusive UTC-midnight boundary of the NEXT day and compare with `<`, so
+  // every timestamp on the `to` date itself (including 23:59) is included.
+  private toExclusiveEndOfDayBoundary(to: string): Date {
+    return new Date(new Date(to).getTime() + 24 * 60 * 60 * 1000);
   }
 
   // ── MIN-02: Visitor entries by LGA + month, secondary split by role ─────────
@@ -137,7 +148,9 @@ export class MinistryService {
     }
 
     const fromFilter = from ? Prisma.sql`AND t."createdAt" >= ${new Date(from)}` : Prisma.empty;
-    const toFilter = to ? Prisma.sql`AND t."createdAt" <= ${new Date(to)}` : Prisma.empty;
+    const toFilter = to
+      ? Prisma.sql`AND t."createdAt" < ${this.toExclusiveEndOfDayBoundary(to)}`
+      : Prisma.empty;
 
     const [byModuleRaw, byMonthRaw, byModuleLgaRaw] = await Promise.all([
       // All 7 confirmed module strings that have ever credited the Ministry

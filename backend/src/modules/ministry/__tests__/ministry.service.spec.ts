@@ -81,7 +81,7 @@ describe('MinistryService', () => {
       const sqlText: string = executed.sql;
 
       expect(sqlText).toContain('v."visitedAt" >=');
-      expect(sqlText).toContain('v."visitedAt" <=');
+      expect(sqlText).toContain('v."visitedAt" <');
       expect(sqlText).toContain('v."lgaId" =');
       // Parameterized — never string-concatenated (ASVS V5 / T-14-06 mitigation).
       expect(executed.values).toEqual(
@@ -95,6 +95,25 @@ describe('MinistryService', () => {
         service.getVisitorEntriesByLgaAndMonth('2026-01-01', '2026-12-31', 'lga-1'),
       ).resolves.toEqual([]);
       await expect(service.getVisitorEntriesByLgaAndMonth()).resolves.toEqual([]);
+    });
+
+    it('CR-01 regression: computes an exclusive next-day boundary for to, so a timestamp late on the to date would be included', async () => {
+      mockPrisma.$queryRaw.mockResolvedValueOnce([]);
+
+      await service.getVisitorEntriesByLgaAndMonth(undefined, '2026-07-18');
+
+      const executed = mockPrisma.$queryRaw.mock.calls[0][0];
+      const sqlText: string = executed.sql;
+
+      // Uses `<` (exclusive next-day boundary), not `<=` against UTC midnight
+      // of the `to` date itself — the unrelated `v."visitedAt" <= NOW()`
+      // status-join guard is untouched and must not cause a false match.
+      expect(sqlText).toMatch(/v\."visitedAt" <[^=]/);
+
+      const toBoundary = (executed.values as unknown[]).find((v) => v instanceof Date) as Date;
+      expect(toBoundary).toBeInstanceOf(Date);
+      expect(toBoundary.toISOString()).toBe('2026-07-19T00:00:00.000Z');
+      expect(new Date('2026-07-18T23:59:00.000Z').getTime()).toBeLessThan(toBoundary.getTime());
     });
   });
 
@@ -144,6 +163,22 @@ describe('MinistryService', () => {
         service.getPurposeBreakdown('2026-01-01', '2026-12-31', 'lga-1'),
       ).resolves.toEqual([]);
       await expect(service.getPurposeBreakdown()).resolves.toEqual([]);
+    });
+
+    it('CR-01 regression: computes an exclusive next-day boundary for to, so a timestamp late on the to date would be included', async () => {
+      mockPrisma.$queryRaw.mockResolvedValueOnce([]);
+
+      await service.getPurposeBreakdown(undefined, '2026-07-18');
+
+      const executed = mockPrisma.$queryRaw.mock.calls[0][0];
+      const sqlText: string = executed.sql;
+
+      expect(sqlText).toMatch(/v\."visitedAt" <[^=]/);
+
+      const toBoundary = (executed.values as unknown[]).find((v) => v instanceof Date) as Date;
+      expect(toBoundary).toBeInstanceOf(Date);
+      expect(toBoundary.toISOString()).toBe('2026-07-19T00:00:00.000Z');
+      expect(new Date('2026-07-18T23:59:00.000Z').getTime()).toBeLessThan(toBoundary.getTime());
     });
   });
 
@@ -229,7 +264,7 @@ describe('MinistryService', () => {
 
       const byModuleCall = mockPrisma.$queryRaw.mock.calls[0][0];
       expect(byModuleCall.sql).toContain('t."createdAt" >=');
-      expect(byModuleCall.sql).toContain('t."createdAt" <=');
+      expect(byModuleCall.sql).toContain('t."createdAt" <');
       expect(byModuleCall.values).toEqual(
         expect.arrayContaining([expect.any(String), expect.any(Date), expect.any(Date)]),
       );
@@ -260,6 +295,23 @@ describe('MinistryService', () => {
         byMonth: [],
         byModuleLga: [],
       });
+    });
+
+    it('CR-01 regression: computes an exclusive next-day boundary for to, so a timestamp late on the to date would be included', async () => {
+      mockSettlementService.resolveMinistryWallet.mockResolvedValueOnce({ id: 'ministry-wallet-1' });
+      mockPrisma.$queryRaw.mockResolvedValue([]);
+
+      await service.getRevenueToGovernment(undefined, '2026-07-18');
+
+      const byModuleCall = mockPrisma.$queryRaw.mock.calls[0][0];
+      const sqlText: string = byModuleCall.sql;
+
+      expect(sqlText).toMatch(/t\."createdAt" <[^=]/);
+
+      const toBoundary = (byModuleCall.values as unknown[]).find((v) => v instanceof Date) as Date;
+      expect(toBoundary).toBeInstanceOf(Date);
+      expect(toBoundary.toISOString()).toBe('2026-07-19T00:00:00.000Z');
+      expect(new Date('2026-07-18T23:59:00.000Z').getTime()).toBeLessThan(toBoundary.getTime());
     });
   });
 });
