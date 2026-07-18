@@ -2,6 +2,7 @@ import { Global, Module } from '@nestjs/common';
 import { SettlementController } from './controllers/settlement.controller';
 import { UploadController } from './controllers/upload.controller';
 import { CsvExportService } from './services/csv-export.service';
+import { DbMetricsService } from './services/db-metrics.service';
 import { DojahService } from './services/dojah.service';
 import { EncryptionService } from './services/encryption.service';
 import { ImageService } from './services/image.service';
@@ -23,6 +24,7 @@ import { VisitorLogService } from './services/visitor-log.service';
   controllers: [SettlementController, UploadController],
   providers: [
     CsvExportService,
+    DbMetricsService,
     DojahService,
     EncryptionService,
     ImageService,
@@ -41,6 +43,7 @@ import { VisitorLogService } from './services/visitor-log.service';
   ],
   exports: [
     CsvExportService,
+    DbMetricsService,
     DojahService,
     EncryptionService,
     ImageService,
