@@ -26,6 +26,19 @@ const VISITOR_ENTRIES_COLUMNS: MinistryPdfColumn[] = [
   { key: 'count', label: 'Count' },
 ];
 
+// CR-02 gap-closure (14-10): the raw lgaId UUID (~36 chars) has no reserved
+// PDF real estate in a 5-column table and wraps/overlaps the next row (see
+// 14-REVIEW.md CR-02, 14-VERIFICATION.md gap 2). lgaName already carries the
+// human-readable identity for PDF viewers, so the PDF export drops lgaId
+// entirely — the CSV export (VISITOR_ENTRIES_COLUMNS, unchanged above) keeps
+// it, since CSV has no rendering/overlap concern.
+const VISITOR_ENTRIES_PDF_COLUMNS: MinistryPdfColumn[] = [
+  { key: 'lgaName', label: 'LGA' },
+  { key: 'month', label: 'Month' },
+  { key: 'userRole', label: 'Visitor Role' },
+  { key: 'count', label: 'Count' },
+];
+
 const PURPOSE_BREAKDOWN_COLUMNS: MinistryPdfColumn[] = [
   { key: 'purpose', label: 'Purpose' },
   { key: 'month', label: 'Month' },
@@ -97,7 +110,7 @@ export class MinistryController {
     if (query.format === 'pdf') {
       const buffer = await this.ministryPdfService.renderPdf({
         title: 'Visitor Entries',
-        sections: [{ columns: VISITOR_ENTRIES_COLUMNS, rows: flatRows }],
+        sections: [{ columns: VISITOR_ENTRIES_PDF_COLUMNS, rows: flatRows }],
       });
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', 'attachment; filename="visitor-entries.pdf"');
