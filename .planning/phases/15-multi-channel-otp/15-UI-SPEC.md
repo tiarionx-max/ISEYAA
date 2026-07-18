@@ -212,7 +212,7 @@ Each option row (SMS / WhatsApp / Email, in that order):
     group wrapped with accessibilityRole="radiogroup" and accessibilityLabel="Verification channel"
 
 Inline error text (shown only after a failed save, below the option group):
-  "Could not update your verification channel. Please try again." — Caption 13px, weight 400,
+  "Could not update your verification channel. Please try again." — Caption 12px, weight 400,
   ERROR_TEXT, marginTop SPACE_2 (8px)
 ```
 
