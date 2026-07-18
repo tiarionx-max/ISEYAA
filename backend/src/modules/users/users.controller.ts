@@ -22,6 +22,7 @@ import { UsersService } from './users.service';
 import { KycService } from './kyc.service';
 import { VerifyBvnDto } from './dto/verify-bvn.dto';
 import { VerifyNinDto } from './dto/verify-nin.dto';
+import { ChangeOtpChannelDto } from './dto/change-otp-channel.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserRole } from '../../common/enums/user-role.enum';
@@ -61,6 +62,13 @@ export class UsersController {
   @ApiOperation({ summary: 'Switch active role' })
   switchRole(@CurrentUser() user: { userId: string }, @Body() dto: SwitchRoleDto) {
     return this.usersService.switchRole(user.userId, dto.role);
+  }
+
+  @Patch('me/otp-channel')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Change OTP delivery channel preference' })
+  changeOtpChannel(@CurrentUser() user: { userId: string }, @Body() dto: ChangeOtpChannelDto) {
+    return this.usersService.updateOtpChannel(user.userId, dto.channel);
   }
 
   @Post('me/become-host')

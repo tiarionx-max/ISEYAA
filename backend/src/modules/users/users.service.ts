@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UserRole } from '../../common/enums/user-role.enum';
+import { OtpChannel } from '../../common/enums/otp-channel.enum';
 
 const USER_SELECT = {
   id: true,
@@ -18,6 +19,7 @@ const USER_SELECT = {
   registeredRoles: true,
   status: true,
   kycStatus: true,
+  otpChannel: true,
   kycBvnVerifiedAt: true,
   kycNinVerifiedAt: true,
   kycLivenessVerifiedAt: true,
@@ -57,6 +59,14 @@ export class UsersService {
     return this.prisma.user.update({
       where: { id: userId },
       data: { role },
+      select: USER_SELECT,
+    });
+  }
+
+  async updateOtpChannel(userId: string, channel: OtpChannel) {
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { otpChannel: channel },
       select: USER_SELECT,
     });
   }
