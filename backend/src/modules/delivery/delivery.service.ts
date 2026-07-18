@@ -617,7 +617,7 @@ export class DeliveryService {
         module: 'delivery',
         reference: `ISY-DLV-${orderId}`, // deterministic — SettlementService idempotency precheck (Pitfall 2)
         gateway: 'INTERNAL',
-        amountKobo: fee * 100,
+        amountKobo: Math.round(fee * 100), // WR-03: avoid IEEE-754 float drift crossing into SettlementService
         recipients,
         buyerWalletId: null, // D-04 — no real buyer wallet debit exists for a delivery fee
         description: 'Delivery completion settlement',

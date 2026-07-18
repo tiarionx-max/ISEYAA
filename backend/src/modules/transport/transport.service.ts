@@ -594,7 +594,7 @@ export class TransportService {
         module: 'transport',
         reference: `ISY-TRP-${tripId}`,
         gateway: 'INTERNAL',
-        amountKobo: fare * 100,
+        amountKobo: Math.round(fare * 100), // WR-03: avoid IEEE-754 float drift crossing into SettlementService
         recipients,
         buyerWalletId: null,
         description: 'Trip completion settlement',
