@@ -29,7 +29,7 @@ Sprint 1 is shipped. This roadmap covers the six remaining sprints: infrastructu
  (completed 2026-07-16)
 - [x] **Phase 12: Settlement Engine Foundation** - Generalized `SettlementService` + standing Ministry wallet, plus fixing two pre-existing revenue bugs (Stays escrow fee leak, missing Marketplace/Events/Studio webhook consumers) (completed 2026-07-17)
 - [x] **Phase 13: Settlement Cutover — Transport & Delivery** - Transport and Delivery's live payouts move onto the three-way settlement engine, shadow-mode verified before cutover (completed 2026-07-17)
-- [ ] **Phase 14: Ministry Dashboard** - `MINISTRY_VIEWER` role + read-only dashboard: visitor counts, purpose-of-visit, revenue-to-government-share, CSV/PDF export, zero PII leakage (8 plans complete 2026-07-18; gap closure 14-09/14-10 pending for CR-01/CR-02 blockers found in verification)
+- [x] **Phase 14: Ministry Dashboard** - `MINISTRY_VIEWER` role + read-only dashboard: visitor counts, purpose-of-visit, revenue-to-government-share, CSV/PDF export, zero PII leakage (8 plans complete 2026-07-18; gap closure 14-09/14-10 pending for CR-01/CR-02 blockers found in verification) (completed 2026-07-18)
 - [ ] **Phase 15: Multi-Channel OTP** - Users choose WhatsApp/Email/SMS for OTP verification at registration, with bounded-timeout SMS fallback and identity-scoped brute-force protection
 - [ ] **Phase 16: Connection Pooling Infrastructure** - Every Prisma client on a pooled connection string, combined-topology load test under Neon's connection ceiling
 - [ ] **Phase 17: gRPC Proof-of-Pattern Extraction (notifications-service)** - `notifications-service` runs as a genuinely separate deployable process, called via `ClientGrpc`, proving the extraction pattern with zero REST behavior change
@@ -540,8 +540,8 @@ Plans:
 - [x] 14-08-PLAN.md — Web /admin/ministry dashboard: 3 report panels, charts, filters, 6 export buttons
 
 **Wave 6 — Gap Closure** *(no dependencies on each other — parallel-safe, disjoint files; closes BLOCKER-severity findings from 14-VERIFICATION.md)*
-- [ ] 14-09-PLAN.md — Fix CR-01: Ministry `to` date-range filter off-by-one (undercounts every report by default)
-- [ ] 14-10-PLAN.md — Fix CR-02: Visitor Entries PDF export row overlap (height-aware table layout + drop raw lgaId column from PDF)
+- [x] 14-09-PLAN.md — Fix CR-01: Ministry `to` date-range filter off-by-one (undercounts every report by default)
+- [x] 14-10-PLAN.md — Fix CR-02: Visitor Entries PDF export row overlap (height-aware table layout + drop raw lgaId column from PDF)
 
 **Cross-cutting constraints:**
 - `MINISTRY_VIEWER` is provisioned by an admin, never self-registered — excluded from `REGISTERABLE_ROLES`
@@ -607,7 +607,7 @@ Phases 11, 12 (Settlement Foundation), and 15 (WhatsApp OTP) are independent of 
 | 11. Resilience Wrapping | 11/11 | Complete   | 2026-07-16 |
 | 12. Settlement Engine Foundation | 9/9 | Complete   | 2026-07-17 |
 | 13. Settlement Cutover — Transport & Delivery | 4/4 | Complete    | 2026-07-18 |
-| 14. Ministry Dashboard | 8/10 | In progress (gap closure 14-09/14-10 pending) | - |
+| 14. Ministry Dashboard | 10/10 | Complete   | 2026-07-18 |
 | 15. Multi-Channel OTP | 0/0 | Not started | - |
 | 16. Connection Pooling Infrastructure | 0/0 | Not started | - |
 | 17. gRPC Proof-of-Pattern Extraction (notifications-service) | 0/0 | Not started | - |
