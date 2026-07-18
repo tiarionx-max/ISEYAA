@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { SettlementService } from '../../common/services/settlement.service';
 
 export interface VisitorEntryRow {
   lgaId: string | null;
@@ -16,9 +17,35 @@ export interface PurposeBreakdownRow {
   count: number;
 }
 
+export interface ModuleRevenueRow {
+  module: string;
+  total: number;
+}
+
+export interface MonthRevenueRow {
+  month: string;
+  total: number;
+}
+
+export interface ModuleLgaRevenueRow {
+  module: string;
+  lgaId: string | null;
+  lgaName: string | null;
+  total: number;
+}
+
+export interface RevenueToGovernment {
+  byModule: ModuleRevenueRow[];
+  byMonth: MonthRevenueRow[];
+  byModuleLga: ModuleLgaRevenueRow[];
+}
+
 @Injectable()
 export class MinistryService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private settlementService: SettlementService,
+  ) {}
 
   // ── Shared D-02 status-aware filter fragments ────────────────────────────────
   //
@@ -93,5 +120,118 @@ export class MinistryService {
     );
 
     return rows.map((row) => ({ ...row, count: Number(row.count) }));
+  }
+
+  // ── MIN-04: Revenue to government (standing Ministry wallet ledger) ─────────
+  //
+  // D-10: no phase-14-ship-date floor — from/to, when supplied, bound
+  // Transaction.createdAt inclusively; omitted, the query covers all
+  // historical Ministry-wallet-credited settlement data.
+
+  async getRevenueToGovernment(from?: string, to?: string): Promise<RevenueToGovernment> {
+    const ministryWallet = await this.settlementService.resolveMinistryWallet();
+    if (!ministryWallet) {
+      // tour.government_wallet_user_id unconfigured — degrade to the empty
+      // shape rather than throwing (Pitfall 2 in settlement.service.ts).
+      return { byModule: [], byMonth: [], byModuleLga: [] };
+    }
+
+    const fromFilter = from ? Prisma.sql`AND t."createdAt" >= ${new Date(from)}` : Prisma.empty;
+    const toFilter = to ? Prisma.sql`AND t."createdAt" <= ${new Date(to)}` : Prisma.empty;
+
+    const [byModuleRaw, byMonthRaw, byModuleLgaRaw] = await Promise.all([
+      // All 7 confirmed module strings that have ever credited the Ministry
+      // wallet — no hardcoded module allowlist here (that restriction only
+      // applies to the byModuleLga query below, per D-09).
+      this.prisma.$queryRaw<{ module: string; total: number | Prisma.Decimal }[]>(
+        Prisma.sql`
+          SELECT t.metadata->>'module' AS module, COALESCE(SUM(t.amount), 0) AS total
+          FROM transactions t
+          WHERE t."walletId" = ${ministryWallet.id}
+            AND t.type = 'CREDIT'
+            AND t.status = 'SUCCESS'
+            ${fromFilter}
+            ${toFilter}
+          GROUP BY t.metadata->>'module'
+          ORDER BY total DESC
+        `,
+      ),
+      this.prisma.$queryRaw<{ month: string; total: number | Prisma.Decimal }[]>(
+        Prisma.sql`
+          SELECT TO_CHAR(t."createdAt", 'YYYY-MM') AS month, COALESCE(SUM(t.amount), 0) AS total
+          FROM transactions t
+          WHERE t."walletId" = ${ministryWallet.id}
+            AND t.type = 'CREDIT'
+            AND t.status = 'SUCCESS'
+            ${fromFilter}
+            ${toFilter}
+          GROUP BY month
+          ORDER BY month ASC
+        `,
+      ),
+      // D-09 LGA sub-breakdown — restricted to Stays/Marketplace/Tour, the
+      // only 3 modules whose Ministry-credited row carries a direct,
+      // reliable LGA join path (Transport/Delivery/Studio/Events excluded,
+      // still fully counted above in byModule/byMonth).
+      this.prisma.$queryRaw<{ module: string; lgaId: string | null; lgaName: string | null; total: number | Prisma.Decimal }[]>(
+        Prisma.sql`
+          SELECT t.metadata->>'module' AS module, l.id AS "lgaId", l.name AS "lgaName",
+                 COALESCE(SUM(t.amount), 0) AS total
+          FROM transactions t
+          LEFT JOIN lgas l ON l.id = (
+            CASE t.metadata->>'module'
+              WHEN 'stays' THEN (
+                SELECT p."lgaId" FROM bookings b
+                JOIN properties p ON b."propertyId" = p.id
+                WHERE b.id = (t.metadata->>'bookingId')::text
+              )
+              WHEN 'marketplace' THEN (
+                SELECT v."lgaId" FROM orders o
+                JOIN vendors v ON o."vendorId" = v.id
+                WHERE o.id = (t.metadata->>'orderId')::text
+              )
+              -- Tour's join is structurally different from Stays/Marketplace above:
+              -- it goes Transaction.gatewayRef -> TourBooking.paymentReference ->
+              -- TourBooking.tourPackageId -> TourPackage.lgaId (NOT metadata.bookingId/
+              -- metadata.orderId). SPLIT-BILL CAVEAT: for a split-bill tour booking,
+              -- each passenger's share is its own settle() call with its own distinct
+              -- gatewayRef, so each share's Ministry-credited row has a DIFFERENT
+              -- gatewayRef. Only once ALL shares are paid does paymentReference get
+              -- set (to the LAST share's reference) — so this gatewayRef =
+              -- paymentReference equi-join recovers only ONE share's row per
+              -- split-bill booking, undercounting this LGA sub-breakdown for
+              -- split-bill tour bookings relative to the byModule/byMonth totals
+              -- (which sum ALL shares correctly, since they don't rely on this
+              -- join). Known, accepted limitation — see 14-06-PLAN.md <interfaces>.
+              WHEN 'tour_booking' THEN (
+                SELECT tp."lgaId" FROM tour_bookings tb
+                JOIN tour_packages tp ON tb."tourPackageId" = tp.id
+                WHERE tb."paymentReference" = t."gatewayRef"
+              )
+              ELSE NULL
+            END
+          )
+          WHERE t."walletId" = ${ministryWallet.id}
+            AND t.type = 'CREDIT'
+            AND t.status = 'SUCCESS'
+            AND t.metadata->>'module' IN ('stays', 'marketplace', 'tour_booking')
+            ${fromFilter}
+            ${toFilter}
+          GROUP BY t.metadata->>'module', l.id, l.name
+          ORDER BY total DESC
+        `,
+      ),
+    ]);
+
+    return {
+      byModule: byModuleRaw.map((row) => ({ module: row.module, total: Number(row.total) })),
+      byMonth: byMonthRaw.map((row) => ({ month: row.month, total: Number(row.total) })),
+      byModuleLga: byModuleLgaRaw.map((row) => ({
+        module: row.module,
+        lgaId: row.lgaId,
+        lgaName: row.lgaName,
+        total: Number(row.total),
+      })),
+    };
   }
 }

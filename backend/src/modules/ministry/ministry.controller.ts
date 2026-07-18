@@ -30,4 +30,10 @@ export class MinistryController {
   getPurposeBreakdown(@Query() query: MinistryQueryDto) {
     return this.ministryService.getPurposeBreakdown(query.from, query.to, query.lgaId);
   }
+
+  @Get('revenue')
+  @ApiOperation({ summary: 'Revenue to government grouped by module and month, with an LGA sub-breakdown for Stays/Marketplace/Tour' })
+  getRevenue(@Query() query: MinistryQueryDto) {
+    return this.ministryService.getRevenueToGovernment(query.from, query.to);
+  }
 }
