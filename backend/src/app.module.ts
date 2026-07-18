@@ -22,6 +22,7 @@ import { MarketplaceModule } from './modules/marketplace/marketplace.module';
 import { StudioModule } from './modules/studio/studio.module';
 import { WalletModule } from './modules/wallet/wallet.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { MinistryModule } from './modules/ministry/ministry.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AiModule } from './modules/ai/ai.module';
 import { TransportModule } from './modules/transport/transport.module';
@@ -59,6 +60,7 @@ import { KafkaModule } from './kafka/kafka.module';
     StudioModule,
     WalletModule,
     AdminModule,
+    MinistryModule,
     NotificationsModule,
     AiModule,
     WebhooksModule,
