@@ -515,6 +515,13 @@ export class TransportService {
       throw new ForbiddenException('You are not the assigned driver for this trip');
     }
 
+    // CR-03: explicit status precondition — mirrors arrivedAtPickup/startTrip.
+    // Without this, the cutover branch below would unconditionally compute
+    // earnings and call settle() for a trip that is CANCELLED/COMPLETED/etc.
+    if (trip.status !== 'IN_PROGRESS') {
+      throw new BadRequestException(`Trip must be IN_PROGRESS to complete; current: ${trip.status}`);
+    }
+
     const now = new Date();
     const fare = Number(trip.fare);
 
@@ -595,10 +602,26 @@ export class TransportService {
           await tx.tripEvent.create({ data: { tripId, event: 'TRIP_COMPLETED' } });
         },
         onFailure: async () => {
-          await this.prisma.trip.update({
-            where: { id: tripId },
+          // CR-03: only revert to IN_PROGRESS if the trip is not already in a
+          // terminal state. onSettled's atomic guard throws (count===0) when the
+          // trip was NOT actually IN_PROGRESS at settlement time (e.g. a
+          // concurrent duplicate call already completed it, or it was
+          // legitimately cancelled) — in that case the trip's current status is
+          // authoritative and must not be clobbered back to IN_PROGRESS, or a
+          // stray/duplicate completeTrip call could resurrect a terminal trip
+          // into a retryable state and enable a second payout. If the failure
+          // was unrelated to the guard (e.g. a DB error before the guard ran),
+          // the whole $transaction rolled back and the trip is still genuinely
+          // IN_PROGRESS in the DB, so this update is a safe no-op in that case.
+          const result = await this.prisma.trip.updateMany({
+            where: { id: tripId, status: { notIn: ['COMPLETED', 'CANCELLED', 'EXPIRED'] } },
             data: { status: 'IN_PROGRESS' as any },
           });
+          if (result.count === 0) {
+            this.logger.warn(
+              `completeTrip onFailure: not reverting trip ${tripId} — already in a terminal state`,
+            );
+          }
         },
       });
     } else {
