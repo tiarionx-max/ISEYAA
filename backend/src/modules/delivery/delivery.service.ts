@@ -462,15 +462,22 @@ export class DeliveryService {
 
     const now = new Date();
 
-    const [updatedOrder] = await Promise.all([
-      this.prisma.deliveryOrder.update({
-        where: { id: orderId },
-        data: { status: 'COLLECTING' as any, collectedAt: now },
-      }),
-      this.prisma.deliveryEvent.create({
-        data: { orderId, event: 'PARCEL_COLLECTED' },
-      }),
-    ]);
+    // WR-05: atomic updateMany with WHERE status='MATCHED' — mirrors acceptOrder's
+    // H-01 pattern — prevents two concurrent/duplicate collectParcel calls from
+    // both succeeding and both emitting a PARCEL_COLLECTED event.
+    const updated = await this.prisma.deliveryOrder.updateMany({
+      where: { id: orderId, status: 'MATCHED' as any },
+      data: { status: 'COLLECTING' as any, collectedAt: now },
+    });
+    if (updated.count === 0) {
+      throw new BadRequestException(`Order cannot be collected in status: ${order.status}`);
+    }
+
+    await this.prisma.deliveryEvent.create({
+      data: { orderId, event: 'PARCEL_COLLECTED' },
+    });
+
+    const updatedOrder = await this.prisma.deliveryOrder.findFirst({ where: { id: orderId } });
 
     this.gateway.server.to(`delivery:${order.senderId}`).emit('delivery:collecting', { orderId });
 
