@@ -30,7 +30,7 @@ Sprint 1 is shipped. This roadmap covers the six remaining sprints: infrastructu
 - [x] **Phase 12: Settlement Engine Foundation** - Generalized `SettlementService` + standing Ministry wallet, plus fixing two pre-existing revenue bugs (Stays escrow fee leak, missing Marketplace/Events/Studio webhook consumers) (completed 2026-07-17)
 - [x] **Phase 13: Settlement Cutover — Transport & Delivery** - Transport and Delivery's live payouts move onto the three-way settlement engine, shadow-mode verified before cutover (completed 2026-07-17)
 - [x] **Phase 14: Ministry Dashboard** - `MINISTRY_VIEWER` role + read-only dashboard: visitor counts, purpose-of-visit, revenue-to-government-share, CSV/PDF export, zero PII leakage (8 plans complete 2026-07-18; gap closure 14-09/14-10 pending for CR-01/CR-02 blockers found in verification) (completed 2026-07-18)
-- [ ] **Phase 15: Multi-Channel OTP** - Users choose WhatsApp/Email/SMS for OTP verification at registration, with bounded-timeout SMS fallback and identity-scoped brute-force protection
+- [x] **Phase 15: Multi-Channel OTP** - Users choose WhatsApp/Email/SMS for OTP verification at registration, with bounded-timeout SMS fallback and identity-scoped brute-force protection (completed 2026-07-18)
 - [ ] **Phase 16: Connection Pooling Infrastructure** - Every Prisma client on a pooled connection string, combined-topology load test under Neon's connection ceiling
 - [ ] **Phase 17: gRPC Proof-of-Pattern Extraction (notifications-service)** - `notifications-service` runs as a genuinely separate deployable process, called via `ClientGrpc`, proving the extraction pattern with zero REST behavior change
 
@@ -571,8 +571,8 @@ Plans:
 - [x] 15-04-PLAN.md — UsersModule: PATCH /users/me/otp-channel + ChangeOtpChannelDto (D-07)
 
 **Wave 3** *(blocked on Wave 2, parallel)*
-- [ ] 15-05-PLAN.md — Mobile: phone.tsx channel picker + email capture, otp.tsx fallback notice banner (D-10)
-- [ ] 15-06-PLAN.md — Mobile: otp-channel-settings.tsx new screen + profile.tsx menu entry (D-07)
+- [x] 15-05-PLAN.md — Mobile: phone.tsx channel picker + email capture, otp.tsx fallback notice banner (D-10)
+- [x] 15-06-PLAN.md — Mobile: otp-channel-settings.tsx new screen + profile.tsx menu entry (D-07)
 
 **Cross-cutting constraints:**
 - WhatsApp moves entirely off Termii onto a direct Meta Business Cloud API integration (D-01) — no feature flag hides it even before Meta approval (D-04)
@@ -625,6 +625,6 @@ Phases 11, 12 (Settlement Foundation), and 15 (WhatsApp OTP) are independent of 
 | 12. Settlement Engine Foundation | 9/9 | Complete   | 2026-07-17 |
 | 13. Settlement Cutover — Transport & Delivery | 4/4 | Complete    | 2026-07-18 |
 | 14. Ministry Dashboard | 10/10 | Complete   | 2026-07-18 |
-| 15. Multi-Channel OTP | 4/6 | In Progress|  |
+| 15. Multi-Channel OTP | 6/6 | Complete   | 2026-07-18 |
 | 16. Connection Pooling Infrastructure | 0/0 | Not started | - |
 | 17. gRPC Proof-of-Pattern Extraction (notifications-service) | 0/0 | Not started | - |
