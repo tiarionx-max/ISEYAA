@@ -55,8 +55,8 @@ Requirements for milestone v2.0. Each maps to roadmap phases (Phase 10+, continu
 
 - [x] **SETTLE-01**: A shared `SettlementService` in `CommonModule` generalizes `TourSettlementService`'s proven pattern (single `$transaction`, `SELECT FOR UPDATE` per recipient wallet, idempotency keys, drift-tolerance assertion, append-only audit) for reuse across modules
 - [x] **SETTLE-02**: A standing Ministry wallet is provisioned, reusing the existing `tour.government_wallet_user_id` `PlatformConfig` entity as the Ministry's recipient wallet
-- [ ] **SETTLE-03**: Transport's settlement is generalized to a three-way, `PlatformConfig`-driven split (driver/rider, Ministry, platform), replacing the hardcoded 85/15
-- [ ] **SETTLE-04**: Delivery's settlement is generalized to a three-way, `PlatformConfig`-driven split, replacing the hardcoded 80/20
+- [x] **SETTLE-03**: Transport's settlement is generalized to a three-way, `PlatformConfig`-driven split (driver/rider, Ministry, platform), replacing the hardcoded 85/15
+- [x] **SETTLE-04**: Delivery's settlement is generalized to a three-way, `PlatformConfig`-driven split, replacing the hardcoded 80/20
 - [x] **SETTLE-05**: Stays' `releaseEscrow()` cron is fixed to actually read and apply `Booking.govtLevyPct` instead of crediting the host 100% of the booking price (pre-existing revenue-leak bug)
 - [x] **SETTLE-06**: Marketplace, Events, and Studio payment webhooks have working settlement consumers — currently no `@OnEvent` handler exists for `payment.order_payment`, `payment.ticket_purchase`, or `payment.studio_booking` anywhere in the codebase
 - [x] **SETTLE-07**: Each settlement recipient (vendor/rider, Ministry, platform) can retrieve a per-recipient, itemized settlement statement
@@ -121,8 +121,8 @@ Requirements for milestone v2.0. Each maps to roadmap phases (Phase 10+, continu
 | MIN-07 | Phase 14 | Pending |
 | SETTLE-01 | Phase 12 | Complete |
 | SETTLE-02 | Phase 12 | Complete |
-| SETTLE-03 | Phase 13 | Pending |
-| SETTLE-04 | Phase 13 | Pending |
+| SETTLE-03 | Phase 13 | Complete |
+| SETTLE-04 | Phase 13 | Complete |
 | SETTLE-05 | Phase 12 | Complete |
 | SETTLE-06 | Phase 12 | Complete |
 | SETTLE-07 | Phase 12 | Complete |
