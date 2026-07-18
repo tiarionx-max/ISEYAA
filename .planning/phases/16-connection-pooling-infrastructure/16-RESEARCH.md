@@ -467,22 +467,25 @@ Source: [ASSUMED — new test file, no prior precedent in this codebase for a co
 
 **If this table is empty:** N/A — see entries above; all four should be confirmed before the plan's numbers are treated as final.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **What is the actual Neon plan/compute-size configuration for this project?**
    - What we know: Cost target (~$11/mo total) and "zero idle cost" framing strongly suggest Neon Free plan; Neon's public docs give a `max_connections`-by-CU table (104 @ 0.25 CU up to 3,357+ @ 8 CU).
    - What's unclear: The exact plan and CU autoscale range actually provisioned for this project — not recorded in any repo file, env example, or memory.
    - Recommendation: This phase's plan should include an early task requiring a human to check the Neon Console (Project → Settings → Compute, or Billing page) and record the actual plan/CU range in `.env.example` comments or a short note in `PROJECT.md`, before `connection_limit`/alert-threshold values are treated as final. Until then, size conservatively against the 0.25 CU floor (104 `max_connections`, ~93 effective pooled limit at 90%).
+   - **Resolved:** Plan 16-04 Task 1 (checkpoint:human-verify) requires the operator to check the Neon Console and record the confirmed plan/CU/ceiling in `16-VERIFICATION.md`; Plan 16-04 Task 3 then applies the confirmed `connection_limit` to the live production Railway `DATABASE_URL`.
 
 2. **Does the Grafana Cloud OTLP endpoint accept metrics at the same URL/token as traces?**
    - What we know: `backend/src/instrumentation.ts` currently only wires a `traceExporter` against `OTEL_EXPORTER_OTLP_ENDPOINT`.
    - What's unclear: Whether Grafana Cloud's specific OTLP gateway configured for this project (`otlp-gateway-prod-us-east-0.grafana.net/otlp` per `.env.example`) accepts metrics at the same path, or needs a distinct metrics-specific path/scope.
    - Recommendation: Verify against the live Grafana Cloud OTLP config during implementation (same "code-wired, live-delivery-needs-confirmation" pattern already established for RESIL-02 in Phase 11) — do not treat metric delivery as confirmed until a HUMAN-UAT step observes the gauge in Grafana.
+   - **Resolved:** Plan 16-04 Task 2 (checkpoint:human-verify) has the operator log into Grafana Cloud during the combined-topology run and confirm the `postgres_open_connections` gauge shows live, moving values — metric delivery over the shared OTLP endpoint is confirmed there.
 
 3. **Should `notifications-service`'s FCM calls be stubbed during the combined-topology load test?**
    - What we know: `NotificationsService.sendPush()` calls the real FCM v1 API if `FIREBASE_SERVICE_ACCOUNT_JSON` is configured; if not configured, it safely no-ops with a logged warning.
    - What's unclear: Whether the load-test environment has `FIREBASE_SERVICE_ACCOUNT_JSON` set (which would send real, possibly-throttled FCM calls at load-test volume) or unset (safe no-op, but then the load test isn't exercising the full code path, including whatever latency/resilience behavior `ResilienceService.execute('fcm', ...)` adds).
    - Recommendation: Confirm the load-test environment's `FIREBASE_SERVICE_ACCOUNT_JSON` state before running; if set, either point at a test/sandbox FCM project or accept the no-op path is what's actually being tested for connection-pool purposes (which is fine, since the FCM call happens AFTER the Prisma query in `sendPush`, so connection behavior is unaffected either way).
+   - **Resolved:** Plan 16-03 Task 1's action reasoning settled this at planning time — no stubbing is required because `sendPush()`'s Prisma query executes before any FCM call, so the connection-pool behavior under test is unaffected by FCM's configured/no-op state either way.
 
 ## Environment Availability
 
