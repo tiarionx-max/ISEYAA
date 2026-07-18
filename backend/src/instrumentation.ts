@@ -5,19 +5,20 @@ import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 
+const OTLP_BASE = process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? '';
+const otlpAuthHeader = {
+  Authorization: `Basic ${process.env.GRAFANA_CLOUD_OTLP_TOKEN ?? ''}`,
+};
+
 const sdk = new NodeSDK({
   traceExporter: new OTLPTraceExporter({
-    url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
-    headers: {
-      Authorization: `Basic ${process.env.GRAFANA_CLOUD_OTLP_TOKEN ?? ''}`,
-    },
+    url: `${OTLP_BASE}/v1/traces`,
+    headers: otlpAuthHeader,
   }),
   metricReader: new PeriodicExportingMetricReader({
     exporter: new OTLPMetricExporter({
-      url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
-      headers: {
-        Authorization: `Basic ${process.env.GRAFANA_CLOUD_OTLP_TOKEN ?? ''}`,
-      },
+      url: `${OTLP_BASE}/v1/metrics`,
+      headers: otlpAuthHeader,
     }),
     exportIntervalMillis: 30000,
   }),
