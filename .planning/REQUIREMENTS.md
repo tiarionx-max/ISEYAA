@@ -37,8 +37,8 @@ Requirements for milestone v2.0. Each maps to roadmap phases (Phase 10+, continu
 ### Multi-Channel OTP
 
 - [x] **OTP-01**: User can select WhatsApp, Email, or SMS as their OTP verification channel at registration, defaulting to SMS if unselected
-- [ ] **OTP-02**: OTP delivery automatically falls back to SMS if the selected channel fails to deliver within a bounded timeout, reusing the same code and expiry across the fallback attempt
-- [ ] **OTP-03**: OTP rate-limiting and lockout (3 attempts / 15-minute lock) is scoped per-identity (phone/user), not per-channel, so switching channels cannot bypass the existing brute-force protection
+- [x] **OTP-02**: OTP delivery automatically falls back to SMS if the selected channel fails to deliver within a bounded timeout, reusing the same code and expiry across the fallback attempt
+- [x] **OTP-03**: OTP rate-limiting and lockout (3 attempts / 15-minute lock) is scoped per-identity (phone/user), not per-channel, so switching channels cannot bypass the existing brute-force protection
 - [x] **OTP-04**: WhatsApp OTP messages use a Meta-approved Authentication-category template (verification code + expiry only, no marketing content)
 
 ### Ministry Dashboard
@@ -109,8 +109,8 @@ Requirements for milestone v2.0. Each maps to roadmap phases (Phase 10+, continu
 | POOL-01 | Phase 16 | Pending |
 | POOL-02 | Phase 16 | Pending |
 | OTP-01 | Phase 15 | Complete |
-| OTP-02 | Phase 15 | Pending |
-| OTP-03 | Phase 15 | Pending |
+| OTP-02 | Phase 15 | Complete |
+| OTP-03 | Phase 15 | Complete |
 | OTP-04 | Phase 15 | Complete |
 | MIN-01 | Phase 14 | Pending |
 | MIN-02 | Phase 14 | Pending |
