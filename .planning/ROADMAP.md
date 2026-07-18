@@ -591,8 +591,8 @@ Plans:
 **Plans**: 4 plans
 Plans:
 **Wave 1** *(no dependencies — runs immediately, parallel)*
-- [ ] 16-01-PLAN.md — Fix notifications-service ResilienceModule DI blocker + packages/proto compile step (INT-02) + document pooled DATABASE_URL/DIRECT_URL + config-presence test (POOL-01)
-- [ ] 16-02-PLAN.md — DbMetricsService (pg_stat_activity cron poll -> OTel postgres_open_connections gauge) + instrumentation.ts metricReader wiring (POOL-02 metric plumbing)
+- [x] 16-01-PLAN.md — Fix notifications-service ResilienceModule DI blocker + packages/proto compile step (INT-02) + document pooled DATABASE_URL/DIRECT_URL + config-presence test (POOL-01)
+- [x] 16-02-PLAN.md — DbMetricsService (pg_stat_activity cron poll -> OTel postgres_open_connections gauge) + instrumentation.ts metricReader wiring (POOL-02 metric plumbing)
 
 **Wave 2** *(blocked on Wave 1)*
 - [ ] 16-03-PLAN.md — k6 native-gRPC notifications-service scenario wired into the combined-topology main.js run (POOL-02, D-06)
@@ -642,5 +642,5 @@ Phases 11, 12 (Settlement Foundation), and 15 (WhatsApp OTP) are independent of 
 | 13. Settlement Cutover — Transport & Delivery | 4/4 | Complete    | 2026-07-18 |
 | 14. Ministry Dashboard | 10/10 | Complete   | 2026-07-18 |
 | 15. Multi-Channel OTP | 6/6 | Complete    | 2026-07-18 |
-| 16. Connection Pooling Infrastructure | 0/0 | Not started | - |
+| 16. Connection Pooling Infrastructure | 2/4 | In Progress|  |
 | 17. gRPC Proof-of-Pattern Extraction (notifications-service) | 0/0 | Not started | - |
