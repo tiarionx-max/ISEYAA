@@ -12,6 +12,11 @@ backend/dist/
 backend/apps/*/src/**/*.js
 backend/apps/*/src/**/*.js.map
 
+# packages/proto compiled output (tsc compile-in-place; *.ts sources stay tracked,
+# regenerate via `npm run build --workspace=packages/proto`)
+packages/proto/generated/*.js
+packages/proto/generated/*.d.ts
+
 # Environment files — secrets must go in Infisical, never committed
 .env
 .env.*

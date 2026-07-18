@@ -31,7 +31,7 @@ Requirements for milestone v2.0. Each maps to roadmap phases (Phase 10+, continu
 
 ### Connection Pooling
 
-- [ ] **POOL-01**: Every Prisma client (monolith + `notifications-service`) connects through a pooled connection string (Neon `-pooler` suffix or PgBouncer) with an explicit, documented `connection_limit`
+- [x] **POOL-01**: Every Prisma client (monolith + `notifications-service`) connects through a pooled connection string (Neon `-pooler` suffix or PgBouncer) with an explicit, documented `connection_limit`
 - [ ] **POOL-02**: A combined-topology load test confirms total open Postgres connections stay under Neon's ceiling with the monolith and `notifications-service` running concurrently
 
 ### Multi-Channel OTP
@@ -106,7 +106,7 @@ Requirements for milestone v2.0. Each maps to roadmap phases (Phase 10+, continu
 | GRPC-03 | Phase 17 | Pending |
 | GRPC-04 | Phase 17 | Pending |
 | GRPC-05 | Phase 17 | Pending |
-| POOL-01 | Phase 16 | Pending |
+| POOL-01 | Phase 16 | Complete |
 | POOL-02 | Phase 16 | Pending |
 | OTP-01 | Phase 15 | Complete |
 | OTP-02 | Phase 15 | Complete |
