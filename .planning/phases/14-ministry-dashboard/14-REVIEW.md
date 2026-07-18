@@ -2,50 +2,18 @@
 phase: 14-ministry-dashboard
 reviewed: 2026-07-18T00:00:00Z
 depth: standard
-files_reviewed: 34
+files_reviewed: 5
 files_reviewed_list:
-  - backend/package.json
-  - backend/prisma/migrations/20260718000000_phase14_ministry_dashboard/migration.sql
-  - backend/prisma/schema.prisma
-  - backend/src/app.module.ts
-  - backend/src/common/common.module.ts
-  - backend/src/common/constants/visitor-purpose.constants.ts
-  - backend/src/common/enums/user-role.enum.ts
-  - backend/src/common/services/__tests__/csv-export.service.spec.ts
-  - backend/src/common/services/__tests__/ministry-pdf.service.spec.ts
-  - backend/src/common/services/__tests__/visitor-log.service.spec.ts
-  - backend/src/common/services/csv-export.service.ts
-  - backend/src/common/services/ministry-pdf.service.ts
-  - backend/src/common/services/visitor-log.service.ts
-  - backend/src/modules/events/__tests__/events.service.spec.ts
-  - backend/src/modules/events/dto/purchase-ticket.dto.ts
-  - backend/src/modules/events/events.service.ts
-  - backend/src/modules/ministry/__tests__/ministry-pii-allowlist.spec.ts
-  - backend/src/modules/ministry/__tests__/ministry.controller.spec.ts
-  - backend/src/modules/ministry/__tests__/ministry.service.spec.ts
-  - backend/src/modules/ministry/dto/ministry-query.dto.ts
-  - backend/src/modules/ministry/ministry.controller.ts
-  - backend/src/modules/ministry/ministry.module.ts
   - backend/src/modules/ministry/ministry.service.ts
-  - backend/src/modules/stays/__tests__/stays-isolation.spec.ts
-  - backend/src/modules/stays/__tests__/stays.service.spec.ts
-  - backend/src/modules/stays/dto/create-booking.dto.ts
-  - backend/src/modules/stays/stays.service.ts
-  - backend/src/modules/tour-bookings/__tests__/tour-bookings.service.spec.ts
-  - backend/src/modules/tour-bookings/__tests__/tour-settlement.service.spec.ts
-  - backend/src/modules/tour-bookings/dto/create-tour-booking.dto.ts
-  - backend/src/modules/tour-bookings/tour-bookings.service.ts
-  - backend/src/modules/tour-bookings/tour-settlement.service.ts
-  - shared/src/types/index.ts
-  - web/src/app/admin/ministry/page.tsx
-  - web/src/components/admin/ministry/PurposeBreakdownChart.tsx
-  - web/src/components/admin/ministry/RevenueChart.tsx
-  - web/src/components/admin/ministry/VisitorEntriesChart.tsx
+  - backend/src/modules/ministry/__tests__/ministry.service.spec.ts
+  - backend/src/common/services/ministry-pdf.service.ts
+  - backend/src/modules/ministry/ministry.controller.ts
+  - backend/src/common/services/__tests__/ministry-pdf.service.spec.ts
 findings:
-  critical: 2
-  warning: 3
+  critical: 0
+  warning: 2
   info: 1
-  total: 6
+  total: 3
 status: issues_found
 ---
 
@@ -53,223 +21,86 @@ status: issues_found
 
 **Reviewed:** 2026-07-18T00:00:00Z
 **Depth:** standard
-**Files Reviewed:** 34
+**Files Reviewed:** 5
 **Status:** issues_found
 
 ## Summary
 
-Phase 14 adds the Ministry Dashboard: a new `VisitorLog` table + write path fed
-from Events/Stays/Tour confirmation points, a read-only `MinistryController`
-(3 aggregate query routes + 6 CSV/PDF export routes), CSV/PDF export services,
-and a Next.js dashboard page with 3 recharts panels. Test coverage across the
-new module is unusually thorough (RBAC negative tests, a dual PII-allowlist
-scanner, wallet-invariant regression tests inherited from the write sites,
-SQL-fragment assertions for the conditional filters). RBAC (`@Roles`), the
-`MinistryController`'s GET-only surface, and PII exclusion (`VisitorLog` has
-no PII columns, confirmed by an automated scanner) are all solid.
+This is a scoped re-review of the 14-09 and 14-10 gap-closure commits that fix the two BLOCKER findings from the prior full review (CR-01: UTC date-boundary truncation of the final day of every Ministry query range; CR-02: PDF row overlap when a cell wraps to a second line). Both fixes were traced against the pre-fix diffs (`57f3cf8`, `405253e`) and the new regression tests.
 
-However, two correctness bugs were found that affect the accuracy of every
-report the dashboard produces, plus several smaller robustness/consistency
-gaps:
+**CR-01 (date boundary) is correctly and completely fixed for the reported scenario.** `toExclusiveEndOfDayBoundary()` computes `to`'s UTC-midnight + 24h, and both call sites (`buildFilters()` for visitor-entries/purpose-breakdown, and the inline filter in `getRevenueToGovernment()`) now use `<` against that boundary instead of `<=` against `to` itself. For a date-only `to` string (e.g. `"2026-07-18"`), the boundary correctly resolves to `2026-07-19T00:00:00.000Z`, including every timestamp on the `to` date. This is verified by new regression tests covering all three query methods. One residual gap remains (WR-01 below) because the fix's correctness relies on an assumption the DTO does not actually enforce.
 
-1. The `to` date filter used by all 3 Ministry query methods (and all 6
-   export routes) is documented as "inclusive" but is implemented as a
-   plain `<=` comparison against a date-only string parsed to UTC midnight —
-   which excludes almost the entire final day of every requested range,
-   including "today" in the dashboard's own default view.
-2. `MinistryPdfService`'s hand-rolled table renderer allocates a fixed
-   column width with no wrapped-content height tracking or page-break
-   logic; the Visitor Entries PDF export renders a raw LGA UUID in a column
-   far too narrow for it, which will wrap and then overlap the following
-   row's content for any real (non-fixture) dataset.
+**CR-02 (PDF row overlap) is correctly fixed for the reported scenario and is well tested**, but the fix is not complete for every overlap-causing case the underlying PDF layout can hit. `renderTable()` now measures each row's height via `doc.heightOfString()` per cell, floors it at `MIN_ROW_HEIGHT`, advances `doc.y` by the measured height, and inserts a page break + header re-print whenever the *next data row* would overflow the page — this closes the originally reported UUID-wrapping-into-next-row defect, and the new tests (UUID-cell height measurement, 80-row single-section overflow with header re-print) demonstrate it. However, the **table header itself** has no equivalent overflow guard — see WR-02, which is the same defect class recurring at section boundaries in the multi-section Revenue PDF export.
 
-## Critical Issues
-
-### CR-01: Ministry date-range `to` filter silently excludes the entire final day (including "today" in the default view)
-
-**File:** `backend/src/modules/ministry/ministry.service.ts:60, 140`
-**Also affects:** `backend/src/modules/ministry/dto/ministry-query.dto.ts:10-13`, `web/src/app/admin/ministry/page.tsx:24-32`
-
-**Issue:** `MinistryQueryDto.to` is documented as "Inclusive end of the
-visitedAt date range (ISO 8601)" and the service's own comment for
-`getRevenueToGovernment` states "from/to, when supplied, bound
-`Transaction.createdAt` **inclusively**". The implementation is:
-
-```ts
-const toFilter = to ? Prisma.sql`AND v."visitedAt" <= ${new Date(to)}` : Prisma.empty;
-// getRevenueToGovernment:
-const toFilter = to ? Prisma.sql`AND t."createdAt" <= ${new Date(to)}` : Prisma.empty;
-```
-
-When `to` is a date-only string such as `2026-07-18` (exactly what the DTO's
-own `@ApiPropertyOptional example: '2026-12-31'` shows, and what the frontend
-sends — see `defaultDateRange()` in `page.tsx`, which sets `to =
-new Date().toISOString().slice(0, 10)`), `new Date(to)` parses to
-`2026-07-18T00:00:00.000Z`. The `<=` comparison therefore excludes every
-row with a `visitedAt`/`createdAt` timestamp later than midnight UTC on the
-`to` date — i.e. essentially the *entire* final day is dropped, not just
-excluded-after-inclusive-end.
-
-This is not a hypothetical edge case: it is the **default** behaviour of the
-dashboard on every page load (`from = 30 days ago`, `to = today`), so
-"today's" visitor entries, purpose breakdown, and revenue are always missing
-from the numbers a Ministry viewer sees, and the same truncation applies to
-the last day of any custom range and to every CSV/PDF export. None of the
-new tests catch this — `ministry.service.spec.ts`'s filter tests only assert
-that `executed.values` contains `expect.any(Date)`, never that the boundary
-day is actually included.
-
-**Fix:** Push the `to` boundary to the end of the given day (or make the
-comparison exclusive of the *next* day) before interpolating it into the SQL:
-
-```ts
-private buildFilters(from?: string, to?: string, lgaId?: string) {
-  const fromFilter = from ? Prisma.sql`AND v."visitedAt" >= ${new Date(from)}` : Prisma.empty;
-  const toFilter = to
-    ? Prisma.sql`AND v."visitedAt" < ${new Date(new Date(to).getTime() + 24 * 60 * 60 * 1000)}`
-    : Prisma.empty;
-  const lgaFilter = lgaId ? Prisma.sql`AND v."lgaId" = ${lgaId}` : Prisma.empty;
-  return { fromFilter, toFilter, lgaFilter };
-}
-```
-
-Apply the equivalent change to the `fromFilter`/`toFilter` pair inside
-`getRevenueToGovernment`. Add a regression test that seeds a row with a
-timestamp late on the `to` date (e.g. `23:59:00`) and asserts it is included.
-
----
-
-### CR-02: `MinistryPdfService.renderTable` overlaps rows for real (UUID-length) cell content — Visitor Entries PDF export is unreadable for production data
-
-**File:** `backend/src/common/services/ministry-pdf.service.ts:125-150`
-**Also affects:** `backend/src/modules/ministry/ministry.controller.ts:21-27` (`VISITOR_ENTRIES_COLUMNS` includes a raw `lgaId` UUID column)
-
-**Issue:** `renderTable` divides the page width evenly across
-`section.columns.length` and renders each cell with
-`doc.text(value, x, rowY, { width: colWidth })`, where `rowY` is captured
-**once** before the per-column `forEach` loop, and the next row's position
-is advanced by a fixed `doc.moveDown(0.4)` after the loop — not by however
-tall the tallest cell in that row actually rendered.
-
-`VISITOR_ENTRIES_COLUMNS` (used for **both** the CSV and PDF `visitor-entries`
-export) has 5 columns, giving each a width of `495 / 5 ≈ 99pt`. The first
-column is `{ key: 'lgaId', label: 'LGA ID' }`, which in production always
-holds a full UUID (36 characters, ≈ 200pt+ at 10pt Helvetica) — more than
-double the allocated column width. PDFKit will word-wrap that cell onto a
-second line, but `renderTable` has no logic to measure the resulting height
-and account for it before computing the next row's `rowY`; the next row will
-begin at a fixed offset that does not reserve space for the wrapped second
-line, so its content will render on top of (overlapping) the previous row's
-wrapped LGA ID text.
-
-This is guaranteed to reproduce for any real dataset — it is not an edge
-case triggered only by unusual input. All of `ministry-pdf.service.spec.ts`'s
-fixtures use short placeholder IDs (`'lga-1'`), so the test suite never
-exercises this path and the defect is currently invisible to CI. There is
-also no page-break/height-tracking logic anywhere in `renderTable` for
-row counts large enough to span multiple A4 pages (e.g. 20 LGAs × 12 months
-× several role buckets for a year of visitor-entries data) — column headers
-are never re-printed on a continuation page either.
-
-**Fix:** At minimum, drop the raw `lgaId` column from the **PDF** section
-(keep it in the CSV export, where column width doesn't matter) — `lgaName`
-already carries the human-readable identity. More robustly, replace the
-manual `x/y` bookkeeping with height-aware layout: measure each cell via
-`doc.heightOfString(value, { width: colWidth })`, take the row's max height,
-advance `doc.y` by that amount, and call `doc.addPage()` (re-emitting the
-header row) whenever the next row would exceed `doc.page.height -
-doc.page.margins.bottom`. Add a `MinistryPdfService` test with a
-UUID-length value in a narrow multi-column section, and a test with enough
-rows to force a page break.
+No new crashes, security issues, or data-correctness regressions were introduced by either fix. The findings below are incomplete-fix / robustness gaps worth closing given the specific mandate to verify completeness.
 
 ## Warnings
 
-### WR-01: `VisitorLogService.record()` and all 3 call sites bypass Prisma's compile-time type checking via `as any`
+### WR-01: CR-01 fix silently mis-computes the range boundary if `to`/`from` is a full ISO datetime rather than a date-only string
 
-**File:** `backend/src/common/services/visitor-log.service.ts:25`
-**Also affects:** `backend/src/modules/events/events.service.ts:361`, `backend/src/modules/stays/stays.service.ts:283`, `backend/src/modules/tour-bookings/tour-settlement.service.ts:370`
+**File:** `backend/src/modules/ministry/ministry.service.ts:67-74`
+**Issue:** `toExclusiveEndOfDayBoundary()`'s own comment states the fix's precondition: *"`to` is a date-only string (e.g. `'2026-07-18'`) that `new Date()` parses to UTC midnight."* That precondition is not enforced anywhere in the request pipeline. `MinistryQueryDto.to`/`.from` (`backend/src/modules/ministry/dto/ministry-query.dto.ts:7,12`) are validated with plain `@IsDateString()`, which — per `class-validator`'s default ISO-8601 rule — accepts full timestamps such as `"2026-07-18T15:00:00Z"`, not only `"YYYY-MM-DD"`.
 
-**Issue:** `VisitorLogService.record()` writes with
-`this.prisma.visitorLog.create({ data: input as any })`. The `input` shape
-already matches Prisma's generated `VisitorLogCreateInput` (all fields are
-direct scalars — `lgaId`, `purpose`, `sourceType`, `sourceId`, `visitedAt`,
-`userRole`; there is no relation-connect syntax needed), so the `as any`
-cast is unnecessary and throws away Prisma's compile-time verification that
-the object actually satisfies the required-field/enum-shape contract. Every
-call site compounds this by also casting the role value with
-`... .role as any` (using the local `common/enums/user-role.enum.ts`
-`UserRole`, not Prisma's generated enum type). Today the string values
-happen to line up, but a future rename/refactor of either enum would fail
-silently at runtime (a Prisma validation error swallowed by each caller's
-catch block) instead of at compile time.
+If a caller supplies a full timestamp for `to`, `toExclusiveEndOfDayBoundary()` adds 24h to that exact instant rather than to UTC midnight of that date, e.g. `"2026-07-18T15:00:00Z"` → boundary `"2026-07-19T15:00:00Z"`. The filter then silently **includes** roughly a third of the next day's data while **excluding** the tail of the specified day after 15:00 — the same class of defect (silent truncation/inflation of a government revenue/visitor report) CR-01 was opened to fix, just triggered by a different (still DTO-valid) input shape. The `from` side has the mirrored issue: `>=` against the exact supplied instant rather than the day's start.
 
-**Fix:** Remove the `as any` on the `create()` call and type `record()`'s
-`userRole` parameter as `PrismaUserRole` (`import { UserRole as
-PrismaUserRole } from '@prisma/client'`) so a real mismatch surfaces as a
-TypeScript error instead of a silently-caught runtime failure.
+**Fix:** Enforce date-only input at the DTO boundary (defense in depth — don't rely solely on the service-layer comment/assumption):
+```typescript
+// ministry-query.dto.ts
+import { Matches } from 'class-validator';
 
-### WR-02: `TourSettlementService.recordVisitorEntry` silently drops the VisitorLog write if the buyer lookup returns null
+@ApiPropertyOptional({ description: 'Inclusive start of the visitedAt date range (YYYY-MM-DD)', example: '2026-01-01' })
+@IsOptional()
+@Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'from must be a date-only string (YYYY-MM-DD)' })
+from?: string;
 
-**File:** `backend/src/modules/tour-bookings/tour-settlement.service.ts:352-371`
+// same pattern for `to`
+```
+Or, if arbitrary ISO datetimes must remain valid input, normalize inside `toExclusiveEndOfDayBoundary()` by truncating to the date component before adding 24h:
+```typescript
+private toExclusiveEndOfDayBoundary(to: string): Date {
+  const dateOnly = to.slice(0, 10); // "YYYY-MM-DD"
+  return new Date(new Date(dateOnly).getTime() + 24 * 60 * 60 * 1000);
+}
+```
 
-**Issue:** `recordVisitorEntry` does a fresh `prisma.user.findUnique({ where:
-{ id: booking.buyerUserId }, select: { role: true } })` and passes
-`buyer?.role as any` straight into `VisitorLogService.record()`. `userRole`
-is a required (`NOT NULL`) column on `VisitorLog` with no default. If the
-lookup ever returns `null` — e.g. after a future hard-delete implementation
-of the NDPA "right to erasure" requirement called out in `CLAUDE.md`, or any
-other referential-integrity gap — `userRole` becomes `undefined`, the
-`prisma.visitorLog.create()` call throws, and the surrounding `try/catch`
-swallows it with a single generic `logger.error` line indistinguishable
-from a transient DB outage. The result is a silently under-counted Ministry
-dashboard with no operator-facing signal that a specific booking's visit was
-never recorded. (Contrast with `events.service.ts` / `stays.service.ts`,
-where the role is already selected as part of the same query that resolves
-the confirmation record, so it can't independently be missing.)
+### WR-02: CR-02 fix does not page-break-guard the table header itself — only mid-table row transitions
 
-**Fix:** Guard explicitly and log distinctly when `buyer` is null (e.g.
-`if (!buyer) { this.logger.warn(...); return; }`) so a missing-user
-condition is diagnosable separately from a database failure, rather than
-attempting — and predictably failing — the `create()` call.
+**File:** `backend/src/common/services/ministry-pdf.service.ts:137-182`
+**Issue:** `renderTable()`'s per-row loop correctly checks `if (doc.y + rowHeight > pageBottom)` before rendering each data row, and re-prints the header on the new page (`ministry-pdf.service.ts:170-174`). But the **initial** `printHeader()` call (line 154, before the loop) has no such check. `printHeader()` renders its column labels at explicit `(x, y)` coordinates (line 149), which in pdfkit bypasses the library's own automatic-pagination behaviour — unlike the flowing, no-coordinate `.text()` calls used for the document title (`render():85`) and section heading (`render():98`), which pdfkit will auto-paginate on its own.
 
-### WR-03: `lgaId` filter is silently ignored by the Revenue panel/routes despite being presented as a global filter
+Concretely, in the 3-section Revenue PDF export (`ministry.controller.ts:161-172`), if an earlier section — e.g. `byMonth`, which per D-10 covers *all historical data* when no `from`/`to` filter is supplied and can therefore grow to many dozens of rows as the platform accumulates years of operation — fills a page down to just above `pageBottom`, the next section's heading text may itself be protected by pdfkit's own flow logic, but the immediately-following `printHeader()` call for that section's table is not: it can render at or past the bottom margin, overlapping the page's bottom margin or subsequent content. This is the same defect class (overlapping/cut-off PDF content) CR-02 was raised to close, recurring at section boundaries instead of mid-table row boundaries. It is currently untested — the new tests in `ministry-pdf.service.spec.ts` only exercise a single-section 80-row overflow (which never reaches this code path, since the very first `printHeader()` call always has a fresh, empty page under it in that fixture).
 
-**File:** `backend/src/modules/ministry/dto/ministry-query.dto.ts:15-18`, `backend/src/modules/ministry/ministry.controller.ts:84-88, 142-145`
-**Also affects:** `web/src/app/admin/ministry/page.tsx:116-124, 130`
+**Fix:** Apply the same overflow guard used for data rows before the *first* `printHeader()` call too, not only the ones re-printed inside the loop after `addPage()`:
+```typescript
+private renderTable(doc: PDFKit.PDFDocument, section: MinistryPdfSection): void {
+  if (section.rows.length === 0) {
+    doc.fontSize(11).fillColor('#666').text('No data for this period.');
+    return;
+  }
 
-**Issue:** `MinistryQueryDto.lgaId` is documented generically as "LGA UUID to
-filter results to a single LGA" and is accepted (whitelisted, not rejected)
-on every Ministry route including `GET /ministry/revenue` and `GET
-/ministry/revenue/export`. Neither `MinistryController.getRevenue` nor
-`exportRevenue` passes `query.lgaId` through to
-`ministryService.getRevenueToGovernment(query.from, query.to)` — it is
-silently dropped. The frontend mirrors this: the "LGA" `<select>` in
-`page.tsx` sits above all three report panels as one shared filter, but the
-Revenue panel's `useQuery`/`handleExport` calls never include `lgaParam`.
-A Ministry viewer who picks an LGA and only looks at the Revenue panel has
-no indication that the figures shown are state-wide, not LGA-scoped —
-which is exactly the kind of silent-scope mismatch a financial/government
-report should never have.
+  const colWidth = PAGE_WIDTH / section.columns.length;
+  const pageBottom = doc.page.height - doc.page.margins.bottom;
 
-**Fix:** Either surface the limitation in the UI (disable/grey out the LGA
-selector's effect on the Revenue panel with a short caption, e.g. "Revenue
-is not LGA-filterable — see By LGA breakdown below"), or narrow
-`MinistryQueryDto` per-route (a `RevenueQueryDto` without `lgaId`) so
-Swagger correctly reflects that `GET /ministry/revenue*` never accepts it.
+  const printHeader = (): void => { /* unchanged */ };
+
+  // Guard the FIRST header print too — not just the ones already
+  // re-printed after a mid-table addPage().
+  if (doc.y + MIN_ROW_HEIGHT > pageBottom) {
+    doc.addPage();
+  }
+  printHeader();
+  // ...
+}
+```
+Add a regression test asserting no header overlap when a multi-section document's earlier section leaves the cursor near the bottom margin before the next section's heading/table header is rendered (e.g. seed the first section with enough rows to land `doc.y` within one row-height of `pageBottom`, then assert `doc.addPage()` fires before the second section's header, not after it).
 
 ## Info
 
-### IN-01: Export `Blob` created without a MIME type
+### IN-01: Duplicated from/to boundary-filter construction between `buildFilters()` and `getRevenueToGovernment()`
 
-**File:** `web/src/app/admin/ministry/page.tsx:134`
-**Issue:** `handleExport` builds `new Blob([response.data])` without passing
-a `type` (e.g. `'text/csv'` / `'application/pdf'`), relying entirely on the
-`download` attribute + hardcoded filename extension for correct save
-behaviour. Harmless today since the anchor's `download` attribute forces a
-save-as, but any future change that opens the blob URL directly (e.g. an
-in-tab PDF preview) would need this fixed first.
-**Fix:** Pass the content type explicitly, e.g. `new Blob([response.data],
-{ type: format === 'pdf' ? 'application/pdf' : 'text/csv' })`.
+**File:** `backend/src/modules/ministry/ministry.service.ts:58-65` and `:150-153`
+**Issue:** `getRevenueToGovernment()` re-implements the same `fromFilter`/`toFilter` construction pattern already factored into `buildFilters()`, differing only in the filtered column (`t."createdAt"` vs `v."visitedAt"`) and the absence of an `lgaFilter`. Both correctly reuse `toExclusiveEndOfDayBoundary()`, so this is not currently a correctness risk, but it is a maintenance hazard — a future date-boundary change applied to one location could easily be missed in the other (this nearly happened here: 14-09 had to patch both call sites by hand rather than through a single shared helper).
+**Fix:** Extract a shared helper parameterized by column name, e.g. `private buildDateRangeFilter(column: Prisma.Sql, from?: string, to?: string)`, and call it from both `buildFilters()` and `getRevenueToGovernment()`.
 
 ---
 
