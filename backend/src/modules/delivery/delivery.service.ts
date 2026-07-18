@@ -609,8 +609,12 @@ export class DeliveryService {
         description: 'Delivery completion settlement',
         platformMetadata: { orderId, riderUserId },
         onSettled: async (tx) => {
-          await tx.deliveryOrder.update({
-            where: { id: orderId },
+          // CR-02: atomic status-guarded update — mirrors Transport's onSettled
+          // updateMany + count check — closes the TOCTOU window where two
+          // concurrent completeDelivery calls could both pass the upfront
+          // findUnique check and both credit the rider.
+          const result = await tx.deliveryOrder.updateMany({
+            where: { id: orderId, status: { in: ['COLLECTING', 'IN_TRANSIT'] } },
             data: {
               status: 'DELIVERED' as any,
               completedAt: now,
@@ -620,6 +624,9 @@ export class DeliveryService {
               ...(dto.senderRating && { senderRating: dto.senderRating }),
             },
           });
+          if (result.count === 0) {
+            throw new BadRequestException('Order already delivered or not in a completable status');
+          }
           await tx.deliveryEvent.create({
             data: { orderId, event: 'DELIVERY_COMPLETED' },
           });
