@@ -567,8 +567,8 @@ Plans:
 - [x] 15-02-PLAN.md — SendgridService.sendOtpEmail() (throw-not-swallow, Pitfall 1 fix) + spec
 
 **Wave 2** *(blocked on Wave 1, parallel)*
-- [ ] 15-03-PLAN.md — AuthService core: channel resolution, Redis composite OTP value, sendMetaWhatsapp(), dispatch-with-fallback, phoneAuth() channel persistence, lockout proof (OTP-01/02/03/04)
-- [ ] 15-04-PLAN.md — UsersModule: PATCH /users/me/otp-channel + ChangeOtpChannelDto (D-07)
+- [x] 15-03-PLAN.md — AuthService core: channel resolution, Redis composite OTP value, sendMetaWhatsapp(), dispatch-with-fallback, phoneAuth() channel persistence, lockout proof (OTP-01/02/03/04)
+- [x] 15-04-PLAN.md — UsersModule: PATCH /users/me/otp-channel + ChangeOtpChannelDto (D-07)
 
 **Wave 3** *(blocked on Wave 2, parallel)*
 - [ ] 15-05-PLAN.md — Mobile: phone.tsx channel picker + email capture, otp.tsx fallback notice banner (D-10)
@@ -625,6 +625,6 @@ Phases 11, 12 (Settlement Foundation), and 15 (WhatsApp OTP) are independent of 
 | 12. Settlement Engine Foundation | 9/9 | Complete   | 2026-07-17 |
 | 13. Settlement Cutover — Transport & Delivery | 4/4 | Complete    | 2026-07-18 |
 | 14. Ministry Dashboard | 10/10 | Complete   | 2026-07-18 |
-| 15. Multi-Channel OTP | 2/6 | In Progress|  |
+| 15. Multi-Channel OTP | 4/6 | In Progress|  |
 | 16. Connection Pooling Infrastructure | 0/0 | Not started | - |
 | 17. gRPC Proof-of-Pattern Extraction (notifications-service) | 0/0 | Not started | - |
