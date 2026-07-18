@@ -34,14 +34,14 @@ Declared values (must be multiples of 4):
 | Token | Value | Usage |
 |-------|-------|-------|
 | xs | 4px | Icon-to-label gaps, tight inline padding |
-| sm | 8px | Compact element spacing, chip/badge padding |
+| sm | 8px | Compact element spacing, chip/badge padding, panel-header icon+label gap (`flex items-center gap-2`) |
 | md | 16px | Default card padding (`px-4`/`py-4`), filter input padding |
 | lg | 24px | Section padding (`px-6`), header margin-bottom (`mb-6`) |
-| xl | 32px | Layout gaps, header margin-bottom on page-level sections (`mb-8`) |
+| xl | 32px | Layout gaps, header margin-bottom on page-level sections (`mb-8`), outer page-content vertical padding (`py-8`) |
 | 2xl | 48px | Reserved — not used at this phase's scale, keep available for future dashboard sections |
 | 3xl | 64px | Page top offset below navbar (`pt-16`) |
 
-Exceptions: `gap-2.5` (10px) is an established exception already shipped in every sibling admin page's icon+label header row (`flex items-center gap-2.5`) — carry it forward verbatim for the Ministry Dashboard's panel headers, do not "fix" it to 8px or 12px. `py-10` (40px) is the established page-content vertical padding (`max-w-5xl mx-auto px-6 py-10`) — reuse this exact wrapper for the Ministry Dashboard's outer container.
+Panel headers (icon + label rows, e.g. section titles above each report card) use `flex items-center gap-2` (8px, `sm` token). The outer page container uses `max-w-5xl mx-auto px-6 py-8` (32px vertical padding, `xl` token). Both values are standard 8-point-scale tokens already in the table above — no non-standard spacing values are used anywhere in this phase's contract.
 
 ---
 
@@ -49,18 +49,16 @@ Exceptions: `gap-2.5` (10px) is an established exception already shipped in ever
 
 | Role | Size | Weight | Line Height |
 |------|------|--------|-------------|
-| Body | 14px | 400 (regular, unclassed default) | 1.5 |
-| Label | 10px | 700 (bold) — `uppercase tracking-widest`, `text-white/30` | 1.2 |
-| Heading | 20px | 900 (black) — page `<h1>` | 1.2 |
-| Display | 24px | 900 (black) — KPI stat figures in summary cards | 1.1 |
+| Body | 14px | 400 (regular) | 1.5 |
+| Label | 14px | 700 (bold) — `uppercase tracking-widest`, `text-white/30` | 1.2 |
+| Heading | 20px | 700 (bold) — page `<h1>` | 1.2 |
+| Display | 24px | 700 (bold) — KPI stat figures in summary cards | 1.1 |
 
-**Established weight exceptions (carried forward from all six sibling admin pages, not new inventions):**
-- **600 (semibold)** is reserved for single-value data emphasis inline within a table row (e.g. a name/ID standing out from surrounding regular-weight text) — mirrors `RevenueBreakdownChart`'s vendor-summary row pattern (`text-white font-semibold text-sm`).
-- **700 (bold)** doubles as the button/CTA weight (`.btn-gold`, `.btn-forest`, `.btn-ghost` all set `font-weight: 700`) in addition to its Label role above.
+Three declared sizes (14, 20, 24) and two declared weights (400 regular, 700 bold) for the entire phase — no other numeric size or weight value appears anywhere in this spec.
 
-This is a 4-weight house style (400/600/700/900), not a fresh 2-weight rule — six already-shipped admin pages use exactly this set. Forcing an artificial 2-weight constraint here would make the new Ministry Dashboard visually inconsistent with its immediate siblings; consistency with `admin/tours/revenue` and `admin/tours/utilization` (the two closest analogues, per RESEARCH.md's own reuse recommendation) takes priority.
+Secondary/meta text (subtitles, filter date ranges, empty-state captions, single-value emphasis inline in a table row) renders at the same **Body** role — 14px/400/1.5 — distinguished from primary body copy by color only (`text-white/35` or `text-white/30` instead of the default text color), never by a separate font size or weight.
 
-Secondary body/meta text (subtitles, filter date ranges, empty-state captions) renders at 12px/400/1.4 (`text-xs text-white/35` or `text-white/30`) — an established sub-size of Body, not a fifth declared role.
+The Label role's `uppercase tracking-widest` treatment visually reads as compact/small-caps even at 14px, preserving the intended label affordance without introducing a fifth size value.
 
 ---
 
