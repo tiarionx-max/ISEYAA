@@ -9,6 +9,7 @@ import { QrService } from '../../../common/services/qr.service';
 import { ImageService } from '../../../common/services/image.service';
 import { KafkaService } from '../../../kafka/kafka.service';
 import { SettlementService } from '../../../common/services/settlement.service';
+import { VisitorLogService } from '../../../common/services/visitor-log.service';
 
 const mockKafka = { emit: jest.fn().mockResolvedValue(undefined), consume: jest.fn().mockResolvedValue(undefined) };
 
@@ -65,9 +66,10 @@ const mockTicket = {
       startDate: new Date('2026-08-15'),
       venue: 'Abeokuta Centre',
       organizerId: ORG_ID,
+      lgaId: 'lga-001',
     },
   },
-  user: { email: 'buyer@example.com', firstName: 'Ade' },
+  user: { email: 'buyer@example.com', firstName: 'Ade', role: 'TOURIST' },
 };
 
 const mockPrisma = {
@@ -105,6 +107,7 @@ const mockSettlement = {
   settle: jest.fn().mockResolvedValue({ status: 'SETTLED', platformAmountNgn: 0, recipientCredits: [] }),
   resolveMinistryWallet: jest.fn().mockResolvedValue({ id: 'WAL-MINISTRY' }),
 };
+const mockVisitorLog = { record: jest.fn().mockResolvedValue(undefined) };
 
 describe('EventsService', () => {
   let service: EventsService;
@@ -122,6 +125,7 @@ describe('EventsService', () => {
         { provide: ImageService, useValue: mockImage },
         { provide: KafkaService, useValue: mockKafka },
         { provide: SettlementService, useValue: mockSettlement },
+        { provide: VisitorLogService, useValue: mockVisitorLog },
       ],
     }).compile();
 
@@ -464,7 +468,7 @@ describe('EventsService', () => {
       status: 'ISSUED',
       ticketType: {
         ...mockTicket.ticketType,
-        event: { organizerId: ORG_ID },
+        event: { organizerId: ORG_ID, lgaId: 'lga-001' },
       },
     };
 
@@ -514,6 +518,38 @@ describe('EventsService', () => {
         }),
       );
       expect(result).toEqual({ result: 'VALID' });
+    });
+
+    it('D-01/MIN-02: writes a VisitorLog row exactly once on a successful check-in', async () => {
+      mockPrisma.ticket.findUnique.mockResolvedValue(issuedTicket);
+      mockPrisma.ticket.update.mockResolvedValue({ ...issuedTicket, status: 'USED' });
+
+      await service.checkin(QR_HASH, ORG_ID);
+
+      expect(mockVisitorLog.record).toHaveBeenCalledTimes(1);
+      expect(mockVisitorLog.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceType: 'EVENT',
+          sourceId: TICKET_ID,
+          lgaId: 'lga-001',
+        }),
+      );
+    });
+
+    it('still resolves VALID when VisitorLogService.record() rejects', async () => {
+      mockPrisma.ticket.findUnique.mockResolvedValue(issuedTicket);
+      mockPrisma.ticket.update.mockResolvedValue({ ...issuedTicket, status: 'USED' });
+      mockVisitorLog.record.mockRejectedValueOnce(new Error('db down'));
+
+      const result = await service.checkin(QR_HASH, ORG_ID);
+
+      expect(result).toEqual({ result: 'VALID' });
+    });
+
+    it('does not write a VisitorLog row on NOT_FOUND/ALREADY_USED/forbidden paths', async () => {
+      mockPrisma.ticket.findUnique.mockResolvedValue(null);
+      await service.checkin('UNKNOWN', ORG_ID);
+      expect(mockVisitorLog.record).not.toHaveBeenCalled();
     });
   });
 

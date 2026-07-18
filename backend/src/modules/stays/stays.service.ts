@@ -19,6 +19,8 @@ import { S3Service } from '../../common/services/s3.service';
 import { SendgridService } from '../../common/services/sendgrid.service';
 import { ImageService } from '../../common/services/image.service';
 import { SettlementService } from '../../common/services/settlement.service';
+import { VisitorLogService } from '../../common/services/visitor-log.service';
+import { DEFAULT_VISITOR_PURPOSE } from '../../common/constants/visitor-purpose.constants';
 import { CreatePropertyDto } from './dto/create-property.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
 import { CreateBookingDto } from './dto/create-booking.dto';
@@ -40,6 +42,7 @@ export class StaysService implements OnModuleInit {
     private imageService: ImageService,
     private kafka: KafkaService,
     private settlementService: SettlementService,
+    private visitorLogService: VisitorLogService,
   ) {}
 
   async onModuleInit() {
@@ -222,7 +225,7 @@ export class StaysService implements OnModuleInit {
           govtLevyPct,
           paystackRef,
           status: 'PENDING',
-          metadata: { propertyName: property.name, nights },
+          metadata: { propertyName: property.name, nights, ...(dto.purpose && { purpose: dto.purpose }) },
         },
       });
     });
@@ -258,8 +261,8 @@ export class StaysService implements OnModuleInit {
       const booking = await this.prisma.booking.findUnique({
         where: { paystackRef: payload.reference },
         include: {
-          property: { select: { name: true, hostId: true } },
-          user: { select: { email: true, firstName: true } },
+          property: { select: { name: true, hostId: true, lgaId: true } },
+          user: { select: { email: true, firstName: true, role: true } },
         },
       });
 
@@ -269,6 +272,17 @@ export class StaysService implements OnModuleInit {
         where: { id: booking.id },
         data: { status: 'CONFIRMED' },
       });
+
+      this.visitorLogService
+        .record({
+          lgaId: booking.property.lgaId,
+          purpose: (booking.metadata as any)?.purpose ?? DEFAULT_VISITOR_PURPOSE.STAY,
+          sourceType: 'STAY',
+          sourceId: booking.id,
+          visitedAt: booking.checkIn,
+          userRole: booking.user.role as any,
+        })
+        .catch((err) => this.logger.error(`VisitorLog write failed for booking ${booking.id}`, err.message));
 
       const total = Number(booking.totalPrice);
 

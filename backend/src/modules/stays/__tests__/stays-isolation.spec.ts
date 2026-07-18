@@ -8,6 +8,7 @@ import { SendgridService } from '../../../common/services/sendgrid.service';
 import { ImageService } from '../../../common/services/image.service';
 import { KafkaService } from '../../../kafka/kafka.service';
 import { SettlementService } from '../../../common/services/settlement.service';
+import { VisitorLogService } from '../../../common/services/visitor-log.service';
 
 // ── Fixtures ───────────────────────────────────────────────────────────────
 
@@ -58,6 +59,7 @@ const mockSettlement = {
   settle: jest.fn().mockResolvedValue({ status: 'SETTLED', platformAmountNgn: 0, recipientCredits: [] }),
   resolveMinistryWallet: jest.fn().mockResolvedValue({ id: 'WAL-MINISTRY' }),
 };
+const mockVisitorLog = { record: jest.fn().mockResolvedValue(undefined) };
 
 // ── Suite ─────────────────────────────────────────────────────────────────
 
@@ -77,6 +79,7 @@ describe('Stays isolation — createReview', () => {
         { provide: ImageService, useValue: mockImage },
         { provide: KafkaService, useValue: mockKafka },
         { provide: SettlementService, useValue: mockSettlement },
+        { provide: VisitorLogService, useValue: mockVisitorLog },
       ],
     }).compile();
 

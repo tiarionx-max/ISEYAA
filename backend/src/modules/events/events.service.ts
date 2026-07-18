@@ -17,6 +17,8 @@ import { SendgridService } from '../../common/services/sendgrid.service';
 import { QrService } from '../../common/services/qr.service';
 import { ImageService } from '../../common/services/image.service';
 import { SettlementService } from '../../common/services/settlement.service';
+import { VisitorLogService } from '../../common/services/visitor-log.service';
+import { DEFAULT_VISITOR_PURPOSE } from '../../common/constants/visitor-purpose.constants';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { PurchaseTicketDto } from './dto/purchase-ticket.dto';
@@ -41,6 +43,7 @@ export class EventsService implements OnModuleInit {
     private imageService: ImageService,
     private kafka: KafkaService,
     private settlementService: SettlementService,
+    private visitorLogService: VisitorLogService,
   ) {}
 
   async onModuleInit() {
@@ -188,7 +191,7 @@ export class EventsService implements OnModuleInit {
         qrCode,
         paystackRef,
         status: 'PENDING',
-        metadata: { eventId, ticketTypeName: ticketType.name },
+        metadata: { eventId, ticketTypeName: ticketType.name, ...(dto.purpose && { purpose: dto.purpose }) },
       },
     });
 
@@ -322,9 +325,10 @@ export class EventsService implements OnModuleInit {
       include: {
         ticketType: {
           include: {
-            event: { select: { organizerId: true } },
+            event: { select: { organizerId: true, lgaId: true } },
           },
         },
+        user: { select: { role: true } },
       },
     });
 
@@ -346,6 +350,17 @@ export class EventsService implements OnModuleInit {
       where: { id: ticket.id },
       data: { status: 'USED', usedAt: new Date() },
     });
+
+    this.visitorLogService
+      .record({
+        lgaId: ticket.ticketType.event.lgaId,
+        purpose: (ticket.metadata as any)?.purpose ?? DEFAULT_VISITOR_PURPOSE.EVENT,
+        sourceType: 'EVENT',
+        sourceId: ticket.id,
+        visitedAt: new Date(),
+        userRole: ticket.user.role as any,
+      })
+      .catch((err) => this.logger.error(`VisitorLog write failed for ticket ${ticket.id}`, err.message));
 
     return { result: 'VALID' };
   }
