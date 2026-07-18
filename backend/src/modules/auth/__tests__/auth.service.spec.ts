@@ -330,7 +330,16 @@ describe('AuthService', () => {
       mockRedis.get.mockResolvedValue('654321:0');
       mockRedis.set.mockResolvedValue(undefined);
       await expect(service.verifyOtp({ phone: '+2348012345678', otp: '000000' })).rejects.toThrow(BadRequestException);
-      expect(mockRedis.set).toHaveBeenCalledWith('otp:+2348012345678', '654321:1', 300);
+      expect(mockRedis.set).toHaveBeenCalledWith('otp:+2348012345678', '654321:1:SMS:', 300);
+    });
+
+    it('preserves the channel across a failed-attempt rewrite (attempts)', async () => {
+      mockRedis.exists.mockResolvedValue(false);
+      mockRedis.get.mockResolvedValue('654321:0:WHATSAPP:');
+      mockRedis.set.mockResolvedValue(undefined);
+      await expect(service.verifyOtp({ phone: '+2348012345678', otp: '000000' })).rejects.toThrow(BadRequestException);
+      const call = mockRedis.set.mock.calls.find((c) => c[0] === 'otp:+2348012345678');
+      expect(call![1]).toContain(':WHATSAPP:');
     });
 
     it('locks after max attempts', async () => {
@@ -350,6 +359,66 @@ describe('AuthService', () => {
 
       const result = await service.verifyOtp({ phone: '+2348012345678', otp: '654321' });
       expect(result.message).toContain('verified');
+    });
+  });
+
+  describe('phoneAuth', () => {
+    it('persists the resolved otpChannel on a newly created user (channel)', async () => {
+      mockRedis.exists.mockResolvedValue(false);
+      mockRedis.get.mockResolvedValue('654321:0:WHATSAPP:');
+      mockRedis.del.mockResolvedValue(undefined);
+      mockPrisma.user.findFirst.mockResolvedValue(null);
+      mockPrisma.user.create.mockResolvedValue({ id: 'new-user', role: 'CITIZEN', registeredRoles: ['CITIZEN'] });
+      mockJwt.signAsync.mockResolvedValueOnce('acc').mockResolvedValueOnce('ref');
+
+      await service.phoneAuth({ phone: '+2348012345678', otp: '654321' });
+
+      expect(mockPrisma.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ otpChannel: 'WHATSAPP' }) }),
+      );
+    });
+
+    it('persists the resolved email instead of the auto-generated placeholder for a new EMAIL-channel user (channel)', async () => {
+      mockRedis.exists.mockResolvedValue(false);
+      mockRedis.get.mockResolvedValue('654321:0:EMAIL:real@example.com');
+      mockRedis.del.mockResolvedValue(undefined);
+      mockPrisma.user.findFirst.mockResolvedValue(null);
+      mockPrisma.user.create.mockResolvedValue({ id: 'new-user', role: 'CITIZEN', registeredRoles: ['CITIZEN'] });
+      mockJwt.signAsync.mockResolvedValueOnce('acc').mockResolvedValueOnce('ref');
+
+      await service.phoneAuth({ phone: '+2348012345678', otp: '654321' });
+
+      expect(mockPrisma.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ email: 'real@example.com' }) }),
+      );
+    });
+
+    it('rejects with ConflictException on a duplicate email during registration (duplicate email)', async () => {
+      mockRedis.exists.mockResolvedValue(false);
+      mockRedis.get.mockResolvedValue('654321:0:EMAIL:dup@example.com');
+      mockRedis.del.mockResolvedValue(undefined);
+      mockPrisma.user.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'other-user-id' });
+
+      await expect(service.phoneAuth({ phone: '+2348012345678', otp: '654321' })).rejects.toThrow(ConflictException);
+      expect(mockPrisma.user.create).not.toHaveBeenCalled();
+    });
+
+    it('does not bypass an active lockout when a different channel is requested (lockout)', async () => {
+      mockRedis.exists.mockResolvedValue(true);
+
+      await expect(service.sendOtp({ phone: '+2348012345678', channel: 'WHATSAPP' as any })).rejects.toThrow(
+        ForbiddenException,
+      );
+      await expect(
+        service.sendOtp({ phone: '+2348012345678', channel: 'EMAIL' as any, email: 'x@example.com' }),
+      ).rejects.toThrow(ForbiddenException);
+      await expect(service.phoneAuth({ phone: '+2348012345678', otp: '654321' })).rejects.toThrow(ForbiddenException);
+
+      expect(mockResilience.execute).not.toHaveBeenCalledWith('metaWhatsapp', expect.any(Function));
+      expect(mockResilience.execute).not.toHaveBeenCalledWith('sendgrid', expect.any(Function));
+      expect(mockSendgrid.sendOtpEmail).not.toHaveBeenCalled();
     });
   });
 

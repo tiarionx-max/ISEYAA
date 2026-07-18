@@ -249,8 +249,7 @@ export class AuthService {
     const stored = await this.redis.get(`otp:${dto.phone}`);
     if (!stored) throw new BadRequestException('OTP expired or not found');
 
-    const [storedOtp, attemptsStr] = stored.split(':');
-    const attempts = parseInt(attemptsStr, 10);
+    const { otp: storedOtp, attempts, channel, email } = this.decodeOtpValue(stored);
 
     if (attempts + 1 >= OTP_MAX_ATTEMPTS && dto.otp !== storedOtp) {
       await this.redis.del(`otp:${dto.phone}`);
@@ -259,7 +258,7 @@ export class AuthService {
     }
 
     if (dto.otp !== storedOtp) {
-      await this.redis.set(`otp:${dto.phone}`, `${storedOtp}:${attempts + 1}`, OTP_TTL);
+      await this.redis.set(`otp:${dto.phone}`, this.encodeOtpValue(storedOtp, attempts + 1, channel, email), OTP_TTL);
       throw new BadRequestException(`Invalid OTP. ${OTP_MAX_ATTEMPTS - attempts - 1} attempt(s) remaining`);
     }
 
@@ -282,8 +281,7 @@ export class AuthService {
     const stored = await this.redis.get(`otp:${dto.phone}`);
     if (!stored) throw new BadRequestException('OTP expired or not found. Request a new code.');
 
-    const [storedOtp, attemptsStr] = stored.split(':');
-    const attempts = parseInt(attemptsStr, 10);
+    const { otp: storedOtp, attempts, channel, email } = this.decodeOtpValue(stored);
 
     if (attempts + 1 >= OTP_MAX_ATTEMPTS && dto.otp !== storedOtp) {
       await this.redis.del(`otp:${dto.phone}`);
@@ -292,7 +290,7 @@ export class AuthService {
     }
 
     if (dto.otp !== storedOtp) {
-      await this.redis.set(`otp:${dto.phone}`, `${storedOtp}:${attempts + 1}`, OTP_TTL);
+      await this.redis.set(`otp:${dto.phone}`, this.encodeOtpValue(storedOtp, attempts + 1, channel, email), OTP_TTL);
       throw new BadRequestException(`Invalid OTP. ${OTP_MAX_ATTEMPTS - attempts - 1} attempt(s) remaining`);
     }
 
@@ -303,17 +301,26 @@ export class AuthService {
 
     if (!user) {
       isNewUser = true;
+
+      if (channel === OtpChannel.EMAIL && email) {
+        const existingEmailUser = await this.prisma.user.findFirst({ where: { email, deletedAt: null } });
+        if (existingEmailUser) {
+          throw new ConflictException('Email already in use');
+        }
+      }
+
       const suffix = dto.phone.slice(-4);
       const created = await this.prisma.user.create({
         data: {
           phone: dto.phone,
-          email: `${dto.phone.replace('+', '')}@iseyaa.local`,
+          email: channel === OtpChannel.EMAIL && email ? email : `${dto.phone.replace('+', '')}@iseyaa.local`,
           firstName: 'User',
           lastName: suffix,
           passwordHash: await bcrypt.hash(uuidv4(), 12),
           role: UserRole.CITIZEN,
           registeredRoles: [UserRole.CITIZEN],
           status: 'ACTIVE',
+          otpChannel: channel,
           ndpaConsent: true,
           ndpaConsentAt: new Date(),
           wallet: { create: { balance: 0 } },
