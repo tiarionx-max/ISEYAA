@@ -23,6 +23,23 @@ export class SendgridService {
     }
   }
 
+  // Deliberately does NOT call this.sendEmail() and has NO try/catch — the caller
+  // (resilience.execute('sendgrid', ...) in Plan 15-03) depends on a real rejection
+  // propagating here to trigger the SMS fallback (OTP-02). See RESEARCH.md Pitfall 1.
+  async sendOtpEmail(to: string, firstName: string, otp: string): Promise<void> {
+    const html = `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px;">
+        <h2 style="color:#1a472a;">Your verification code</h2>
+        <p>Hello ${firstName},</p>
+        <p style="font-size:28px;font-family:monospace;letter-spacing:4px;font-weight:700;">${otp}</p>
+        <p>This code expires in 5 minutes. Do not share it with anyone.</p>
+        <p style="color:#666;font-size:12px;margin-top:24px;">Powered by Iṣẹ́yáá — Ogun State Digital Platform</p>
+      </div>
+    `;
+
+    await sgMail.send({ to, from: this.from, subject: 'Your Iṣẹ́yáá verification code', html });
+  }
+
   async sendTicketConfirmation(params: {
     to: string;
     firstName: string;
