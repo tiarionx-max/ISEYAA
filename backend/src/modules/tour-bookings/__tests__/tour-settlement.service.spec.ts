@@ -8,6 +8,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { RefundService } from '../../../common/services/refund.service';
 import { SettlementService } from '../../../common/services/settlement.service';
 import { KafkaService } from '../../../kafka/kafka.service';
+import { VisitorLogService } from '../../../common/services/visitor-log.service';
 
 /**
  * 09-06 — TourSettlementService spec.
@@ -43,18 +44,26 @@ const GOV_WALLET_ID = 'WAL-GOV';
 const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000001';
 const SYSTEM_WALLET_ID = 'WAL-SYSTEM';
 
+const TOUR_PACKAGE_ID = 'PKG-1';
+const TOUR_LGA_ID = 'LGA-ABEOKUTA-SOUTH';
+const TOUR_DATE = new Date('2099-07-15T00:00:00Z');
+
 interface BookingOverrides {
   split?: any[];
   snapshotName?: string;
   passengerCount?: number;
   splitBillPaidUserIds?: string[];
   metadata?: any;
+  tourPackageId?: string;
+  tourDate?: Date;
 }
 
 function buildBooking(o: BookingOverrides = {}) {
   return {
     id: BOOKING_ID,
     buyerUserId: BUYER_USER_ID,
+    tourPackageId: o.tourPackageId ?? TOUR_PACKAGE_ID,
+    tourDate: o.tourDate ?? TOUR_DATE,
     passengerCount: o.passengerCount ?? 1,
     splitBillPaidUserIds: o.splitBillPaidUserIds ?? [],
     snapshot: {
@@ -87,7 +96,8 @@ interface MockPrisma {
   event: { findUnique: AnyFn };
   platformConfig: { findUnique: AnyFn };
   wallet: { findUnique: AnyFn; update: AnyFn; upsert: AnyFn };
-  user: { upsert: AnyFn };
+  user: { upsert: AnyFn; findUnique: AnyFn };
+  tourPackage: { findUnique: AnyFn };
   $transaction: AnyFn;
   $executeRaw: AnyFn;
 }
@@ -96,6 +106,7 @@ let mockPrisma: MockPrisma;
 let mockRefund: { refund: AnyFn };
 let mockEvents: { emit: AnyFn };
 let mockKafka: { consume: AnyFn; emit: AnyFn };
+let mockVisitorLog: { record: AnyFn };
 
 // Helpers — capture writes performed inside the $transaction callback.
 interface TxnCapture {
@@ -176,13 +187,20 @@ async function makeService(): Promise<TourSettlementService> {
       // upsert returns the system wallet during onModuleInit
       upsert: jest.fn().mockResolvedValue({ id: SYSTEM_WALLET_ID }),
     },
-    user: { upsert: jest.fn().mockResolvedValue({ id: SYSTEM_USER_ID }) },
+    user: {
+      upsert: jest.fn().mockResolvedValue({ id: SYSTEM_USER_ID }),
+      findUnique: jest.fn().mockResolvedValue({ role: 'TOURIST' }),
+    },
+    tourPackage: {
+      findUnique: jest.fn().mockResolvedValue({ lgaId: TOUR_LGA_ID }),
+    },
     $transaction: jest.fn(),
     $executeRaw: jest.fn(),
   };
   mockRefund = { refund: jest.fn().mockResolvedValue({}) };
   mockEvents = { emit: jest.fn() };
   mockKafka = { consume: jest.fn().mockResolvedValue(undefined), emit: jest.fn() };
+  mockVisitorLog = { record: jest.fn().mockResolvedValue(undefined) };
 
   const moduleRef: TestingModule = await Test.createTestingModule({
     providers: [
@@ -192,6 +210,7 @@ async function makeService(): Promise<TourSettlementService> {
       { provide: RefundService, useValue: mockRefund },
       { provide: EventEmitter2, useValue: mockEvents },
       { provide: KafkaService, useValue: mockKafka },
+      { provide: VisitorLogService, useValue: mockVisitorLog },
     ],
   }).compile();
   const svc = moduleRef.get(TourSettlementService);
@@ -622,5 +641,157 @@ describe('TourSettlementService', () => {
 
     expect(mockPrisma.$transaction).not.toHaveBeenCalled();
     expect(mockRefund.refund).toHaveBeenCalledTimes(1);
+  });
+
+  // ── D-01 — VisitorLog write exactly once per confirmed booking ────────────
+
+  it('12. solo/group booking — visitorLogService.record called exactly once with sourceType TOUR and visitedAt=tourDate', async () => {
+    const svc = await makeService();
+    primeVendorResolvers();
+    mockPrisma.tourBooking.findUnique.mockResolvedValueOnce(buildBooking());
+    mockPrisma.transaction.findFirst.mockResolvedValue(null);
+    mockPrisma.platformConfig.findUnique.mockResolvedValueOnce(null);
+    wireTransaction();
+
+    await svc.handleTourBookingPayment(buildPayload());
+
+    expect(mockVisitorLog.record).toHaveBeenCalledTimes(1);
+    expect(mockVisitorLog.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceType: 'TOUR',
+        sourceId: BOOKING_ID,
+        visitedAt: TOUR_DATE,
+        lgaId: TOUR_LGA_ID,
+      }),
+    );
+  });
+
+  it('13. 3-passenger split-bill — visitorLogService.record called zero times on shares 1-2, exactly once on share 3', async () => {
+    const svc = await makeService();
+    primeVendorResolvers();
+    mockPrisma.transaction.findFirst.mockResolvedValue(null);
+    mockPrisma.platformConfig.findUnique.mockResolvedValue(null);
+    wireTransaction();
+
+    // Share 1 of 3 — not yet CONFIRMED.
+    mockPrisma.tourBooking.findUnique
+      .mockResolvedValueOnce(
+        buildBooking({ passengerCount: 3, splitBillPaidUserIds: [] }),
+      )
+      .mockResolvedValueOnce({ metadata: {} });
+    mockPrisma.tourBooking.update.mockResolvedValueOnce({
+      splitBillPaidUserIds: ['USR-A'],
+      passengerCount: 3,
+    });
+    await svc.handleTourBookingPayment(
+      buildPayload({
+        reference: 'ISY-TOUR-CHILD1',
+        metadata: {
+          type: 'tour_booking',
+          bookingId: BOOKING_ID,
+          shareKey: 'USR-A',
+          parentReference: 'ISY-TOUR-PARENT0',
+          module: 'tour',
+        },
+      }),
+    );
+    expect(mockVisitorLog.record).not.toHaveBeenCalled();
+
+    // Share 2 of 3 — still not CONFIRMED.
+    mockPrisma.tourBooking.findUnique
+      .mockResolvedValueOnce(
+        buildBooking({ passengerCount: 3, splitBillPaidUserIds: ['USR-A'] }),
+      )
+      .mockResolvedValueOnce({ metadata: {} });
+    mockPrisma.tourBooking.update.mockResolvedValueOnce({
+      splitBillPaidUserIds: ['USR-A', 'USR-B'],
+      passengerCount: 3,
+    });
+    await svc.handleTourBookingPayment(
+      buildPayload({
+        reference: 'ISY-TOUR-CHILD2',
+        metadata: {
+          type: 'tour_booking',
+          bookingId: BOOKING_ID,
+          shareKey: 'USR-B',
+          parentReference: 'ISY-TOUR-PARENT0',
+          module: 'tour',
+        },
+      }),
+    );
+    expect(mockVisitorLog.record).not.toHaveBeenCalled();
+
+    // Share 3 of 3 (final) — flips CONFIRMED, writes exactly one VisitorLog row.
+    mockPrisma.tourBooking.findUnique
+      .mockResolvedValueOnce(
+        buildBooking({
+          passengerCount: 3,
+          splitBillPaidUserIds: ['USR-A', 'USR-B'],
+        }),
+      )
+      .mockResolvedValueOnce({ metadata: { shares: {} } });
+    mockPrisma.tourBooking.update
+      .mockResolvedValueOnce({
+        splitBillPaidUserIds: ['USR-A', 'USR-B', 'USR-C'],
+        passengerCount: 3,
+      })
+      .mockResolvedValueOnce({ id: BOOKING_ID, status: 'CONFIRMED' });
+    await svc.handleTourBookingPayment(
+      buildPayload({
+        reference: 'ISY-TOUR-CHILD3',
+        metadata: {
+          type: 'tour_booking',
+          bookingId: BOOKING_ID,
+          shareKey: 'USR-C',
+          parentReference: 'ISY-TOUR-PARENT0',
+          module: 'tour',
+        },
+      }),
+    );
+    expect(mockVisitorLog.record).toHaveBeenCalledTimes(1);
+    expect(mockVisitorLog.record).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceType: 'TOUR', sourceId: BOOKING_ID }),
+    );
+  });
+
+  it('14. TourPackage.lgaId is null — recordVisitorEntry passes lgaId:null through without throwing', async () => {
+    const svc = await makeService();
+    primeVendorResolvers();
+    mockPrisma.tourPackage.findUnique.mockResolvedValueOnce({ lgaId: null });
+    mockPrisma.tourBooking.findUnique.mockResolvedValueOnce(buildBooking());
+    mockPrisma.transaction.findFirst.mockResolvedValue(null);
+    mockPrisma.platformConfig.findUnique.mockResolvedValueOnce(null);
+    wireTransaction();
+
+    await expect(
+      svc.handleTourBookingPayment(buildPayload()),
+    ).resolves.not.toThrow();
+
+    expect(mockVisitorLog.record).toHaveBeenCalledWith(
+      expect.objectContaining({ lgaId: null }),
+    );
+  });
+
+  it('15. visitorLogService.record rejection is caught and logged — does not block tour_booking.confirmed emit', async () => {
+    const svc = await makeService();
+    primeVendorResolvers();
+    mockVisitorLog.record.mockRejectedValueOnce(new Error('visitor log db down'));
+    const errorSpy = jest.spyOn((svc as any).logger, 'error');
+    mockPrisma.tourBooking.findUnique.mockResolvedValueOnce(buildBooking());
+    mockPrisma.transaction.findFirst.mockResolvedValue(null);
+    mockPrisma.platformConfig.findUnique.mockResolvedValueOnce(null);
+    wireTransaction();
+
+    await expect(
+      svc.handleTourBookingPayment(buildPayload()),
+    ).resolves.not.toThrow();
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Failed to record VisitorLog'),
+    );
+    expect(mockEvents.emit).toHaveBeenCalledWith(
+      'tour_booking.confirmed',
+      expect.objectContaining({ bookingId: BOOKING_ID }),
+    );
   });
 });
