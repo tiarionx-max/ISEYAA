@@ -37,7 +37,7 @@ describe('ResilienceService', () => {
   });
 
   describe('onModuleInit — default-fallback config read', () => {
-    it('builds all 7 vendor policies from RESILIENCE_DEFAULTS when PlatformConfig has no rows', async () => {
+    it('builds all 9 vendor policies from RESILIENCE_DEFAULTS when PlatformConfig has no rows', async () => {
       await service.onModuleInit();
 
       // Every vendor must be usable via execute() without throwing "not registered".

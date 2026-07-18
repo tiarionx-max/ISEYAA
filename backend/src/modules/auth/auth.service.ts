@@ -14,12 +14,14 @@ import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 import { ResilienceService } from '../../resilience/resilience.service';
+import { SendgridService } from '../../common/services/sendgrid.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { OtpSendDto } from './dto/otp-send.dto';
 import { OtpVerifyDto } from './dto/otp-verify.dto';
 import { PhoneAuthDto } from './dto/phone-auth.dto';
 import { UserRole, REGISTERABLE_ROLES } from '../../common/enums/user-role.enum';
+import { OtpChannel } from '../../common/enums/otp-channel.enum';
 
 const OTP_TTL = 300; // 5 minutes
 const OTP_LOCK_TTL = 900; // 15 minutes
@@ -52,6 +54,7 @@ export class AuthService {
     private jwt: JwtService,
     private config: ConfigService,
     private resilience: ResilienceService,
+    private sendgrid: SendgridService,
   ) {}
 
   async register(dto: RegisterDto, ip?: string, ua?: string) {
@@ -136,11 +139,104 @@ export class AuthService {
       throw new ForbiddenException('Too many OTP attempts. Try again in 15 minutes');
     }
 
-    const otp = randomInt(100000, 1000000).toString();
-    await this.redis.set(`otp:${dto.phone}`, `${otp}:0`, OTP_TTL);
+    const existingUser = await this.prisma.user.findFirst({
+      where: { phone: dto.phone, deletedAt: null },
+      select: { otpChannel: true, email: true, firstName: true },
+    });
 
-    await this.sendTermii(dto.phone, otp);
-    return { message: 'OTP sent successfully' };
+    const channel = (existingUser?.otpChannel as OtpChannel) ?? dto.channel ?? OtpChannel.SMS;
+    const email = channel === OtpChannel.EMAIL ? existingUser?.email ?? dto.email : undefined;
+
+    if (channel === OtpChannel.EMAIL && !email) {
+      throw new BadRequestException('Email is required when channel is EMAIL');
+    }
+
+    const otp = randomInt(100000, 1000000).toString();
+    await this.redis.set(`otp:${dto.phone}`, this.encodeOtpValue(otp, 0, channel, email), OTP_TTL);
+
+    const fallbackUsed = await this.dispatchOtp(dto.phone, otp, channel, email, existingUser?.firstName);
+    return { message: 'OTP sent successfully', fallbackUsed };
+  }
+
+  private encodeOtpValue(otp: string, attempts: number, channel: OtpChannel, email?: string): string {
+    return `${otp}:${attempts}:${channel}:${email ?? ''}`;
+  }
+
+  private decodeOtpValue(stored: string): { otp: string; attempts: number; channel: OtpChannel; email?: string } {
+    const [otp, attemptsStr, channelStr, emailStr] = stored.split(':');
+    return {
+      otp,
+      attempts: parseInt(attemptsStr, 10),
+      channel: (channelStr as OtpChannel) ?? OtpChannel.SMS,
+      email: emailStr || undefined,
+    };
+  }
+
+  private async dispatchOtp(
+    phone: string,
+    otp: string,
+    channel: OtpChannel,
+    email?: string,
+    firstName?: string,
+  ): Promise<boolean> {
+    if (channel === OtpChannel.SMS) {
+      await this.sendTermii(phone, otp);
+      return false;
+    }
+
+    try {
+      if (channel === OtpChannel.WHATSAPP) {
+        await this.sendMetaWhatsapp(phone, otp);
+      } else if (channel === OtpChannel.EMAIL) {
+        await this.resilience.execute('sendgrid', () =>
+          this.sendgrid.sendOtpEmail(email!, firstName ?? 'there', otp),
+        );
+      }
+      return false;
+    } catch (err) {
+      this.logger.error(`${channel} OTP dispatch failed — falling back to SMS`, err);
+      await this.sendTermii(phone, otp);
+      return true;
+    }
+  }
+
+  private async sendMetaWhatsapp(phone: string, otp: string): Promise<void> {
+    const accessToken = this.config.get<string>('META_WHATSAPP_ACCESS_TOKEN');
+    const phoneNumberId = this.config.get<string>('META_WHATSAPP_PHONE_NUMBER_ID');
+    const templateName = this.config.get<string>('META_WHATSAPP_TEMPLATE_NAME');
+    const templateLangCode = this.config.get<string>('META_WHATSAPP_TEMPLATE_LANG', 'en_US');
+
+    if (!accessToken || !phoneNumberId || !templateName) {
+      throw new Error('Meta WhatsApp credentials not configured');
+    }
+
+    const response = await this.resilience.execute('metaWhatsapp', ({ signal }) =>
+      fetch(`https://graph.facebook.com/v23.0/${phoneNumberId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: phone.replace('+', ''),
+          type: 'template',
+          template: {
+            name: templateName,
+            language: { code: templateLangCode },
+            components: [
+              { type: 'body', parameters: [{ type: 'text', text: otp }] },
+              { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: otp }] },
+            ],
+          },
+        }),
+        signal,
+      }),
+    );
+    if (!response.ok) {
+      const body = await response.text();
+      this.logger.error(`Meta WhatsApp error: ${response.status} ${body}`);
+      throw new Error(`Meta WhatsApp send failed: ${response.status}`);
+    }
+    this.logger.log(`OTP sent via WhatsApp to ${phone}`);
   }
 
   async verifyOtp(dto: OtpVerifyDto) {
@@ -153,8 +249,7 @@ export class AuthService {
     const stored = await this.redis.get(`otp:${dto.phone}`);
     if (!stored) throw new BadRequestException('OTP expired or not found');
 
-    const [storedOtp, attemptsStr] = stored.split(':');
-    const attempts = parseInt(attemptsStr, 10);
+    const { otp: storedOtp, attempts, channel, email } = this.decodeOtpValue(stored);
 
     if (attempts + 1 >= OTP_MAX_ATTEMPTS && dto.otp !== storedOtp) {
       await this.redis.del(`otp:${dto.phone}`);
@@ -163,7 +258,7 @@ export class AuthService {
     }
 
     if (dto.otp !== storedOtp) {
-      await this.redis.set(`otp:${dto.phone}`, `${storedOtp}:${attempts + 1}`, OTP_TTL);
+      await this.redis.set(`otp:${dto.phone}`, this.encodeOtpValue(storedOtp, attempts + 1, channel, email), OTP_TTL);
       throw new BadRequestException(`Invalid OTP. ${OTP_MAX_ATTEMPTS - attempts - 1} attempt(s) remaining`);
     }
 
@@ -186,8 +281,7 @@ export class AuthService {
     const stored = await this.redis.get(`otp:${dto.phone}`);
     if (!stored) throw new BadRequestException('OTP expired or not found. Request a new code.');
 
-    const [storedOtp, attemptsStr] = stored.split(':');
-    const attempts = parseInt(attemptsStr, 10);
+    const { otp: storedOtp, attempts, channel, email } = this.decodeOtpValue(stored);
 
     if (attempts + 1 >= OTP_MAX_ATTEMPTS && dto.otp !== storedOtp) {
       await this.redis.del(`otp:${dto.phone}`);
@@ -196,7 +290,7 @@ export class AuthService {
     }
 
     if (dto.otp !== storedOtp) {
-      await this.redis.set(`otp:${dto.phone}`, `${storedOtp}:${attempts + 1}`, OTP_TTL);
+      await this.redis.set(`otp:${dto.phone}`, this.encodeOtpValue(storedOtp, attempts + 1, channel, email), OTP_TTL);
       throw new BadRequestException(`Invalid OTP. ${OTP_MAX_ATTEMPTS - attempts - 1} attempt(s) remaining`);
     }
 
@@ -207,17 +301,26 @@ export class AuthService {
 
     if (!user) {
       isNewUser = true;
+
+      if (channel === OtpChannel.EMAIL && email) {
+        const existingEmailUser = await this.prisma.user.findFirst({ where: { email, deletedAt: null } });
+        if (existingEmailUser) {
+          throw new ConflictException('Email already in use');
+        }
+      }
+
       const suffix = dto.phone.slice(-4);
       const created = await this.prisma.user.create({
         data: {
           phone: dto.phone,
-          email: `${dto.phone.replace('+', '')}@iseyaa.local`,
+          email: channel === OtpChannel.EMAIL && email ? email : `${dto.phone.replace('+', '')}@iseyaa.local`,
           firstName: 'User',
           lastName: suffix,
           passwordHash: await bcrypt.hash(uuidv4(), 12),
           role: UserRole.CITIZEN,
           registeredRoles: [UserRole.CITIZEN],
           status: 'ACTIVE',
+          otpChannel: channel,
           ndpaConsent: true,
           ndpaConsentAt: new Date(),
           wallet: { create: { balance: 0 } },
@@ -291,12 +394,10 @@ export class AuthService {
     const termiiKey = this.config.get<string>('TERMII_API_KEY');
 
     if (termiiKey) {
-      // Prefer WhatsApp channel when a WhatsApp sender ID is configured (bypasses DND/GSM restrictions)
-      const whatsappSender = this.config.get<string>('TERMII_WHATSAPP_SENDER_ID');
       const smsSender = this.config.get<string>('TERMII_SENDER_ID', '');
 
-      const channel = whatsappSender ? 'whatsapp' : smsSender ? 'generic' : 'dnd';
-      const from = (whatsappSender ?? smsSender) || 'N-Alert';
+      const channel = smsSender ? 'generic' : 'dnd';
+      const from = smsSender || 'N-Alert';
 
       try {
         const response = await this.resilience.execute('termiiAuth', ({ signal }) =>
