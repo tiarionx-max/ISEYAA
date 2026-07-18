@@ -107,3 +107,7 @@ None - no external service configuration required. (The `visitor_logs` table was
 ---
 *Phase: 14-ministry-dashboard*
 *Completed: 2026-07-18*
+
+## Self-Check: PASSED
+
+All created/modified files verified present; all task commits (`348d65a`, `7d8edbe`, `e08e4cd`) and the plan metadata commit (`5dbf51a`) verified present in `git log`.
