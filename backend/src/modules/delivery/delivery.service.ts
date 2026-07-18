@@ -552,6 +552,18 @@ export class DeliveryService {
     const fee = Number(order.fee);
     const riderWallet = await this.prisma.wallet.findFirst({ where: { userId: riderUserId } });
 
+    // WR-02: a missing rider wallet must not silently drop the rider's earnings —
+    // both branches below would otherwise transition the order to DELIVERED while
+    // computing money owed to the rider that never lands anywhere (legacy: the
+    // `if (riderWallet)` guard is a silent no-op; cutover: `walletId: null` makes
+    // SettlementService route the share to the platform wallet instead).
+    if (!riderWallet) {
+      this.logger.error(
+        `completeDelivery: rider ${riderUserId} (riderId=${rider.id}) has no wallet — refusing to complete order ${orderId} without a payout destination`,
+      );
+      throw new BadRequestException('Rider wallet not found — cannot complete delivery settlement');
+    }
+
     let riderEarnings: number;
     let totalCommission: number;
 

@@ -536,6 +536,18 @@ export class TransportService {
     // Fetched once, reused by both branches.
     const driverWallet = await this.prisma.wallet.findFirst({ where: { userId: driverUserId } });
 
+    // WR-02: a missing driver wallet must not silently drop the driver's earnings —
+    // both branches below would otherwise transition the trip to COMPLETED while
+    // computing money owed to the driver that never lands anywhere (legacy: the
+    // `if (driverWallet)` guard is a silent no-op; cutover: `walletId: null` makes
+    // SettlementService route the share to the platform wallet instead).
+    if (!driverWallet) {
+      this.logger.error(
+        `completeTrip: driver ${driverUserId} (driverId=${driver.id}) has no wallet — refusing to complete trip ${tripId} without a payout destination`,
+      );
+      throw new BadRequestException('Driver wallet not found — cannot complete trip settlement');
+    }
+
     let driverEarnings: number;
     let totalCommission: number;
 
