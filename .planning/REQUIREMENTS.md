@@ -45,9 +45,9 @@ Requirements for milestone v2.0. Each maps to roadmap phases (Phase 10+, continu
 
 - [ ] **MIN-01**: A `MINISTRY_VIEWER` role exists, gated by `@Roles()` individually on every route it can reach — never via a controller shared with any mutation endpoint
 - [ ] **MIN-02**: Ministry dashboard shows visitor entry counts, broken down by LGA and time period
-- [ ] **MIN-03**: Ministry dashboard shows a purpose-of-visit breakdown, sourced from a new data-capture point added to the booking/check-in flow
+- [x] **MIN-03**: Ministry dashboard shows a purpose-of-visit breakdown, sourced from a new data-capture point added to the booking/check-in flow
 - [ ] **MIN-04**: Ministry dashboard shows revenue-to-government-share, sourced from the standing Ministry wallet's transaction ledger (depends on SETTLE-02)
-- [ ] **MIN-05**: Every Ministry dashboard report can be exported as CSV
+- [x] **MIN-05**: Every Ministry dashboard report can be exported as CSV
 - [ ] **MIN-06**: Every Ministry dashboard report can be exported as a formatted, presentable PDF (Forest Green/Tropical Gold branded)
 - [ ] **MIN-07**: Ministry dashboard queries return aggregate data only — no row-level citizen PII (BVN, NIN, phone, name) is ever reachable by `MINISTRY_VIEWER`, enforced at the query layer
 
@@ -114,9 +114,9 @@ Requirements for milestone v2.0. Each maps to roadmap phases (Phase 10+, continu
 | OTP-04 | Phase 15 | Pending |
 | MIN-01 | Phase 14 | Pending |
 | MIN-02 | Phase 14 | Pending |
-| MIN-03 | Phase 14 | Pending |
+| MIN-03 | Phase 14 | Complete |
 | MIN-04 | Phase 14 | Pending |
-| MIN-05 | Phase 14 | Pending |
+| MIN-05 | Phase 14 | Complete |
 | MIN-06 | Phase 14 | Pending |
 | MIN-07 | Phase 14 | Pending |
 | SETTLE-01 | Phase 12 | Complete |
