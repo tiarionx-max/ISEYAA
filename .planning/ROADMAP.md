@@ -31,7 +31,7 @@ Sprint 1 is shipped. This roadmap covers the six remaining sprints: infrastructu
 - [x] **Phase 13: Settlement Cutover — Transport & Delivery** - Transport and Delivery's live payouts move onto the three-way settlement engine, shadow-mode verified before cutover (completed 2026-07-17)
 - [x] **Phase 14: Ministry Dashboard** - `MINISTRY_VIEWER` role + read-only dashboard: visitor counts, purpose-of-visit, revenue-to-government-share, CSV/PDF export, zero PII leakage (8 plans complete 2026-07-18; gap closure 14-09/14-10 pending for CR-01/CR-02 blockers found in verification) (completed 2026-07-18)
 - [x] **Phase 15: Multi-Channel OTP** - Users choose WhatsApp/Email/SMS for OTP verification at registration, with bounded-timeout SMS fallback and identity-scoped brute-force protection (completed 2026-07-18)
-- [ ] **Phase 16: Connection Pooling Infrastructure** - Every Prisma client on a pooled connection string, combined-topology load test under Neon's connection ceiling
+- [x] **Phase 16: Connection Pooling Infrastructure** - Every Prisma client on a pooled connection string, combined-topology load test under Neon's connection ceiling (completed 2026-07-18)
 - [ ] **Phase 17: gRPC Proof-of-Pattern Extraction (notifications-service)** - `notifications-service` runs as a genuinely separate deployable process, called via `ClientGrpc`, proving the extraction pattern with zero REST behavior change
 
 ## Phase Details
@@ -598,7 +598,7 @@ Plans:
 - [x] 16-03-PLAN.md — k6 native-gRPC notifications-service scenario wired into the combined-topology main.js run (POOL-02, D-06)
 
 **Wave 3** *(blocked on Wave 2)*
-- [ ] 16-04-PLAN.md — Human verification checkpoint: Neon Console ceiling confirmation (D-03) + combined-topology load test run + Grafana gauge/alert confirmation (D-07, ROADMAP SC3)
+- [x] 16-04-PLAN.md — Human verification checkpoint: Neon Console ceiling confirmation (D-03) + combined-topology load test run + Grafana gauge/alert confirmation (D-07, ROADMAP SC3)
 
 **Cross-cutting constraints:**
 - Neon's built-in `-pooler` endpoint only — no self-hosted PgBouncer (D-01, locked)
@@ -642,5 +642,5 @@ Phases 11, 12 (Settlement Foundation), and 15 (WhatsApp OTP) are independent of 
 | 13. Settlement Cutover — Transport & Delivery | 4/4 | Complete    | 2026-07-18 |
 | 14. Ministry Dashboard | 10/10 | Complete   | 2026-07-18 |
 | 15. Multi-Channel OTP | 6/6 | Complete    | 2026-07-18 |
-| 16. Connection Pooling Infrastructure | 3/4 | In Progress|  |
+| 16. Connection Pooling Infrastructure | 4/4 | Complete   | 2026-07-18 |
 | 17. gRPC Proof-of-Pattern Extraction (notifications-service) | 0/0 | Not started | - |
