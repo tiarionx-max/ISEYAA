@@ -515,7 +515,10 @@ describe('DeliveryService', () => {
         if (key === 'delivery.platform_fee_pct') return Promise.resolve(mockPlatformConfig(key, 15));
         return Promise.resolve(null);
       });
-      mockPrisma.deliveryOrder.update.mockResolvedValue({});
+      // Simulate: an unrelated failure (e.g. DB error) before the atomic guard ever
+      // ran — the order is genuinely still IN_TRANSIT, so the guarded revert (notIn
+      // terminal statuses) must find count=1 and safely set it back to IN_TRANSIT.
+      mockPrisma.deliveryOrder.updateMany.mockResolvedValue({ count: 1 });
       mockSettlement.settle.mockImplementation(async (input: any) => {
         await input.onFailure?.(new Error('settlement failed'));
         throw new Error('settlement failed');
@@ -525,8 +528,47 @@ describe('DeliveryService', () => {
         service.completeDelivery(ORDER_ID, USER_ID, { proofPhotoBase64: base64Photo } as any),
       ).rejects.toThrow('settlement failed');
 
-      expect(mockPrisma.deliveryOrder.update).toHaveBeenCalledWith({
-        where: { id: ORDER_ID },
+      expect(mockPrisma.deliveryOrder.updateMany).toHaveBeenCalledWith({
+        where: { id: ORDER_ID, status: { notIn: ['DELIVERED', 'CANCELLED', 'EXPIRED'] } },
+        data: { status: 'IN_TRANSIT' },
+      });
+    });
+
+    it('does not resurrect an order already in a terminal state when the cutover onFailure handler runs', async () => {
+      const base64Photo = Buffer.from('fake-jpeg-data').toString('base64');
+      mockPrisma.deliveryOrder.findUnique.mockResolvedValue({
+        ...mockOrder,
+        status: 'IN_TRANSIT',
+        otpVerifiedAt: new Date(),
+        fee: 800,
+      });
+      mockPrisma.deliveryRider.findFirst.mockResolvedValue(mockRider);
+      mockPrisma.wallet.findFirst.mockResolvedValue({ id: WALLET_ID, userId: USER_ID });
+      mockPrisma.platformConfig.findUnique.mockImplementation((args: any) => {
+        const key = args.where.key;
+        if (key === 'delivery.settlement_engine_enabled') return Promise.resolve(mockPlatformConfig(key, true));
+        if (key === 'delivery.govt_levy_pct') return Promise.resolve(mockPlatformConfig(key, 5));
+        if (key === 'delivery.platform_fee_pct') return Promise.resolve(mockPlatformConfig(key, 15));
+        return Promise.resolve(null);
+      });
+      // Simulate: the order was cancelled (e.g. by the sender) concurrently with a
+      // stray/duplicate completeDelivery call. onSettled's guard already threw
+      // (count=0), so onFailure's own guarded revert must also find count=0 (order
+      // is CANCELLED, excluded from the notIn revert filter) and must NOT force it
+      // back to IN_TRANSIT — which would let a subsequent call pay the rider for a
+      // cancelled delivery.
+      mockPrisma.deliveryOrder.updateMany.mockResolvedValue({ count: 0 });
+      mockSettlement.settle.mockImplementation(async (input: any) => {
+        await input.onFailure?.(new Error('order already delivered or not in a completable status'));
+        throw new Error('order already delivered or not in a completable status');
+      });
+
+      await expect(
+        service.completeDelivery(ORDER_ID, USER_ID, { proofPhotoBase64: base64Photo } as any),
+      ).rejects.toThrow('order already delivered or not in a completable status');
+
+      expect(mockPrisma.deliveryOrder.updateMany).toHaveBeenCalledWith({
+        where: { id: ORDER_ID, status: { notIn: ['DELIVERED', 'CANCELLED', 'EXPIRED'] } },
         data: { status: 'IN_TRANSIT' },
       });
     });

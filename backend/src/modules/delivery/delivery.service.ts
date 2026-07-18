@@ -657,10 +657,23 @@ export class DeliveryService {
           // makes a client retry's wallet-crediting half a safe no-op replay (Pitfall 4).
           // CR-01: 'PICKED_UP' is not a valid DeliveryOrderStatus enum member; revert to
           // 'IN_TRANSIT', the existing pre-terminal status this order was completable from.
-          await this.prisma.deliveryOrder.update({
-            where: { id: orderId },
+          // Post-verification fix (mirrors CR-03's guard on Transport's onFailure): only
+          // revert if the order is not already in a terminal state. onSettled's atomic
+          // guard throws (count===0) when the order was NOT actually COLLECTING/IN_TRANSIT
+          // at settlement time (e.g. a concurrent duplicate call already delivered it, or
+          // it was legitimately cancelled) — in that case the order's current status is
+          // authoritative and must not be clobbered back to IN_TRANSIT, or a stray/duplicate
+          // completeDelivery call could resurrect a cancelled/terminal order into a
+          // retryable state and pay the rider for a delivery that should never have paid.
+          const result = await this.prisma.deliveryOrder.updateMany({
+            where: { id: orderId, status: { notIn: ['DELIVERED', 'CANCELLED', 'EXPIRED'] } },
             data: { status: 'IN_TRANSIT' as any },
           });
+          if (result.count === 0) {
+            this.logger.warn(
+              `completeDelivery onFailure: not reverting order ${orderId} — already in a terminal state`,
+            );
+          }
         },
       });
     } else {
