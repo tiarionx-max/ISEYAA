@@ -525,7 +525,8 @@ export class DeliveryService {
     if (!order) throw new NotFoundException('Delivery order not found');
 
     // H-11: check order is in a completable status — prevents earning on cancelled orders
-    if (!(['COLLECTING', 'IN_TRANSIT', 'PICKED_UP'] as string[]).includes(order.status as string)) {
+    // CR-01: 'PICKED_UP' is not a valid DeliveryOrderStatus enum member — removed.
+    if (!(['COLLECTING', 'IN_TRANSIT'] as string[]).includes(order.status as string)) {
       throw new BadRequestException(`Order cannot be completed in status: ${order.status}`);
     }
 
@@ -626,9 +627,11 @@ export class DeliveryService {
         onFailure: async () => {
           // Revert to a retryable status — SettlementService's idempotency precheck
           // makes a client retry's wallet-crediting half a safe no-op replay (Pitfall 4).
+          // CR-01: 'PICKED_UP' is not a valid DeliveryOrderStatus enum member; revert to
+          // 'IN_TRANSIT', the existing pre-terminal status this order was completable from.
           await this.prisma.deliveryOrder.update({
             where: { id: orderId },
-            data: { status: 'PICKED_UP' as any },
+            data: { status: 'IN_TRANSIT' as any },
           });
         },
       });
