@@ -534,7 +534,7 @@ Plans:
 - [x] 14-06-PLAN.md — Ministry revenue-to-government query (MIN-04) + automated PII field-allowlist test (MIN-07)
 
 **Wave 4** *(blocked on Wave 3)*
-- [ ] 14-07-PLAN.md — Export layer: MinistryPdfService (branded tabular renderer) + 6 CSV/PDF export routes
+- [x] 14-07-PLAN.md — Export layer: MinistryPdfService (branded tabular renderer) + 6 CSV/PDF export routes
 
 **Wave 5** *(blocked on Wave 4)*
 - [ ] 14-08-PLAN.md — Web /admin/ministry dashboard: 3 report panels, charts, filters, 6 export buttons
@@ -603,7 +603,7 @@ Phases 11, 12 (Settlement Foundation), and 15 (WhatsApp OTP) are independent of 
 | 11. Resilience Wrapping | 11/11 | Complete   | 2026-07-16 |
 | 12. Settlement Engine Foundation | 9/9 | Complete   | 2026-07-17 |
 | 13. Settlement Cutover — Transport & Delivery | 4/4 | Complete    | 2026-07-18 |
-| 14. Ministry Dashboard | 6/8 | In Progress|  |
+| 14. Ministry Dashboard | 7/8 | In Progress|  |
 | 15. Multi-Channel OTP | 0/0 | Not started | - |
 | 16. Connection Pooling Infrastructure | 0/0 | Not started | - |
 | 17. gRPC Proof-of-Pattern Extraction (notifications-service) | 0/0 | Not started | - |
