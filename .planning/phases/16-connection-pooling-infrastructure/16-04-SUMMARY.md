@@ -95,3 +95,13 @@ None - all external service configuration (Neon Console, Grafana Cloud, Railway 
 ---
 *Phase: 16-connection-pooling-infrastructure*
 *Completed: 2026-07-18*
+
+## Self-Check: PASSED
+
+- FOUND: .planning/phases/16-connection-pooling-infrastructure/16-VERIFICATION.md
+- FOUND: MANUAL-ACTIONS.md (with "16-approved" resume signal string)
+- FOUND: .planning/phases/16-connection-pooling-infrastructure/16-04-SUMMARY.md
+- FOUND commit: acebfa4 (Task 1 + Task 2 verification record)
+- FOUND commit: 9b08dc6 (Task 3 confirmation + MANUAL-ACTIONS.md closure)
+- FOUND commit: ed6bb4a (SUMMARY.md)
+- FOUND: "Neon Console" string present in 16-VERIFICATION.md (must_haves.artifacts requirement)
