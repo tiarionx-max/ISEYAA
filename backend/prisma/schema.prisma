@@ -22,6 +22,7 @@ enum UserRole {
   STATE_ADMIN
   SUPER_ADMIN
   TOUR_GUIDE // Phase 9 — additively appended via PG ALTER TYPE ADD VALUE
+  MINISTRY_VIEWER // Phase 14 — additively appended via PG ALTER TYPE ADD VALUE
 }
 
 enum UserStatus {
@@ -291,8 +292,32 @@ model LGA {
   properties   Property[]
   vendors      Vendor[]
   tourPackages TourPackage[]
+  visitorLogs  VisitorLog[]
 
   @@map("lgas")
+}
+
+enum VisitorSourceType {
+  EVENT
+  STAY
+  TOUR
+}
+
+model VisitorLog {
+  id         String            @id @default(uuid())
+  lgaId      String?
+  lga        LGA?              @relation(fields: [lgaId], references: [id])
+  purpose    String // free-text taxonomy value (D-05) — not an enum, per "not hardcoded" decision
+  sourceType VisitorSourceType
+  sourceId   String // Ticket.id | Booking.id | TourBooking.id — polymorphic, no FK enforced
+  visitedAt  DateTime
+  userRole   UserRole
+  createdAt  DateTime          @default(now())
+
+  @@index([lgaId])
+  @@index([visitedAt])
+  @@index([sourceType, sourceId])
+  @@map("visitor_logs")
 }
 
 model Attraction {
