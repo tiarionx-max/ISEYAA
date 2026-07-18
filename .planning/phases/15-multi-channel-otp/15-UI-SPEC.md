@@ -86,7 +86,7 @@ All values from `mobile/lib/tokens.ts` (verbatim, read directly this session) �
 
 | Role | Value | Usage |
 |------|-------|-------|
-| Dominant (60%) | `SURFACE_MID` `#0D1F1F` | New settings screen (`mobile/app/settings/otp-channel.tsx`) background — matches the existing `kyc.tsx` background precedent. `phone.tsx`/`otp.tsx` keep their existing `SURFACE_DEEP` + gradient background, unchanged. |
+| Dominant (60%) | `SURFACE_MID` `#0D1F1F` | New settings screen (`mobile/app/otp-channel-settings.tsx`) background — matches the existing `kyc.tsx` background precedent. `phone.tsx`/`otp.tsx` keep their existing `SURFACE_DEEP` + gradient background, unchanged. |
 | Secondary (30%) | `SURFACE_RAISED` `#162B2B` | Channel option cards (default state), settings-screen option-row group container, unselected row background |
 | Accent (10%) | `GOLD` `#D4A843` | Reserved for: the selected channel option card's border + icon + label color; the selected settings-row's icon-box background (`GOLD_DIM`) + icon + trailing checkmark; the existing "Send code →" CTA button (unchanged, already gold). **Never** used for: unselected option borders, banner text/icon, sub-labels, or the profile Menu Row icon. |
 | Info/Success accent | `SUCCESS_DIM` `rgba(46,204,113,0.14)` / `SUCCESS_TEXT` `#7BE7A2` | Fallback-notice banner background/border tint and icon — deliberately **not** gold, to keep gold reserved for interactive/selection state only (an informational "this worked, just via a different channel" banner is a distinct semantic role from the accent color) |
@@ -162,7 +162,12 @@ announce this banner when it appears without requiring focus
 Exact copy is locked per CONTEXT.md D-10's literal example — do not vary wording between
 implementations.
 
-### 3. Settings Screen — Verification Channel (`mobile/app/settings/otp-channel.tsx`, new file, card presentation)
+### 3. Settings Screen — Verification Channel (`mobile/app/otp-channel-settings.tsx`, new file, card presentation)
+
+**Route note:** this project has no nested `settings/` route group — every standalone screen
+(`kyc.tsx`, `host.tsx`, `topup.tsx`, `notifications.tsx`) is a flat file registered directly under
+`mobile/app/`. This screen follows that same convention: `mobile/app/otp-channel-settings.tsx`,
+registered as `<Stack.Screen name="otp-channel-settings" ... />` in `mobile/app/_layout.tsx`.
 
 ```
 SafeAreaView edges=['top'], background SURFACE_MID
@@ -225,7 +230,7 @@ no new component needed here):
 icon: MessageSquare (lucide-react-native) — parity with the SMS/OTP concept
 label: "Verification Channel"
 sub: dynamic — current value of user.otpChannel, title-cased: "SMS" | "WhatsApp" | "Email"
-onPress: () => router.push('/settings/otp-channel')
+onPress: () => router.push('/otp-channel-settings')
 ```
 
 Placement: insert immediately before the existing "Security & ID" row (both are
@@ -290,6 +295,7 @@ involved.
 | `mobile/app/(tabs)/profile.tsx` (read directly) | `MenuRow` component contract and existing `menuRows` array shape — new entry follows the identical pattern |
 | `.planning/phases/15-multi-channel-otp/15-CONTEXT.md` D-05, D-07, D-10 | Channel picker appears once at registration (D-05); settings-screen control is net-new (D-07); fallback notice copy locked to the literal example given (D-10) |
 | `.planning/phases/15-multi-channel-otp/15-RESEARCH.md` Pitfall 2 | Confirmed mobile-only scope — web's registration flow has no OTP interaction |
+| `mobile/app/kyc.tsx`, `host.tsx`, `topup.tsx`, `notifications.tsx` (flat-file route precedent) | Confirmed this project has no `settings/` route group — Component 3/4 routes use the flat `otp-channel-settings` file/route name, not a nested `settings/otp-channel` path |
 
 ---
 
