@@ -525,8 +525,8 @@ Plans:
 - [x] 14-01-PLAN.md — [BLOCKING] Schema: MINISTRY_VIEWER enum value + VisitorLog model/migration + 3-way enum sync (backend/shared)
 
 **Wave 2** *(blocked on Wave 1, parallel)*
-- [ ] 14-02-PLAN.md — CommonModule services: VisitorLogService (write path) + CsvExportService (fast-csv) + purpose taxonomy constant
-- [ ] 14-03-PLAN.md — MinistryModule core: controller/service/DTO + visitor-entries + purpose-breakdown queries + RBAC
+- [x] 14-02-PLAN.md — CommonModule services: VisitorLogService (write path) + CsvExportService (fast-csv) + purpose taxonomy constant
+- [x] 14-03-PLAN.md — MinistryModule core: controller/service/DTO + visitor-entries + purpose-breakdown queries + RBAC
 
 **Wave 3** *(blocked on Wave 2, parallel)*
 - [ ] 14-04-PLAN.md — VisitorLog write-site wiring: Events check-in + Stays payment confirmation (+ purpose capture at checkout)
@@ -603,7 +603,7 @@ Phases 11, 12 (Settlement Foundation), and 15 (WhatsApp OTP) are independent of 
 | 11. Resilience Wrapping | 11/11 | Complete   | 2026-07-16 |
 | 12. Settlement Engine Foundation | 9/9 | Complete   | 2026-07-17 |
 | 13. Settlement Cutover — Transport & Delivery | 4/4 | Complete    | 2026-07-18 |
-| 14. Ministry Dashboard | 1/8 | In Progress|  |
+| 14. Ministry Dashboard | 3/8 | In Progress|  |
 | 15. Multi-Channel OTP | 0/0 | Not started | - |
 | 16. Connection Pooling Infrastructure | 0/0 | Not started | - |
 | 17. gRPC Proof-of-Pattern Extraction (notifications-service) | 0/0 | Not started | - |
