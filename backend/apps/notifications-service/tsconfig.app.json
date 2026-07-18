@@ -5,6 +5,6 @@
     "outDir": "../../dist",
     "rootDir": "../.."
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "../../src/instrumentation.ts"],
   "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
 }

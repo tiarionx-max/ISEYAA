@@ -11,4 +11,4 @@ COPY backend/ ./backend/
 RUN cd backend && npx prisma generate
 RUN cd backend && npx nest build notifications-service
 EXPOSE 5008
-CMD ["sh", "-c", "infisical run --projectId $INFISICAL_PROJECT_ID --env ${APP_ENV:-production} -- node ./backend/dist/apps/notifications-service/src/main.js"]
+CMD ["sh", "-c", "infisical run --projectId $INFISICAL_PROJECT_ID --env ${APP_ENV:-production} -- node --require ./backend/dist/instrumentation.js ./backend/dist/apps/notifications-service/src/main.js"]
