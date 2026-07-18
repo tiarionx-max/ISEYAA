@@ -588,7 +588,23 @@ Plans:
   1. Every Prisma client (monolith + `notifications-service`) connects via a pooled connection string (Neon `-pooler` suffix or PgBouncer) with an explicit, documented `connection_limit`
   2. A combined-topology load test running the monolith and `notifications-service` concurrently confirms total open Postgres connections stay under Neon's connection ceiling
   3. Grafana shows a tracked open-Postgres-connections metric with an alert threshold configured
-**Plans**: TBD
+**Plans**: 4 plans
+Plans:
+**Wave 1** *(no dependencies — runs immediately, parallel)*
+- [ ] 16-01-PLAN.md — Fix notifications-service ResilienceModule DI blocker + packages/proto compile step (INT-02) + document pooled DATABASE_URL/DIRECT_URL + config-presence test (POOL-01)
+- [ ] 16-02-PLAN.md — DbMetricsService (pg_stat_activity cron poll -> OTel postgres_open_connections gauge) + instrumentation.ts metricReader wiring (POOL-02 metric plumbing)
+
+**Wave 2** *(blocked on Wave 1)*
+- [ ] 16-03-PLAN.md — k6 native-gRPC notifications-service scenario wired into the combined-topology main.js run (POOL-02, D-06)
+
+**Wave 3** *(blocked on Wave 2)*
+- [ ] 16-04-PLAN.md — Human verification checkpoint: Neon Console ceiling confirmation (D-03) + combined-topology load test run + Grafana gauge/alert confirmation (D-07, ROADMAP SC3)
+
+**Cross-cutting constraints:**
+- Neon's built-in `-pooler` endpoint only — no self-hosted PgBouncer (D-01, locked)
+- `DIRECT_URL` stays unpooled, migrations only, unchanged from today (D-02)
+- `connection_limit` sized asymmetrically per D-04 (monolith gets the bulk, notifications-service a small fixed slice) against a conservative baseline, pending Plan 16-04's live Neon Console reconciliation (D-03)
+- No new circuit-breaker/fail-fast wrapping around pool exhaustion this phase — Prisma's default `pool_timeout` queueing is used (D-05)
 **UI hint**: no
 
 ### Phase 17: gRPC Proof-of-Pattern Extraction (notifications-service)
