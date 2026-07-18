@@ -90,3 +90,12 @@ None - no external service configuration required. `sendOtpEmail()` reuses `Send
 ---
 *Phase: 15-multi-channel-otp*
 *Completed: 2026-07-18*
+
+## Self-Check: PASSED
+
+- FOUND: backend/src/common/services/sendgrid.service.ts
+- FOUND: backend/src/common/services/__tests__/sendgrid.service.spec.ts
+- FOUND: .planning/phases/15-multi-channel-otp/15-02-SUMMARY.md
+- FOUND: commit 00bf831 (feat: sendOtpEmail)
+- FOUND: commit c3651aa (test: sendOtpEmail spec)
+- FOUND: commit 8768bae (docs: SUMMARY)
