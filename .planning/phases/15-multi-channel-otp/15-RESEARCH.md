@@ -414,22 +414,25 @@ Note: `resilience.service.spec.ts` currently asserts "builds all 7 vendor polici
 | A4 | Recommending a plain enum column (`User.otpChannel`) over a related table is the right data-modeling call | Standard Stack / Architectural Responsibility Map | If a future phase needs channel-preference history/audit trail, a column requires a migration to a table later — low risk given `KYCStatus`/`UserStatus` precedent for single-value enum columns on this exact model |
 | A5 | Meta system-user permanent access tokens don't require a refresh-cron in this codebase (unlike JWT rotation) | Environment Availability / Sources | If Meta's permanent-token policy changes or the token is generated as a short-lived user token by mistake during ops setup, WhatsApp sends will start failing with 401 — but per D-08/OTP-02, this degrades gracefully to SMS fallback, not a hard outage |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Which Graph API `language.code` value matches the approved template?**
    - What we know: The template body is fixed preset text ("<CODE> is your verification code," optional expiry/disclaimer lines); language code (`en` vs `en_US`) must match exactly what was submitted for approval.
    - What's unclear: Which exact code the stakeholder will use when submitting the template for Meta approval (outside this session's control — D-03 says submission is the stakeholder's action).
    - Recommendation: Make `META_WHATSAPP_TEMPLATE_LANG` a config var (default `en_US`) rather than hardcoding, so it can be corrected post-approval without a code deploy.
+   - RESOLVED: 15-01 implements `META_WHATSAPP_TEMPLATE_LANG` as a config var (default `en_US`), per the recommendation above.
 
 2. **Settings-screen endpoint shape: extend `PATCH /users/me` or add a dedicated route?**
    - What we know: `UsersService.update()` already accepts a plain-field object (`firstName`, `lastName`, `avatarUrl`, `lgaId`) and `UsersController.updateMe()` passes an inline body type through untyped.
    - What's unclear: Whether `otpChannel` should join that same untyped inline body or get a dedicated `PATCH /users/me/otp-channel` with its own DTO (cleaner validation, matches `SwitchRoleDto`'s pattern of a small purpose-built DTO for a single-field change).
    - Recommendation: Follow `SwitchRoleDto`'s precedent (`users.controller.ts:30-33`) — add a small `ChangeOtpChannelDto` with `@IsEnum(OtpChannel)` and a dedicated `PATCH /users/me/otp-channel` route, consistent with how role-switching (a similarly single-field, semantically distinct change) was handled rather than folded into the generic profile-update body.
+   - RESOLVED: 15-04 adds a dedicated `PATCH /users/me/otp-channel` route with `ChangeOtpChannelDto`, per the recommendation above (rather than folding `otpChannel` into the generic `PATCH /users/me` body).
 
 3. **Exact Meta Graph API error codes for auth failure / unapproved template / invalid phone / rate limit**
    - What we know: General categories (401 for expired/invalid token, ~132001-family for template issues, ~130429 for throughput rate limits) per WebSearch-aggregated sources.
    - What's unclear: Precise numeric codes, since the official Meta error-codes reference pages returned HTTP 404/500 during this research session (link rot or access restriction — see Sources).
    - Recommendation: Per Pitfall 4, this does not block implementation — use `response.ok` + catch-all error handling matching `sendTermii()`'s existing granularity. If precise codes are needed later (e.g., for a stakeholder-facing error dashboard), re-fetch `https://developers.facebook.com/documentation/business-messaging/whatsapp/support/error-codes` at that time.
+   - RESOLVED: 15-03 avoids per-code Graph API error handling — `sendMetaWhatsapp()` uses `response.ok` + catch-all error handling and falls back to SMS via `sendTermii()` on any failure, per the recommendation above.
 
 ## Environment Availability
 
