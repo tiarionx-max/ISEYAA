@@ -15,7 +15,9 @@ export type Vendor =
   | 'termiiDelivery'
   | 'anthropic'
   | 's3'
-  | 'fcm';
+  | 'fcm'
+  | 'metaWhatsapp'
+  | 'sendgrid';
 
 export interface VendorThresholds {
   timeoutMs: number;
@@ -37,4 +39,6 @@ export const RESILIENCE_DEFAULTS: Record<Vendor, VendorThresholds> = {
   anthropic: { timeoutMs: 8_000, retryCount: 0, failureThreshold: 3, halfOpenAfterMs: 30_000 },
   s3: { timeoutMs: 15_000, retryCount: 2, failureThreshold: 5, halfOpenAfterMs: 20_000 },
   fcm: { timeoutMs: 5_000, retryCount: 1, failureThreshold: 8, halfOpenAfterMs: 20_000 },
+  metaWhatsapp: { timeoutMs: 8_000, retryCount: 1, failureThreshold: 5, halfOpenAfterMs: 30_000 },
+  sendgrid: { timeoutMs: 8_000, retryCount: 1, failureThreshold: 5, halfOpenAfterMs: 30_000 },
 };

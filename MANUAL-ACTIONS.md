@@ -41,6 +41,10 @@ Full list of env vars that need real values before production (stub mode is acce
 | `INFISICAL_TOKEN` + `INFISICAL_PROJECT_ID` | Secrets manager | app.infisical.com → Project Settings |
 | `NEXTAUTH_SECRET` | Web admin auth | `openssl rand -base64 32` |
 | `GOOGLE_MAPS_API_KEY` | Maps | Google Cloud Console → APIs & Services |
+| `META_WHATSAPP_ACCESS_TOKEN` | Meta Business Cloud API | Meta Business Manager → WhatsApp → API Setup → System User permanent token |
+| `META_WHATSAPP_PHONE_NUMBER_ID` | Meta Business Cloud API | Meta Business Manager → WhatsApp → API Setup → Phone number ID |
+| `META_WHATSAPP_TEMPLATE_NAME` | Meta Business Cloud API | Meta Business Manager → WhatsApp → Message Templates → approved template name |
+| `META_WHATSAPP_TEMPLATE_LANG` | Meta Business Cloud API | Language code of the approved template (default `en_US`) |
 
 > **Stub mode:** If `TERMII_API_KEY`, `DOJAH_API_KEY`, `SMILE_IDENTITY_*`, `UPSTASH_VECTOR_*` are absent, the backend runs in stub mode — OTPs are printed to the console log, KYC tiers auto-verify, and AI personalisation is skipped. Stub mode is acceptable for manual testing.
 
@@ -688,3 +692,44 @@ See `monitoring/grafana-dashboard.json` and `monitoring/sentry-alerts.md` for co
 **Verify monitoring works:**
 - Grafana: make an API request, confirm RPS panel updates within 30 seconds
 - Sentry: use "Send Test Notification" on each alert rule (see `monitoring/sentry-alerts.md`)
+
+---
+
+## Phase 15 — Meta WhatsApp Business Cloud API Setup + Template Submission
+
+Phase 15 replaces the old Termii-routed WhatsApp OTP path with a direct integration against Meta's WhatsApp Business Cloud API (D-01/D-02). None of this is blocking — until it's complete, every WhatsApp-channel OTP send fails and automatically falls back to SMS (D-04/D-08). This is expected behavior, not a bug.
+
+**Step 1 — Account setup:**
+
+1. Create or confirm a Meta Business Account at business.facebook.com.
+2. Create or confirm a WhatsApp Business Account (WABA) linked to that Business Account.
+3. In Meta Business Manager → WhatsApp → API Setup, generate a permanent System User access token (not a temporary 24-hour token) with the `whatsapp_business_messaging` permission.
+4. Note the Phone Number ID shown on the same API Setup page.
+5. Set `META_WHATSAPP_ACCESS_TOKEN` and `META_WHATSAPP_PHONE_NUMBER_ID` in your `.env` (or Infisical/Railway) from steps 3–4.
+
+**Step 2 — Submit the Authentication template:**
+
+Submit the following template verbatim in Meta Business Manager → WhatsApp → Message Templates → Create Template:
+
+| Field | Value |
+| --- | --- |
+| Name | `iseyaa_otp_verification` |
+| Category | `AUTHENTICATION` |
+| Language | `en_US` |
+| Body | `{{1}} is your Iṣẹ́yáá verification code. For your security, do not share this code.` |
+| Footer | `This code expires in 5 minutes.` |
+| Buttons | One-tap copy-code button enabled (`otp_type: copy_code`) |
+
+Note: Meta's Authentication template composer presents "Add security recommendation" and "Add expiration warning" as toggle switches rather than freeform text fields. If Meta's UI supplies its own preset phrasing for these toggles, enable both toggles rather than retyping the body/footer text above verbatim — the toggles satisfy the same requirement.
+
+Once approved, set `META_WHATSAPP_TEMPLATE_NAME=iseyaa_otp_verification` and `META_WHATSAPP_TEMPLATE_LANG=en_US` in your `.env`.
+
+**Step 3 — Confirm fallback behavior (expected, not a bug):**
+
+Until the template is APPROVED (Meta review typically takes minutes to a few hours) and all three `META_WHATSAPP_*` secrets are set, every WhatsApp-channel OTP send will fail and automatically fall back to SMS delivery. This is the intended D-04/D-08 fallback chain, not an error condition — no code changes are needed to "fix" this while the template is pending.
+
+### Resume Signal
+
+Reply: **`15-meta-approved`** once the `iseyaa_otp_verification` template shows status APPROVED in Meta Business Manager and all three `META_WHATSAPP_*` secrets are live.
+
+This signal is informational only — this phase's automated plans do not block on it (D-03).
