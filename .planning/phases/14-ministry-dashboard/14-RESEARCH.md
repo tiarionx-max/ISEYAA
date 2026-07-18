@@ -412,10 +412,11 @@ export class MinistryController { /* ... */ }
 
 ## Open Questions
 
-1. **What happens to a `VisitorLog` row when its source booking is cancelled after confirmation but before the scheduled visit date?**
+1. **(RESOLVED) What happens to a `VisitorLog` row when its source booking is cancelled after confirmation but before the scheduled visit date?**
    - What we know: D-08 writes the row at confirmation time with a future `visitedAt`; D-02 says entries only count once `visitedAt <= now AND status != CANCELLED`, implying a query-time status check — but `VisitorLog` (per D-07) deliberately has no `status` column to check against.
    - What's unclear: Whether the intended query-time filter re-joins back to `Booking`/`TourBooking`.status via `sourceId` at read time (adds complexity + defeats some of the "isolated table" simplicity), or whether cancellation should trigger a `VisitorLogService.void()`/delete call as a fourth write site, or whether this edge case is accepted as out of scope for v1.
-   - Recommendation: Planner should make this an explicit task-level decision (documented in the plan, not left implicit) — likely cheapest fix is a `VisitorLogService.void(sourceType, sourceId)` call added to `TourBookingService.cancel()` (and Stays' cancellation path, once located) as a small addition alongside the three write sites already scoped.
+   - **Resolution (Plan 14-03, implemented):** The query-time re-join alternative was chosen, not the `void()`/delete write-site alternative. `getVisitorEntriesByLgaAndMonth()` and `getPurposeBreakdown()` LEFT JOIN back to `bookings`/`tour_bookings` by `sourceId` at read time and filter `status NOT IN ('CANCELLED', 'REFUNDED')` (see 14-03-PLAN.md's `<interfaces>` SQL block: `LEFT JOIN bookings b ON v."sourceType" = 'STAY' AND v."sourceId" = b.id`, same pattern for `tour_bookings`). `VisitorLog` itself stays status-column-free (D-07 intact) — a cancelled booking's row is excluded from every read-time aggregate, never physically removed or voided.
+   - Recommendation (superseded by the Resolution above — kept for history): Planner should make this an explicit task-level decision (documented in the plan, not left implicit) — likely cheapest fix is a `VisitorLogService.void(sourceType, sourceId)` call added to `TourBookingService.cancel()` (and Stays' cancellation path, once located) as a small addition alongside the three write sites already scoped.
 
 2. **Does a Stays cancellation path exist post-confirmation, and where?**
    - What we know: `stays.service.ts` has `createBooking()`, `handleStayPayment()`, and `releaseEscrow()` — no `cancel()` method was found in this research pass.
