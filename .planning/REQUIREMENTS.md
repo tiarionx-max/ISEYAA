@@ -17,10 +17,10 @@ Requirements for milestone v2.1 (Extraction Backlog Clearance & Settlement Flexi
 
 ### Settlement Flexibility
 
-- [ ] **SETTLE-11a**: Per-module settlement split percentages are stored as structured, validated, effective-dated configuration via a new `SettlementSplitTier` model, replacing the 6 duplicated inline `PlatformConfig` reads (Transport, Delivery, Marketplace, Events, Stays, Studio)
-- [ ] **SETTLE-11b**: `SettlementService.resolveSplit()` is the single resolver used by every settlement call site — no module computes its split percentage inline
+- [x] **SETTLE-11a**: Per-module settlement split percentages are stored as structured, validated, effective-dated configuration via a new `SettlementSplitTier` model, replacing the 6 duplicated inline `PlatformConfig` reads (Transport, Delivery, Marketplace, Events, Stays, Studio)
+- [x] **SETTLE-11b**: `SettlementService.resolveSplit()` is the single resolver used by every settlement call site — no module computes its split percentage inline
 - [ ] **SETTLE-11c**: Split percentage changes are effective-dated; already-settled transactions retain the percentage that was in effect at settlement time
-- [ ] **SETTLE-11d**: Runtime shape validation and a `Number.isFinite()` guard are added directly to `SettlementService.settle()` to reject NaN-corrupted config before it reaches a wallet mutation
+- [x] **SETTLE-11d**: Runtime shape validation and a `Number.isFinite()` guard are added directly to `SettlementService.settle()` to reject NaN-corrupted config before it reaches a wallet mutation
 - [ ] **SETTLE-10a**: An admin or `SUPER_ADMIN` can raise a dispute against a completed settlement transaction, capturing reason and disputed amount
 - [ ] **SETTLE-10b**: Disputes move through a state machine (`OPEN` → `IN_REVIEW` → `RESOLVED`/`DISMISSED`) with a reviewer assigned at review time
 - [ ] **SETTLE-10c**: Resolving a dispute produces a new append-only adjustment transaction via a new `SettlementService.adjust()` primitive (own idempotency namespace, own `SELECT FOR UPDATE` lock order) — historical `Transaction` rows are never mutated
@@ -80,10 +80,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | GRPC-06c | Phase 20 | Pending |
 | GRPC-07 | Phase 21 | Pending |
 | GRPC-08 | Phase 21 | Pending |
-| SETTLE-11a | Phase 18 | Pending |
-| SETTLE-11b | Phase 18 | Pending |
+| SETTLE-11a | Phase 18 | Complete |
+| SETTLE-11b | Phase 18 | Complete |
 | SETTLE-11c | Phase 18 | Pending |
-| SETTLE-11d | Phase 18 | Pending |
+| SETTLE-11d | Phase 18 | Complete |
 | SETTLE-10a | Phase 19 | Pending |
 | SETTLE-10b | Phase 19 | Pending |
 | SETTLE-10c | Phase 19 | Pending |
