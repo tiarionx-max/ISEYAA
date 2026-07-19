@@ -189,12 +189,16 @@ export class StaysService implements OnModuleInit {
       throw new BadRequestException(`Maximum ${property.maxGuests} guests allowed`);
     }
 
-    const levyCfg = await this.prisma.platformConfig.findUnique({ where: { key: 'stays.govt_levy_pct' } });
-    const govtLevyPct = levyCfg ? Number(levyCfg.value) : 0.05;
-
     const nights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (86400 * 1000));
     const totalPrice = Number(property.pricePerNight) * nights;
     const paystackRef = `ISY-STY-${uuidv4().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
+
+    // D-05: resolveSplit() is called strictly at booking-creation time and its result
+    // is snapshotted onto Booking.govtLevyPct — NEVER re-resolved inside releaseEscrow(),
+    // which would let a mid-escrow-hold split-percentage change retroactively apply to
+    // a booking already priced during its (potentially multi-week) escrow hold.
+    const { ministryPct } = await this.settlementService.resolveSplit('stays', totalPrice);
+    const govtLevyPct = ministryPct;
 
     const booking = await this.prisma.$transaction(async (tx) => {
       // SELECT FOR UPDATE prevents concurrent double-bookings

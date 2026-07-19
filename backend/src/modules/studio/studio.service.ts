@@ -167,13 +167,15 @@ export class StudioService implements OnModuleInit {
 
       if (!booking || booking.status !== 'PENDING') return;
 
-      // studio.platform_fee_pct / studio.govt_levy_pct — always from PlatformConfig, never
-      // hardcoded (fallbacks below only apply if the config key is entirely unset).
-      const feeCfg = await this.prisma.platformConfig.findUnique({ where: { key: 'studio.platform_fee_pct' } });
-      const platformFeePct = feeCfg ? Number(feeCfg.value) : 0.10;
-      const levyCfg = await this.prisma.platformConfig.findUnique({ where: { key: 'studio.govt_levy_pct' } });
-      const govtLevyPct = levyCfg ? Number(levyCfg.value) : 0.05;
       const total = Number(booking.totalPrice);
+      // D-01: platformFeePct is fetched but never applied to the split math — the
+      // migrated SettlementSplitTier row's platformPct is `null` for Studio, and this
+      // call site preserves that exact "fetched but unused" behavior. Do NOT coalesce
+      // platformPct with `?? 0` — platformMetadata.configuredPlatformFeePct must
+      // continue to reflect the resolved (null) value faithfully.
+      const { ministryPct, platformPct } = await this.settlementService.resolveSplit('studio', total);
+      const govtLevyPct = ministryPct;
+      const platformFeePct = platformPct;
       const govtLevyNgn = +(total * govtLevyPct).toFixed(2);
 
       const ministryWallet = await this.settlementService.resolveMinistryWallet();

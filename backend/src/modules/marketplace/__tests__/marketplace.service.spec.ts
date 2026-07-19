@@ -14,6 +14,7 @@ const mockKafka = { emit: jest.fn().mockResolvedValue(undefined), consume: jest.
 const mockSettlement = {
   settle: jest.fn().mockResolvedValue({ status: 'SETTLED', platformAmountNgn: 0, recipientCredits: [] }),
   resolveMinistryWallet: jest.fn().mockResolvedValue({ id: 'WAL-MINISTRY' }),
+  resolveSplit: jest.fn().mockResolvedValue({ earnerPct: 0.90, ministryPct: 0, platformPct: 0.10 }),
 };
 
 const USER_ID = 'user-uuid-001';
@@ -61,8 +62,6 @@ const mockOrder = {
   vendor: mockVendor,
   orderItems: [{ productId: PRODUCT_ID, product: { name: 'Ankara Basket' }, quantity: 2 }],
 };
-
-const mockPlatformConfig = { key: 'marketplace.platform_fee_pct', value: 0.10 };
 
 const mockPrisma = {
   vendor: { findUnique: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
@@ -207,9 +206,9 @@ describe('MarketplaceService', () => {
       await expect(service.createOrder(USER_ID, { items: [{ productId: PRODUCT_ID, quantity: 5 }], email: 'x@y.com' })).rejects.toThrow(BadRequestException);
     });
 
-    it('calculates fee split from platform_config and creates order', async () => {
+    it('calculates fee split via resolveSplit(\'marketplace\', total) and creates order (D-02: vendor.govtLevyPct read directly, unrouted)', async () => {
       mockPrisma.product.findFirst.mockResolvedValue(mockProduct);
-      mockPrisma.platformConfig.findUnique.mockResolvedValue(mockPlatformConfig);
+      mockSettlement.resolveSplit.mockResolvedValueOnce({ earnerPct: 0.90, ministryPct: 0, platformPct: 0.10 });
       mockPrisma.order.create.mockResolvedValue(mockOrder);
       mockPaystack.initiatePayment.mockResolvedValue({
         authorizationUrl: 'https://paystack.com/pay/abc',
@@ -219,17 +218,17 @@ describe('MarketplaceService', () => {
 
       const result = await service.createOrder(USER_ID, dto as any);
 
-      // WR-07: key follows the `module.key_name` convention (not the un-namespaced
-      // legacy `PLATFORM_FEE_PCT`), so it's actually resolvable via the seeded row.
-      expect(mockPrisma.platformConfig.findUnique).toHaveBeenCalledWith({
-        where: { key: 'marketplace.platform_fee_pct' },
-      });
+      // resolveSplit() is called with the computed order total, AFTER totalAmount
+      // is derived from orderItems — mirrors the pre-migration read timing.
+      expect(mockSettlement.resolveSplit).toHaveBeenCalledWith('marketplace', 7000);
+      // marketplace.platform_fee_pct no longer resolved via platformConfig — resolveSplit() owns it now.
+      expect(mockPrisma.platformConfig.findUnique).not.toHaveBeenCalled();
       expect(mockPrisma.order.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             totalAmount: 7000,      // 3500 × 2
             platformFee: 700,       // 7000 × 0.10
-            govtLevy: 140,          // 7000 × 0.02
+            govtLevy: 140,          // 7000 × 0.02 (vendor.govtLevyPct, read directly — D-02)
             vendorPayout: 6160,     // 7000 - 700 - 140
             paystackRef: expect.stringMatching(/^ISY-ORD-/),
           }),
@@ -245,9 +244,9 @@ describe('MarketplaceService', () => {
       expect(result.payment.authorizationUrl).toBe('https://paystack.com/pay/abc');
     });
 
-    it('defaults platform fee to 10% when config not found', async () => {
+    it('defaults platform fee to 0 when resolveSplit resolves a null platformPct', async () => {
       mockPrisma.product.findFirst.mockResolvedValue({ ...mockProduct, stock: 10 });
-      mockPrisma.platformConfig.findUnique.mockResolvedValue(null);
+      mockSettlement.resolveSplit.mockResolvedValueOnce({ earnerPct: 1, ministryPct: 0, platformPct: null });
       mockPrisma.order.create.mockResolvedValue(mockOrder);
       mockPaystack.initiatePayment.mockResolvedValue({ authorizationUrl: 'https://x', accessCode: 'a', reference: 'r' });
 
@@ -255,7 +254,7 @@ describe('MarketplaceService', () => {
 
       expect(mockPrisma.order.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ platformFee: 700 }),
+          data: expect.objectContaining({ platformFee: 0 }),
         }),
       );
     });
