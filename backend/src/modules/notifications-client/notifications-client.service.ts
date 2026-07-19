@@ -60,11 +60,11 @@ export class NotificationsClientService implements OnModuleInit {
 
   async sendPush(userId: string, title: string, body: string, data?: Record<string, string>) {
     try {
-      await this.resilience.execute('notificationsGrpc', () =>
+      const res = await this.resilience.execute<notifications.SendPushResponse>('notificationsGrpc', () =>
         // See `as any` rationale on registerToken above — same dual-rxjs-copy artifact.
         firstValueFrom(this.grpcService.sendPush({ userId, title, body, data: data ?? {} }) as any),
       );
-      return { sent: true };
+      return { sent: res.success };
     } catch (err: any) {
       this.logger.error(`Notifications gRPC sendPush failed: ${err?.message ?? err}`);
       throw new ServiceUnavailableException(UNAVAILABLE_MESSAGE);

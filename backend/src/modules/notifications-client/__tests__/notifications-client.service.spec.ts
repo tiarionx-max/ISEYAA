@@ -120,6 +120,16 @@ describe('NotificationsClientService', () => {
     });
   });
 
+  // 4c. sendPush business-level failure (no-token/not_configured/etc.) — a real, non-throwing
+  // gRPC response with success: false must surface as { sent: false }, NOT the hardcoded
+  // { sent: true } the pre-fix code always returned regardless of the mocked response body.
+  it('4c. sendPush: on gRPC success with success: false (business-level failure, e.g. no FCM token), resolves { sent: false } without throwing', async () => {
+    const svc = await makeService();
+    mockGrpcService.sendPush.mockReturnValue(of({ success: false }));
+
+    await expect(svc.sendPush(USER_ID, 'Title', 'Body')).resolves.toEqual({ sent: false });
+  });
+
   // 5. sendPush failure path.
   it('5. sendPush: on gRPC/resilience failure, throws ServiceUnavailableException', async () => {
     const svc = await makeService();
