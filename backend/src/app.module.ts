@@ -23,7 +23,7 @@ import { StudioModule } from './modules/studio/studio.module';
 import { WalletModule } from './modules/wallet/wallet.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { MinistryModule } from './modules/ministry/ministry.module';
-import { NotificationsModule } from './modules/notifications/notifications.module';
+import { NotificationsClientModule } from './modules/notifications-client/notifications-client.module';
 import { AiModule } from './modules/ai/ai.module';
 import { TransportModule } from './modules/transport/transport.module';
 import { DeliveryModule } from './modules/delivery/delivery.module';
@@ -61,7 +61,7 @@ import { KafkaModule } from './kafka/kafka.module';
     WalletModule,
     AdminModule,
     MinistryModule,
-    NotificationsModule,
+    NotificationsClientModule,
     AiModule,
     WebhooksModule,
     WaitlistModule,
