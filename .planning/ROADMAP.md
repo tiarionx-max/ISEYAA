@@ -34,7 +34,7 @@ Sprint 1 is shipped. This roadmap covers the six remaining sprints: infrastructu
  (completed 2026-07-18)
 - [x] **Phase 16: Connection Pooling Infrastructure** - Every Prisma client on a pooled connection string, combined-topology load test under Neon's connection ceiling
  (completed 2026-07-18)
-- [x] **Phase 17: gRPC Proof-of-Pattern Extraction (notifications-service)** - `notifications-service` runs as a genuinely separate deployable process, called via `ClientGrpc`, proving the extraction pattern with zero REST behavior change (completed 2026-07-19)
+- [x] **Phase 17: gRPC Proof-of-Pattern Extraction (notifications-service)** - `notifications-service` runs as a genuinely separate deployable process, called via `ClientGrpc`, proving the extraction pattern with zero REST behavior change (6 plans complete 2026-07-19; gap closure pending -- verification found gRPC SendPush silently reports success:true on real send failures, a client-visible regression -- see 17-VERIFICATION.md)
 
 ## Phase Details
 
