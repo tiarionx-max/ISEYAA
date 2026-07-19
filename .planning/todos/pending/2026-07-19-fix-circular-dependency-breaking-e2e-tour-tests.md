@@ -5,7 +5,7 @@ area: general
 files:
   - backend/test/e2e-tour-booking.e2e-spec.ts
   - backend/src/modules/tour-bookings/__tests__/wallet-invariant.e2e-spec.ts
-  - backend/src/notifications-client/notifications-client.module.ts
+  - backend/src/modules/notifications-client/notifications-client.module.ts
 ---
 
 ## Problem
