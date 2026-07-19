@@ -26,8 +26,8 @@ Requirements for milestone v2.0. Each maps to roadmap phases (Phase 10+, continu
 - [x] **GRPC-01**: All 8 existing `backend/apps/*-service` scaffolds build successfully (`nest build <service>` passes; no `2>/dev/null || true` error-masking remains in any Dockerfile)
 - [x] **GRPC-02**: `.proto` contracts exist for the 7 currently-unstubbed modules (transport, delivery, tour-packages, tour-guides, news, waitlist, reviews)
 - [x] **GRPC-03**: `notifications-service` runs as a genuinely separate deployable process, called via `ClientGrpc` from the monolith, with zero behavior change to REST responses for web/mobile clients
-- [ ] **GRPC-04**: A documented caller-graph audit (every direct injection of the extracted service's class, grepped across the whole monolith) precedes and gates each module's extraction
-- [ ] **GRPC-05**: Wallet, Transport, Delivery, Events, Stays, Marketplace, Auth, and all Tour Packages/Guides/Bookings modules remain in-process this milestone — explicitly not extracted, because their `SELECT FOR UPDATE` wallet transactions cannot safely span a gRPC network boundary without an outbox/saga redesign that is out of scope
+- [x] **GRPC-04**: A documented caller-graph audit (every direct injection of the extracted service's class, grepped across the whole monolith) precedes and gates each module's extraction
+- [x] **GRPC-05**: Wallet, Transport, Delivery, Events, Stays, Marketplace, Auth, and all Tour Packages/Guides/Bookings modules remain in-process this milestone — explicitly not extracted, because their `SELECT FOR UPDATE` wallet transactions cannot safely span a gRPC network boundary without an outbox/saga redesign that is out of scope
 
 ### Connection Pooling
 
@@ -104,8 +104,8 @@ Requirements for milestone v2.0. Each maps to roadmap phases (Phase 10+, continu
 | GRPC-01 | Phase 10 | Complete |
 | GRPC-02 | Phase 10 | Complete |
 | GRPC-03 | Phase 17 | Complete |
-| GRPC-04 | Phase 17 | Pending |
-| GRPC-05 | Phase 17 | Pending |
+| GRPC-04 | Phase 17 | Complete |
+| GRPC-05 | Phase 17 | Complete |
 | POOL-01 | Phase 16 | Complete |
 | POOL-02 | Phase 16 | Complete |
 | OTP-01 | Phase 15 | Complete |
