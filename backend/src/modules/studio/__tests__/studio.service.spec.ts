@@ -15,6 +15,7 @@ const mockKafka = { emit: jest.fn().mockResolvedValue(undefined), consume: jest.
 const mockSettlement = {
   settle: jest.fn().mockResolvedValue({ status: 'SETTLED', platformAmountNgn: 0, recipientCredits: [] }),
   resolveMinistryWallet: jest.fn().mockResolvedValue({ id: 'WAL-MINISTRY' }),
+  resolveSplit: jest.fn().mockResolvedValue({ earnerPct: 0, ministryPct: 0.05, platformPct: null }),
 };
 
 const USER_ID = 'user-uuid-001';
@@ -213,18 +214,16 @@ describe('StudioService', () => {
       expect(mockPrisma.studioBooking.update).not.toHaveBeenCalled();
     });
 
-    it('settles Ministry-only (2-way, D-10) with configured govt_levy_pct and sends confirmation email', async () => {
+    it('settles Ministry-only (2-way, D-10) via resolveSplit(\'studio\', total) and sends confirmation email', async () => {
       mockPrisma.studioBooking.findUnique.mockResolvedValue({ ...mockBooking, status: 'PENDING' });
-      mockPrisma.platformConfig.findUnique.mockImplementation(({ where: { key } }: any) => {
-        if (key === 'studio.govt_levy_pct') return Promise.resolve({ value: 0.05 });
-        if (key === 'studio.platform_fee_pct') return Promise.resolve({ value: 0.10 });
-        return Promise.resolve(null);
-      });
+      mockSettlement.resolveSplit.mockResolvedValueOnce({ earnerPct: 0, ministryPct: 0.05, platformPct: null });
       mockPrisma.wallet.findUnique.mockResolvedValue({ id: 'WAL-BUYER' });
       mockSendgrid.sendStudioBookingConfirmation.mockResolvedValue(undefined);
 
       await service.handleStudioPayment({ reference: PAYSTACK_REF });
 
+      expect(mockSettlement.resolveSplit).toHaveBeenCalledWith('studio', mockBooking.totalPrice);
+      expect(mockPrisma.platformConfig.findUnique).not.toHaveBeenCalled();
       expect(mockSettlement.settle).toHaveBeenCalledTimes(1);
       const settleArgs = mockSettlement.settle.mock.calls[0][0];
       expect(settleArgs.recipients).toHaveLength(1);
@@ -241,17 +240,16 @@ describe('StudioService', () => {
       );
     });
 
-    it('falls back to 0.05 govt_levy_pct when PlatformConfig key is unset', async () => {
+    it('D-01: platformMetadata.configuredPlatformFeePct reflects the resolved (null) platformPct exactly, not coalesced to a default', async () => {
       mockPrisma.studioBooking.findUnique.mockResolvedValue({ ...mockBooking, status: 'PENDING' });
-      mockPrisma.platformConfig.findUnique.mockResolvedValue(null);
+      mockSettlement.resolveSplit.mockResolvedValueOnce({ earnerPct: 0, ministryPct: 0.05, platformPct: null });
       mockPrisma.wallet.findUnique.mockResolvedValue({ id: 'WAL-BUYER' });
       mockSendgrid.sendStudioBookingConfirmation.mockResolvedValue(undefined);
 
       await service.handleStudioPayment({ reference: PAYSTACK_REF });
 
       const settleArgs = mockSettlement.settle.mock.calls[0][0];
-      expect(settleArgs.recipients).toHaveLength(1);
-      expect(settleArgs.recipients[0].amountNgn).toBe(mockBooking.totalPrice * 0.05);
+      expect(settleArgs.platformMetadata.configuredPlatformFeePct).toBeNull();
     });
 
     it('returns early when booking is already confirmed', async () => {
@@ -263,7 +261,6 @@ describe('StudioService', () => {
 
     it('transitions booking to CONFIRMED inside the onSettled callback', async () => {
       mockPrisma.studioBooking.findUnique.mockResolvedValue({ ...mockBooking, status: 'PENDING' });
-      mockPrisma.platformConfig.findUnique.mockResolvedValue(null);
       mockPrisma.wallet.findUnique.mockResolvedValue({ id: 'WAL-BUYER' });
       mockSendgrid.sendStudioBookingConfirmation.mockResolvedValue(undefined);
 
@@ -285,7 +282,6 @@ describe('StudioService', () => {
 
     it('WR-04: does not re-send confirmation email when settle() reports a REPLAYED duplicate delivery', async () => {
       mockPrisma.studioBooking.findUnique.mockResolvedValue({ ...mockBooking, status: 'PENDING' });
-      mockPrisma.platformConfig.findUnique.mockResolvedValue(null);
       mockPrisma.wallet.findUnique.mockResolvedValue({ id: 'WAL-BUYER' });
       mockSettlement.settle.mockResolvedValueOnce({
         status: 'REPLAYED',
