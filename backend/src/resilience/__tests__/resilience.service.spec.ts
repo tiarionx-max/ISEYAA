@@ -37,7 +37,7 @@ describe('ResilienceService', () => {
   });
 
   describe('onModuleInit — default-fallback config read', () => {
-    it('builds all 9 vendor policies from RESILIENCE_DEFAULTS when PlatformConfig has no rows', async () => {
+    it('builds all 10 vendor policies from RESILIENCE_DEFAULTS when PlatformConfig has no rows', async () => {
       await service.onModuleInit();
 
       // Every vendor must be usable via execute() without throwing "not registered".
@@ -239,6 +239,22 @@ describe('ResilienceService', () => {
       // This is the interaction proof that WR-04's narrowing does not silently
       // break CR-01's per-attempt retry: a TaskCancelledError-shaped rejection (no
       // .response, no .code) must still trigger a retry.
+      expect(fn.mock.calls.length).toBeGreaterThan(1);
+    });
+
+    it('retries a gRPC UNAVAILABLE (code: 14) failure for the notificationsGrpc vendor', async () => {
+      await service.onModuleInit();
+
+      const fn = jest.fn().mockRejectedValue({ code: 14, details: 'no connection' });
+
+      try {
+        await service.execute('notificationsGrpc', fn);
+      } catch {
+        // expected
+      }
+
+      // notificationsGrpc retryCount: 1 means cockatiel retries this — proving gRPC's
+      // numeric UNAVAILABLE status code is classified as transient.
       expect(fn.mock.calls.length).toBeGreaterThan(1);
     });
   });
