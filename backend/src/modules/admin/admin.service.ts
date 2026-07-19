@@ -1,5 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { UpdateSplitTierDto } from './dto/update-split-tier.dto';
 
 @Injectable()
 export class AdminService {
@@ -167,6 +168,50 @@ export class AdminService {
       where: { key },
       update: { value },
       create: { key, value },
+    });
+  }
+
+  // ── Settlement Split Tiers ──────────────────────────────────────────────────
+
+  listSplitTiers(module?: string) {
+    return this.prisma.settlementSplitTier.findMany({
+      where: module ? { module } : undefined,
+      orderBy: [{ module: 'asc' }, { effectiveFrom: 'desc' }],
+    });
+  }
+
+  async updateSplitTier(id: string, dto: UpdateSplitTierDto) {
+    const prior = await this.prisma.settlementSplitTier.findUnique({ where: { id } });
+    if (!prior) {
+      throw new NotFoundException('Settlement split tier not found');
+    }
+
+    const finalEarnerPct = dto.earnerPct ?? Number(prior.earnerPct);
+    const finalMinistryPct = dto.ministryPct ?? Number(prior.ministryPct);
+    const finalPlatformPct =
+      dto.platformPct !== undefined
+        ? dto.platformPct
+        : prior.platformPct !== null
+          ? Number(prior.platformPct)
+          : null;
+
+    if (finalEarnerPct + finalMinistryPct + (finalPlatformPct ?? 0) > 1) {
+      throw new BadRequestException('Settlement split percentages must not exceed 1.0 in total');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.settlementSplitTier.update({ where: { id: prior.id }, data: { isActive: false } });
+      return tx.settlementSplitTier.create({
+        data: {
+          module: prior.module,
+          tierName: prior.tierName,
+          earnerPct: finalEarnerPct,
+          ministryPct: finalMinistryPct,
+          platformPct: finalPlatformPct,
+          isActive: true,
+          effectiveFrom: new Date(),
+        },
+      });
     });
   }
 }

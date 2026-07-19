@@ -1,3 +1,4 @@
+import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AdminService } from '../admin.service';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -11,7 +12,9 @@ const mockPrisma = {
   property: { findMany: jest.fn() },
   studioSlot: { findMany: jest.fn(), update: jest.fn() },
   platformConfig: { findMany: jest.fn(), upsert: jest.fn() },
+  settlementSplitTier: { findMany: jest.fn(), findUnique: jest.fn(), update: jest.fn(), create: jest.fn() },
   $queryRaw: jest.fn(),
+  $transaction: jest.fn(),
 };
 
 describe('AdminService', () => {
@@ -161,6 +164,98 @@ describe('AdminService', () => {
           create: { key: 'PLATFORM_FEE_PCT', value: 0.12 },
         }),
       );
+    });
+  });
+
+  // ── settlement split tiers ─────────────────────────────────────────────────
+
+  describe('listSplitTiers', () => {
+    it('lists all tiers when no module filter given', async () => {
+      mockPrisma.settlementSplitTier.findMany.mockResolvedValue([]);
+      await service.listSplitTiers();
+      expect(mockPrisma.settlementSplitTier.findMany).toHaveBeenCalledWith({
+        where: undefined,
+        orderBy: [{ module: 'asc' }, { effectiveFrom: 'desc' }],
+      });
+    });
+
+    it('filters by module when provided', async () => {
+      mockPrisma.settlementSplitTier.findMany.mockResolvedValue([]);
+      await service.listSplitTiers('transport');
+      expect(mockPrisma.settlementSplitTier.findMany).toHaveBeenCalledWith({
+        where: { module: 'transport' },
+        orderBy: [{ module: 'asc' }, { effectiveFrom: 'desc' }],
+      });
+    });
+  });
+
+  describe('updateSplitTier', () => {
+    const TIER_ID = 'tier-001';
+
+    it('throws NotFoundException when the tier does not exist', async () => {
+      mockPrisma.settlementSplitTier.findUnique.mockResolvedValue(null);
+      await expect(service.updateSplitTier(TIER_ID, { ministryPct: 0.08 })).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(mockPrisma.settlementSplitTier.findUnique).toHaveBeenCalledWith({ where: { id: TIER_ID } });
+    });
+
+    it('throws BadRequestException when the resulting split exceeds 1.0', async () => {
+      mockPrisma.settlementSplitTier.findUnique.mockResolvedValue({
+        id: TIER_ID,
+        module: 'transport',
+        tierName: 'default',
+        earnerPct: 0.15,
+        ministryPct: 0.05,
+        platformPct: 0,
+      });
+      await expect(service.updateSplitTier(TIER_ID, { ministryPct: 0.9 })).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('inserts a new active row and deactivates the prior row inside a transaction', async () => {
+      const prior = {
+        id: TIER_ID,
+        module: 'transport',
+        tierName: 'default',
+        earnerPct: 0.82,
+        ministryPct: 0.05,
+        platformPct: 0.1,
+      };
+      mockPrisma.settlementSplitTier.findUnique.mockResolvedValue(prior);
+
+      const mockTx = {
+        settlementSplitTier: {
+          update: jest.fn().mockResolvedValue({ ...prior, isActive: false }),
+          create: jest.fn().mockResolvedValue({ ...prior, ministryPct: 0.08, isActive: true }),
+        },
+      };
+      mockPrisma.$transaction.mockImplementation(async (cb: any) => cb(mockTx));
+
+      await service.updateSplitTier(TIER_ID, { ministryPct: 0.08 });
+
+      expect(mockTx.settlementSplitTier.update).toHaveBeenCalledWith({
+        where: { id: prior.id },
+        data: { isActive: false },
+      });
+      expect(mockTx.settlementSplitTier.create).toHaveBeenCalledWith({
+        data: {
+          module: prior.module,
+          tierName: prior.tierName,
+          earnerPct: prior.earnerPct,
+          ministryPct: 0.08,
+          platformPct: prior.platformPct,
+          isActive: true,
+          effectiveFrom: expect.any(Date),
+        },
+      });
+
+      // Deactivation must run before the new row is created (unique constraint ordering).
+      const updateOrder = mockTx.settlementSplitTier.update.mock.invocationCallOrder[0];
+      const createOrder = mockTx.settlementSplitTier.create.mock.invocationCallOrder[0];
+      expect(updateOrder).toBeLessThan(createOrder);
     });
   });
 });

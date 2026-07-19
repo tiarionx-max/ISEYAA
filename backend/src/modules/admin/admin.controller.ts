@@ -4,6 +4,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
+import { UpdateSplitTierDto } from './dto/update-split-tier.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -96,5 +97,19 @@ export class AdminController {
   @ApiOperation({ summary: 'Upsert platform config value' })
   setConfig(@Param('key') key: string, @Body('value') value: any) {
     return this.adminService.setConfig(key, value);
+  }
+
+  @Get('settlement-splits')
+  @Roles(UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'List settlement split tiers, optionally filtered by module' })
+  listSplitTiers(@Query('module') module?: string) {
+    return this.adminService.listSplitTiers(module);
+  }
+
+  @Patch('settlement-splits/:id')
+  @Roles(UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Update a settlement split tier (creates new active row, deactivates prior — D-05 audit trail)' })
+  updateSplitTier(@Param('id') id: string, @Body() dto: UpdateSplitTierDto) {
+    return this.adminService.updateSplitTier(id, dto);
   }
 }
