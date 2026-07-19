@@ -18,6 +18,7 @@ const mockKafka = { emit: jest.fn().mockResolvedValue(undefined), consume: jest.
 const mockSettlement = {
   settle: jest.fn().mockResolvedValue({ status: 'SETTLED', platformAmountNgn: 0, recipientCredits: [] }),
   resolveMinistryWallet: jest.fn().mockResolvedValue({ id: 'WAL-MINISTRY' }),
+  resolveSplit: jest.fn().mockResolvedValue({ earnerPct: 0.95, ministryPct: 0.05, platformPct: null }),
 };
 
 const mockVisitorLog = { record: jest.fn().mockResolvedValue(undefined) };
@@ -283,9 +284,9 @@ describe('StaysService', () => {
       await expect(service.createBooking(USER_ID, PROP_ID, dto as any)).rejects.toThrow(ConflictException);
     });
 
-    it('snapshots govtLevyPct from PlatformConfig onto the created booking', async () => {
+    it('snapshots govtLevyPct from resolveSplit(\'stays\', totalPrice) onto the created booking', async () => {
       mockPrisma.property.findFirst.mockResolvedValue(mockProperty);
-      mockPrisma.platformConfig.findUnique.mockResolvedValue({ key: 'stays.govt_levy_pct', value: 0.05 });
+      mockSettlement.resolveSplit.mockResolvedValueOnce({ earnerPct: 0.95, ministryPct: 0.05, platformPct: null });
       let createData: any;
       mockPrisma.$transaction.mockImplementation(async (fn) => {
         const txMock = {
@@ -307,15 +308,16 @@ describe('StaysService', () => {
 
       await service.createBooking(USER_ID, PROP_ID, dto as any);
 
-      expect(mockPrisma.platformConfig.findUnique).toHaveBeenCalledWith({
-        where: { key: 'stays.govt_levy_pct' },
-      });
+      // totalPrice = pricePerNight(15000) × nights(3) = 45000, computed BEFORE resolveSplit() is called
+      expect(mockSettlement.resolveSplit).toHaveBeenCalledWith('stays', 45000);
+      expect(mockPrisma.platformConfig.findUnique).not.toHaveBeenCalled();
       expect(createData.govtLevyPct).toBe(0.05);
     });
 
-    it('falls back to 0.05 govtLevyPct when PlatformConfig has no key set', async () => {
+    it('config changed mid-escrow-hold does NOT retroactively affect an already-created booking (D-05)', async () => {
       mockPrisma.property.findFirst.mockResolvedValue(mockProperty);
-      mockPrisma.platformConfig.findUnique.mockResolvedValue(null);
+      // Booking created when ministryPct = 0.05
+      mockSettlement.resolveSplit.mockResolvedValueOnce({ earnerPct: 0.95, ministryPct: 0.05, platformPct: null });
       let createData: any;
       mockPrisma.$transaction.mockImplementation(async (fn) => {
         const txMock = {
@@ -323,7 +325,7 @@ describe('StaysService', () => {
           booking: {
             create: jest.fn().mockImplementation((args) => {
               createData = args.data;
-              return { ...mockBooking, status: 'PENDING' };
+              return { ...mockBooking, status: 'PENDING', govtLevyPct: args.data.govtLevyPct };
             }),
           },
         };
@@ -336,8 +338,31 @@ describe('StaysService', () => {
       });
 
       await service.createBooking(USER_ID, PROP_ID, dto as any);
-
       expect(createData.govtLevyPct).toBe(0.05);
+
+      // A SettlementSplitTier update (simulated) now changes the module's active tier
+      // to ministryPct = 0.08 — resolveSplit() would return the new value if called again.
+      mockSettlement.resolveSplit.mockResolvedValueOnce({ earnerPct: 0.92, ministryPct: 0.08, platformPct: null });
+
+      // releaseEscrow() runs for the already-created booking — it must use the booking's
+      // STORED govtLevyPct (0.05), never re-resolve the split.
+      const dueBooking = {
+        ...mockBooking,
+        totalPrice: 45000,
+        govtLevyPct: createData.govtLevyPct, // stored value from creation time
+        property: { hostId: HOST_ID },
+      };
+      mockPrisma.booking.findMany.mockResolvedValue([dueBooking]);
+      mockPrisma.wallet.findUnique.mockResolvedValue({ id: 'wallet-host-001', userId: HOST_ID, balance: 10000 });
+
+      await service.releaseEscrow();
+
+      // resolveSplit() must NOT have been called again by releaseEscrow()
+      expect(mockSettlement.resolveSplit).toHaveBeenCalledTimes(1);
+      const settleCall = mockSettlement.settle.mock.calls[0][0];
+      const ministryRecipient = settleCall.recipients.find((r: any) => r.tag === 'MINISTRY');
+      // 45000 × 0.05 (stored) = 2250 — NOT 45000 × 0.08 (new config) = 3600
+      expect(ministryRecipient.amountNgn).toBe(2250);
     });
   });
 
