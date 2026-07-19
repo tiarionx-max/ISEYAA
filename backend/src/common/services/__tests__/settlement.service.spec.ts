@@ -56,6 +56,7 @@ type AnyFn = jest.Mock;
 interface MockPrisma {
   transaction: { findFirst: AnyFn; create: AnyFn };
   platformConfig: { findUnique: AnyFn };
+  settlementSplitTier: { findFirst: AnyFn };
   wallet: { findUnique: AnyFn; update: AnyFn; upsert: AnyFn };
   user: { upsert: AnyFn };
   $transaction: AnyFn;
@@ -131,6 +132,7 @@ async function makeService(): Promise<SettlementService> {
   mockPrisma = {
     transaction: { findFirst: jest.fn(), create: jest.fn() },
     platformConfig: { findUnique: jest.fn() },
+    settlementSplitTier: { findFirst: jest.fn() },
     wallet: {
       findUnique: jest.fn(),
       update: jest.fn(),
@@ -375,4 +377,179 @@ describe('SettlementService', () => {
     expect(onFailure).toHaveBeenCalledTimes(1);
     expect(onFailure.mock.calls[0][0]).toBeInstanceOf(Error);
   });
+
+  // ── resolveSplit() — SETTLE-11a/11b ─────────────────────────────────────────
+  describe('resolveSplit()', () => {
+    it('resolves the active default tier for a module, Number-parsed, via a fresh findFirst query', async () => {
+      const svc = await makeService();
+      mockPrisma.settlementSplitTier.findFirst.mockResolvedValueOnce({
+        id: 'TIER-1',
+        earnerPct: '0.85',
+        ministryPct: '0.05',
+        platformPct: '0.10',
+      });
+
+      const result = await svc.resolveSplit('transport', 1000);
+
+      expect(result).toEqual({ earnerPct: 0.85, ministryPct: 0.05, platformPct: 0.1 });
+      expect(mockPrisma.settlementSplitTier.findFirst).toHaveBeenCalledWith({
+        where: { module: 'transport', isActive: true, tierName: 'default' },
+        orderBy: { effectiveFrom: 'desc' },
+      });
+    });
+
+    it('returns platformPct: null when the tier row has a null platformPct (e.g. Studio)', async () => {
+      const svc = await makeService();
+      mockPrisma.settlementSplitTier.findFirst.mockResolvedValueOnce({
+        id: 'TIER-STUDIO',
+        earnerPct: '0',
+        ministryPct: '0.05',
+        platformPct: null,
+      });
+
+      const result = await svc.resolveSplit('studio', 1000);
+
+      expect(result).toEqual({ earnerPct: 0, ministryPct: 0.05, platformPct: null });
+    });
+
+    it('throws "No active SettlementSplitTier found" when findFirst resolves null', async () => {
+      const svc = await makeService();
+      mockPrisma.settlementSplitTier.findFirst.mockResolvedValueOnce(null);
+
+      await expect(svc.resolveSplit('transport', 1000)).rejects.toThrow(
+        /No active SettlementSplitTier found for module="transport"/,
+      );
+    });
+
+    it('throws "Malformed SettlementSplitTier" when the resolved row has a non-finite earnerPct', async () => {
+      const svc = await makeService();
+      mockPrisma.settlementSplitTier.findFirst.mockResolvedValueOnce({
+        id: 'TIER-BAD',
+        earnerPct: NaN,
+        ministryPct: '0.05',
+        platformPct: '0.10',
+      });
+
+      await expect(svc.resolveSplit('transport', 1000)).rejects.toThrow(
+        /Malformed SettlementSplitTier/,
+      );
+    });
+
+    it('throws "Malformed SettlementSplitTier" when the resolved row has a non-finite ministryPct', async () => {
+      const svc = await makeService();
+      mockPrisma.settlementSplitTier.findFirst.mockResolvedValueOnce({
+        id: 'TIER-BAD',
+        earnerPct: '0.85',
+        ministryPct: NaN,
+        platformPct: '0.10',
+      });
+
+      await expect(svc.resolveSplit('transport', 1000)).rejects.toThrow(
+        /Malformed SettlementSplitTier/,
+      );
+    });
+
+    it('throws "Malformed SettlementSplitTier" when the resolved row has a non-finite non-null platformPct', async () => {
+      const svc = await makeService();
+      mockPrisma.settlementSplitTier.findFirst.mockResolvedValueOnce({
+        id: 'TIER-BAD',
+        earnerPct: '0.85',
+        ministryPct: '0.05',
+        platformPct: Infinity,
+      });
+
+      await expect(svc.resolveSplit('transport', 1000)).rejects.toThrow(
+        /Malformed SettlementSplitTier/,
+      );
+    });
+  });
+
+  // Scenario K — SETTLE-11d NaN/Infinity recipient amount guard.
+  describe('K. settle() rejects a non-finite recipient amount before any wallet mutation', () => {
+    it.each([NaN, Infinity])(
+      'throws before $transaction is entered when a recipient amountNgn is %p, and refunds the buyer',
+      async (badAmount) => {
+        const svc = await makeService();
+        mockPrisma.transaction.findFirst.mockResolvedValue(null);
+        wireTransaction();
+
+        const input = buildInput({
+          recipients: [
+            { tag: 'VENDOR', refSuffix: 'V-0', walletId: WAL_1, amountNgn: badAmount },
+            { tag: 'HOST', refSuffix: 'V-1', walletId: WAL_2, amountNgn: 3000 },
+          ],
+        });
+
+        await expect(svc.settle(input)).rejects.toThrow(/Non-finite recipient amount/);
+
+        expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+        expect(mockRefund.refund).toHaveBeenCalledTimes(1);
+        expect(mockRefund.refund).toHaveBeenCalledWith(
+          expect.objectContaining({
+            paystackReference: input.reference,
+            amountKobo: input.amountKobo,
+            walletId: input.buyerWalletId,
+            reason: expect.stringContaining(`${input.module}_settlement_failed`),
+          }),
+        );
+      },
+    );
+  });
+
+  // Scenario L — SETTLE-11c cross-module immutability regression.
+  it(
+    'L. immutability — a settled Transaction row is unaffected by a later SettlementSplitTier update ' +
+      '(resolveSplit() stays live/fresh, but settle() never re-reads config for an already-persisted row)',
+    async () => {
+      const svc = await makeService();
+      mockPrisma.transaction.findFirst.mockResolvedValue(null);
+      wireTransaction();
+
+      mockPrisma.settlementSplitTier.findFirst.mockResolvedValueOnce({
+        id: 'TIER-1',
+        earnerPct: '0.85',
+        ministryPct: '0.05',
+        platformPct: '0.10',
+      });
+      const originalSplit = await svc.resolveSplit('transport', 10000);
+      expect(originalSplit).toEqual({ earnerPct: 0.85, ministryPct: 0.05, platformPct: 0.1 });
+
+      const reference = 'ISY-TRP-L-TEST';
+      const input = buildInput({
+        module: 'transport',
+        reference,
+        amountKobo: 1_000_000,
+        recipients: [
+          { tag: 'DRIVER', refSuffix: 'V-0', walletId: WAL_1, amountNgn: 8500 },
+        ],
+      });
+
+      await svc.settle(input);
+
+      const originalTransactionArgs = txn.transactionCreates.find(
+        (c) => c.reference === `${reference}-V-0`,
+      );
+      expect(originalTransactionArgs).toBeDefined();
+      expect(Number(originalTransactionArgs.amount)).toBe(8500);
+      const createCountAfterSettle = txn.transactionCreates.length;
+
+      // Reconfigure the mock to resolve a DIFFERENT split — proves the resolver
+      // itself is live/always-fresh, not memoized.
+      mockPrisma.settlementSplitTier.findFirst.mockResolvedValueOnce({
+        id: 'TIER-2',
+        earnerPct: '0.70',
+        ministryPct: '0.10',
+        platformPct: '0.20',
+      });
+      const newSplit = await svc.resolveSplit('transport', 10000);
+      expect(newSplit).toEqual({ earnerPct: 0.7, ministryPct: 0.1, platformPct: 0.2 });
+
+      // The already-persisted Transaction row is untouched — no second
+      // transaction.create/update call was ever made for that reference.
+      expect(txn.transactionCreates).toHaveLength(createCountAfterSettle);
+      const reInspected = txn.transactionCreates.find((c) => c.reference === `${reference}-V-0`);
+      expect(reInspected).toEqual(originalTransactionArgs);
+      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+    },
+  );
 });

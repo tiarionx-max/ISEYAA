@@ -692,6 +692,26 @@ model PlatformConfig {
   @@map("platform_configs")
 }
 
+model SettlementSplitTier {
+  id            String    @id @default(uuid())
+  module        String
+  tierName      String    @default("default")
+  minAmountNgn  Decimal?
+  maxAmountNgn  Decimal?
+  earnerPct     Decimal
+  ministryPct   Decimal
+  platformPct   Decimal?
+  isActive      Boolean   @default(true)
+  effectiveFrom DateTime  @default(now())
+  metadata      Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([module, tierName])
+  @@index([module, isActive])
+  @@map("settlement_split_tiers")
+}
+
 model ShadowSettlementComparison {
   id              String   @id @default(uuid())
   module          String // 'transport' | 'delivery'

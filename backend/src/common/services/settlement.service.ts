@@ -106,6 +106,13 @@ export class SettlementService implements OnModuleInit {
     //    PlatformConfig percentage summing to >100%) must never silently debit a wallet
     //    under CREDIT transaction semantics (WR-02).
     for (const r of input.recipients) {
+      if (!Number.isFinite(r.amountNgn)) {
+        const err = new Error(
+          `Non-finite recipient amount for ${r.tag} (${r.refSuffix}), module=${input.module}, ref=${input.reference}) — programming error (NaN/Infinity reached settle())`,
+        );
+        await this.handleSettlementFailure(input, err);
+        throw err;
+      }
       if (r.amountNgn < 0) {
         const err = new Error(
           `Negative recipient amount for ${r.tag} (${r.refSuffix}), module=${input.module}, ref=${input.reference}) — programming error`,
@@ -325,6 +332,36 @@ export class SettlementService implements OnModuleInit {
     const userId = (cfg?.value as string | null | undefined) ?? null;
     if (!userId) return null;
     return this.prisma.wallet.findUnique({ where: { userId }, select: { id: true } });
+  }
+
+  // ── Split-tier resolution — always fresh, never cached (mirrors resolveMinistryWallet) ──
+
+  async resolveSplit(
+    module: string,
+    amountNgn: number,
+  ): Promise<{ earnerPct: number; ministryPct: number; platformPct: number | null }> {
+    const tier = await this.prisma.settlementSplitTier.findFirst({
+      where: { module, isActive: true, tierName: 'default' },
+      orderBy: { effectiveFrom: 'desc' },
+    });
+    if (!tier) {
+      throw new Error(
+        `No active SettlementSplitTier found for module="${module}" — refusing to settle with an undefined split`,
+      );
+    }
+    const earnerPct = Number(tier.earnerPct);
+    const ministryPct = Number(tier.ministryPct);
+    const platformPct = tier.platformPct === null ? null : Number(tier.platformPct);
+    if (
+      !Number.isFinite(earnerPct) ||
+      !Number.isFinite(ministryPct) ||
+      (platformPct !== null && !Number.isFinite(platformPct))
+    ) {
+      throw new Error(
+        `Malformed SettlementSplitTier for module="${module}" (id=${tier.id}) — non-finite percentage value, refusing to settle`,
+      );
+    }
+    return { earnerPct, ministryPct, platformPct };
   }
 
   // ── System wallet bootstrap (v1 ops audit anchor — moved verbatim from Tour) ─
