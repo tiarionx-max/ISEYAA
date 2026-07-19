@@ -1,50 +1,26 @@
 ---
 phase: 14-ministry-dashboard
-verified: 2026-07-18T02:20:00Z
-status: gaps_found
-score: 4/6 must-haves verified
+verified: 2026-07-18T08:15:00Z
+status: verified
+human_uat: passed (see 14-HUMAN-UAT.md)
+score: 6/6 must-haves verified
 overrides_applied: 0
-gaps:
-  - truth: "Ministry dashboard shows visitor entry counts, purpose-of-visit breakdown, and revenue-to-government-share by LGA/time period (Roadmap SC2, SC3, SC4)"
-    status: failed
-    reason: "CR-01 (confirmed unfixed in code): the `to` date-range filter is implemented as a plain `<=` comparison against a date-only string parsed to UTC midnight in all 3 MinistryService query methods (buildFilters() used by getVisitorEntriesByLgaAndMonth/getPurposeBreakdown, and the independent fromFilter/toFilter pair in getRevenueToGovernment). This silently excludes almost the entire final day of every requested range. The web dashboard's own defaultDateRange() sets `to = today`, so this is not an edge case — it is the DEFAULT behavior on every page load: today's visitor entries, purpose breakdown, and revenue are always missing from the numbers a Ministry viewer sees, and the same truncation applies to the last day of any custom range and to every CSV/PDF export built from these queries."
-    artifacts:
-      - path: "backend/src/modules/ministry/ministry.service.ts"
-        issue: "buildFilters() line 60 (`AND v.\"visitedAt\" <= ${new Date(to)}`) and getRevenueToGovernment() line 140 (`AND t.\"createdAt\" <= ${new Date(to)}`) both truncate the final day instead of treating `to` as inclusive of the whole day"
-      - path: "web/src/app/admin/ministry/page.tsx"
-        issue: "defaultDateRange() (lines 24-32) sets `to` to today's date-only string, so the bug fires on every default page load, not just custom ranges"
-    missing:
-      - "Change toFilter to an exclusive next-day boundary (`v.\"visitedAt\" < to + 1 day`) or otherwise make `to` genuinely inclusive of the full day, in buildFilters() and in getRevenueToGovernment()'s independent from/to fragment"
-      - "Add a regression test seeding a row with a timestamp late on the `to` date (e.g. 23:59:00) and asserting it is included, for all 3 query methods"
-  - truth: "Every Ministry dashboard report can be exported as CSV and as a formatted, Forest Green/Tropical Gold branded PDF (Roadmap SC5)"
-    status: failed
-    reason: "CR-02 (confirmed unfixed in code): MinistryPdfService.renderTable divides page width evenly across columns and captures rowY once before the per-column loop, then advances the next row by a fixed doc.moveDown(0.4) — with no height-aware layout or page-break logic. VISITOR_ENTRIES_COLUMNS (shared by both the CSV and PDF visitor-entries export) includes a raw `lgaId` column holding a full UUID (~36 chars, 200pt+ at 10pt Helvetica) in a table where 5 columns divide 495pt evenly (~99pt each) — more than double the column's width. PDFKit will word-wrap that cell onto a second line with no reserved vertical space, so the next row's content renders on top of (overlapping) the wrapped LGA-ID text. This reproduces for any real (non-fixture) dataset; the unit test suite only uses short placeholder IDs ('lga-1') and never exercises this path. There is also no page-break/header-reprint logic for reports large enough to span multiple pages."
-    artifacts:
-      - path: "backend/src/common/services/ministry-pdf.service.ts"
-        issue: "renderTable() (lines 125-150) has no doc.heightOfString()-based row-height measurement, no doc.y advance proportional to wrapped-cell height, and no doc.addPage() logic"
-      - path: "backend/src/modules/ministry/ministry.controller.ts"
-        issue: "VISITOR_ENTRIES_COLUMNS (lines 21-27) includes a raw `lgaId` UUID column in the PDF export path, not just the CSV path"
-    missing:
-      - "At minimum, drop the raw lgaId column from the PDF section only (keep it in CSV where width doesn't matter) — lgaName already carries the human-readable identity"
-      - "More robustly: measure each cell via doc.heightOfString(value, { width: colWidth }), advance doc.y by the row's max cell height, and call doc.addPage() (re-emitting the header row) when content would exceed the page — add a MinistryPdfService test with a UUID-length value in a narrow multi-column section and a test forcing a page break"
-human_verification:
-  - test: "Open a Visitor Entries PDF export generated against real (non-seed) production-shaped data (real LGA UUIDs, more than a handful of rows) and visually confirm no row overlap once CR-02 is fixed"
-    expected: "Every row renders as a clean, non-overlapping table row; multi-page reports repeat the header row"
-    why_human: "Visual PDF layout correctness cannot be fully proven by a unit test asserting the pdfkit call sequence — requires opening the rendered binary"
-  - test: "Load /admin/ministry as a seeded MINISTRY_VIEWER user against a live backend with data dated 'today', using the default 30-day filter, once CR-01 is fixed"
-    expected: "Visitor entries, purpose breakdown, and revenue figures include today's activity, not just activity through yesterday"
-    why_human: "Requires a running server + seeded live data with real-time timestamps; not verifiable via static code/unit-test inspection alone"
-  - test: "Confirm Forest Green (#1A6B3C) / Gold (#C8962A) branding renders correctly across all 6 PDF section headers, dividers, and footer text when opened in an actual PDF viewer"
-    expected: "Visual consistency with itinerary-pdf.service.ts's existing branded output"
-    why_human: "Color/visual fidelity in a rendered binary is not assertable from source code alone"
+re_verification:
+  previous_status: gaps_found
+  previous_score: 4/6 (frontmatter) — 2/6 roadmap SCs fully clean, 4/6 SCs affected by CR-01/CR-02
+  gaps_closed:
+    - "CR-01: `to` date-range filter now computes an exclusive next-day UTC boundary and compares with `<` (not `<=`), in both `buildFilters()` (visitor-entries + purpose-breakdown) and `getRevenueToGovernment()`'s independent from/to block — confirmed by direct source read of `ministry.service.ts` and 3 new passing regression tests asserting the exact `2026-07-19T00:00:00.000Z` boundary and `23:59` inclusion."
+    - "CR-02: `MinistryPdfService.renderTable()` now measures every cell via the real `pdfkit` `doc.heightOfString()`, advances `doc.y` by the measured row height (not a fixed `moveDown()`), and calls `doc.addPage()` with header re-print when content would overflow — confirmed by direct source read and 2 new tests that spy on (not fully mock) the real `PDFDocument.prototype` methods, proving genuine height computation and page-break/header-reprint behavior with a real UUID-length cell and an 80-row overflow case. The raw `lgaId` UUID column is also dropped from the Visitor Entries PDF branch only (`VISITOR_ENTRIES_PDF_COLUMNS`); CSV keeps it (`VISITOR_ENTRIES_COLUMNS`, unchanged)."
+  gaps_remaining: []
+  regressions: []
 ---
 
-# Phase 14: Ministry Dashboard Verification Report
+# Phase 14: Ministry Dashboard Verification Report (Re-verification)
 
 **Phase Goal:** A `MINISTRY_VIEWER` role can view aggregate visitor, revenue, and purpose-of-visit analytics and export them as CSV/PDF, with zero row-level citizen PII ever reachable
-**Verified:** 2026-07-18T02:20:00Z
-**Status:** gaps_found
-**Re-verification:** No — initial verification
+**Verified:** 2026-07-18T08:15:00Z
+**Status:** human_needed
+**Re-verification:** Yes — after gap closure (plans 14-09, 14-10)
 
 ## Goal Achievement
 
@@ -52,98 +28,108 @@ human_verification:
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | A `MINISTRY_VIEWER` role exists, gated by its own `@Roles()` decorator on every route it can reach — never via a controller shared with any mutation endpoint | VERIFIED | `MINISTRY_VIEWER` present identically in `schema.prisma:25`, `backend/src/common/enums/user-role.enum.ts:13`, `shared/src/types/index.ts:9`. `MinistryController` (`backend/src/modules/ministry/ministry.controller.ts`) is a standalone class with 9 `@Get()` routes only (3 read + 6 export), zero `@Patch`/`@Post`/`@Delete`, class-level `@Roles(UserRole.MINISTRY_VIEWER, UserRole.STATE_ADMIN, UserRole.SUPER_ADMIN)`. `ministry.controller.spec.ts` (part of 51 passing ministry tests) proves RBAC denies non-Ministry roles and allows the 3 permitted roles. |
-| 2 | Ministry dashboard shows visitor entry counts broken down by LGA and time period | **FAILED** | Query (`getVisitorEntriesByLgaAndMonth`) and UI wiring exist and are functionally correct in shape (LGA + month + role grouping, LEFT JOIN status filtering per D-02), but CR-01's date-range bug (see Gaps) means the counts shown are systematically wrong — the entire final day of any range, including "today" in the dashboard's own default view, is silently dropped. |
-| 3 | Ministry dashboard shows a purpose-of-visit breakdown, sourced from a new `VisitorLog` capture point added to the booking/check-in flow | **FAILED** (data-correctness half only) | `VisitorLog` capture point and all 3 write sites (Events `checkin()`, Stays `handleStayPayment()`, Tour `recordVisitorEntry()`) are verified correct, tested, and wired (see Required Artifacts / Key Links below) — MIN-03's "new capture point" clause is fully satisfied. However `getPurposeBreakdown()` shares the same buggy `buildFilters()` as visitor-entries, so the same CR-01 defect (final-day/"today" truncation) applies to this report's numbers too. |
-| 4 | Ministry dashboard shows revenue-to-government-share, sourced from the standing Ministry wallet's transaction ledger | **FAILED** (data-correctness half only) | `getRevenueToGovernment()` correctly resolves the standing Ministry wallet via `resolveMinistryWallet()`, groups by module/month with a documented LGA sub-breakdown (Stays/Marketplace/Tour) and the documented Tour split-bill undercount caveat — the sourcing and shape are correct. But its own independent `fromFilter`/`toFilter` pair (ministry.service.ts:139-140) has the identical CR-01 off-by-one bug, so revenue figures shown for the default/most-recent period are also undercounted. |
-| 5 | Every Ministry dashboard report can be exported as CSV and as a formatted, Forest Green/Tropical Gold branded PDF | **FAILED** (PDF half, Visitor Entries report) | CSV export is fully verified: `CsvExportService` uses `fast-csv` with `alwaysWriteHeaders: true`, RFC4180-correct escaping tested against embedded commas/quotes/newlines. All 6 export routes exist, correctly guarded, respecting the active filter (D-14), and revenue export carries all 3 dimensions (byModule/byMonth/byModuleLga) in both CSV and PDF per the code-review-driven blocker fix. However CR-02 (confirmed unfixed) means the Visitor Entries PDF export will render overlapping/corrupted rows for any real (non-fixture) LGA UUID data — the "formatted, presentable PDF" bar is not met for that report on production data. |
-| 6 | A `MINISTRY_VIEWER` query response never contains row-level PII (BVN, NIN, phone, name) — verified by an automated field-allowlist/schema-shape test, not by ad hoc review | VERIFIED | `VisitorLog` table has zero PII columns by construction (structural isolation, D-07). `ministry-pii-allowlist.spec.ts` implements a genuine dual scanner: `assertNoPiiKeys()` (recursive key-name denylist) AND `assertNoPiiValues()` (recursive value-canary scan using seeded `PII_CANARY_*` values) — both run against the real output of all 3 live query methods, plus independent negative-control tests proving each scanner is not a no-op (including the aliased-field-leak regression class the key-scanner alone would miss). All 51 ministry tests pass, including this spec. |
+| 1 | A `MINISTRY_VIEWER` role exists, gated by its own `@Roles()` decorator on every route it can reach — never via a controller shared with any mutation endpoint | VERIFIED (unchanged, quick regression check) | `MinistryController` is still GET-only (9 routes), class-level `@Roles(MINISTRY_VIEWER, STATE_ADMIN, SUPER_ADMIN)`, zero mutation handlers. `ministry.controller.spec.ts` still passes. No files in this area were touched by 14-09/14-10. |
+| 2 | Ministry dashboard shows visitor entry counts broken down by LGA and time period | **VERIFIED** | CR-01 closed: `buildFilters()` (`ministry.service.ts:58-65`) now uses `toExclusiveEndOfDayBoundary(to)` + `<` instead of `<=` against UTC midnight of `to`. Confirmed via direct source read (not SUMMARY-trust) at lines 60-61, plus a passing regression test (`ministry.service.spec.ts:100`) asserting the boundary equals `2026-07-19T00:00:00.000Z` for `to='2026-07-18'` and that `23:59:00.000Z` falls before it. The web dashboard's `defaultDateRange()` (`web/src/app/admin/ministry/page.tsx:24-32`) always supplies a `to` value, so this fix is on the dashboard's live default-load path. |
+| 3 | Ministry dashboard shows a purpose-of-visit breakdown, sourced from a new `VisitorLog` capture point added to the booking/check-in flow | **VERIFIED** | Capture point (3 write sites: `events.service.ts checkin()`, `stays.service.ts handleStayPayment()`, `tour-settlement.service.ts recordVisitorEntry()`) was already verified correct in the prior round and is untouched by 14-09/14-10 (confirmed: neither gap-closure plan modified these files). `getPurposeBreakdown()` shares the now-fixed `buildFilters()`, closing the shared CR-01 defect — regression test at `ministry.service.spec.ts:168`. |
+| 4 | Ministry dashboard shows revenue-to-government-share, sourced from the standing Ministry wallet's transaction ledger | **VERIFIED** | `getRevenueToGovernment()`'s independent `fromFilter`/`toFilter` block (`ministry.service.ts:150-153`) received the identical fix — confirmed via source read: `t."createdAt" < ${this.toExclusiveEndOfDayBoundary(to)}`. Regression test at `ministry.service.spec.ts:300` asserts the same boundary/inclusion behavior for this independent code path. Sourcing (`resolveMinistryWallet()`) and shape (byModule/byMonth/byModuleLga) were already verified correct and are unaffected by this fix. |
+| 5 | Every Ministry dashboard report can be exported as CSV and as a formatted, Forest Green/Tropical Gold branded PDF | **VERIFIED** | CR-02 closed. Source read of `ministry-pdf.service.ts:137-182` confirms: `printHeader()` extracted as a reusable closure; per-row `doc.heightOfString()` measurement across every column (`MIN_ROW_HEIGHT=14` floor); `doc.y = rowY + rowHeight` height-aware advance (the old `doc.moveDown(0.4)` is gone); `doc.addPage()` + `printHeader()` re-invoked when `doc.y + rowHeight > pageBottom`. `ministry.controller.ts` now defines `VISITOR_ENTRIES_PDF_COLUMNS` (4 cols, no `lgaId`) used only in the PDF branch of `exportVisitorEntries()`; `VISITOR_ENTRIES_COLUMNS` (5 cols, with `lgaId`) is untouched and still drives the CSV branch — confirmed by source read of both branches. 2 new tests spy on the **real** `PDFDocument.prototype.heightOfString`/`addPage`/`text` (not a fully mocked pdfkit), proving genuine height computation was invoked for a 36-char UUID cell and that an 80-row table triggers a real page break with header re-print (`ministry-pdf.service.spec.ts:181,208`). Brand colors (`#1A6B3C`, `#C8962A`) remain hardcoded and asserted via `fillColorSpy`/`strokeColorSpy` (unchanged, already-passing test). |
+| 6 | A `MINISTRY_VIEWER` query response never contains row-level PII (BVN, NIN, phone, name) — verified by an automated field-allowlist/schema-shape test, not by ad hoc review | VERIFIED (unchanged, quick regression check) | `ministry-pii-allowlist.spec.ts` untouched by 14-09/14-10 and still passes as part of the 56-test ministry suite. `VisitorLog` schema still carries zero PII columns. |
 
-**Score:** 2/6 roadmap success criteria fully verified (SC1, SC6); 4/6 have confirmed, code-level defects (SC2, SC3, SC4 share the same date-filter bug; SC5 has a PDF-rendering defect for one of the three reports).
+**Score:** 6/6 roadmap success criteria verified (up from 2/6 pre-gap-closure). Both prior BLOCKER gaps (CR-01, CR-02) are confirmed closed by direct source inspection — not by trusting SUMMARY.md or the code-review report alone.
 
 ### Required Artifacts
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `backend/prisma/schema.prisma` | `MINISTRY_VIEWER` enum value + `VisitorLog` model, zero PII columns | VERIFIED | Confirmed present; `VisitorLog` fields limited to `id, lgaId, lga, purpose, sourceType, sourceId, visitedAt, userRole, createdAt` — exactly D-07's spec |
-| `backend/prisma/migrations/20260718000000_phase14_ministry_dashboard/migration.sql` | Hand-authored additive migration, `ALTER TYPE` before `CREATE TABLE` | VERIFIED | Correct ordering, no `DROP TYPE`, FK to `lgas` with `ON DELETE SET NULL` |
-| `backend/src/common/enums/user-role.enum.ts` + `shared/src/types/index.ts` | `MINISTRY_VIEWER` synced in both | VERIFIED | Identical string value in both files plus schema.prisma (3-way sync, Pitfall 4 avoided) |
-| `backend/src/common/services/visitor-log.service.ts` | Sole write path into `VisitorLog` | VERIFIED | Single `record()` method, no defensive try/catch inside (callers wrap it) |
-| `backend/src/common/services/csv-export.service.ts` | RFC4180-correct CSV writer | VERIFIED | `fast-csv` `writeToString` with `alwaysWriteHeaders: true`; round-trip test with embedded comma/quote passes |
-| `backend/src/modules/ministry/ministry.controller.ts` | GET-only Ministry routes, own controller | VERIFIED | 9 GET routes, zero mutation routes, class-level RBAC |
-| `backend/src/modules/ministry/ministry.service.ts` | 3 aggregate query methods | PARTIAL (STUB-adjacent bug) | Methods exist, are correctly shaped and tested for structure, but contain the CR-01 date-boundary defect |
-| `backend/src/common/services/ministry-pdf.service.ts` | Tabular branded PDF renderer, section-aware | PARTIAL (rendering defect) | Renders correctly for well-fitted content; CR-02 causes row overlap for UUID-length cells in narrow columns (Visitor Entries export specifically) |
-| `backend/src/modules/ministry/__tests__/ministry-pii-allowlist.spec.ts` | Dual key + value PII scanner | VERIFIED | Both scanners implemented, both exercised against live query output, both have negative controls |
-| `web/src/app/admin/ministry/page.tsx` | Role-gated dashboard, 3 panels, 6 export buttons | VERIFIED (wiring) | Role gate correct (unauthenticated→`/login`, disallowed→`/`); 3 `useQuery` calls against correct routes; 6 export buttons wired to blob-download `handleExport()`; empty/error states match Copywriting Contract verbatim. Inherits CR-01's data-correctness defect via its default 30-day-to-today filter. |
-| `web/src/components/admin/ministry/{VisitorEntriesChart,PurposeBreakdownChart,RevenueChart}.tsx` | Client-side aggregation, correct color rules, all backend dimensions reachable | VERIFIED | Forest-only fills on non-revenue charts, gold-only fills on RevenueChart; `VisitorEntriesChart` renders 3 stacked role-bucket series; `RevenueChart` renders all 3 of `byModule`/`byMonth`/`byModuleLga` as 3 sub-panels |
+| `backend/src/modules/ministry/ministry.service.ts` | 3 aggregate query methods, correct date-range boundaries | VERIFIED | `toExclusiveEndOfDayBoundary()` present (line 72-74); both `buildFilters()` (line 58-65) and `getRevenueToGovernment()` (line 150-153) use it with `<`. Zero remaining `<=` against a `to`-derived `Date` anywhere in the file (the pre-existing `v."visitedAt" <= NOW()` status-join guards at lines 93/122 are unrelated — they compare against `NOW()`, not `to`, and were correctly left untouched per the plan). |
+| `backend/src/modules/ministry/__tests__/ministry.service.spec.ts` | Regression tests for all 3 affected methods | VERIFIED | 3 tests named `CR-01 regression: ...` present (lines 100, 168, 300), one per describe block (`getVisitorEntriesByLgaAndMonth`, `getPurposeBreakdown`, `getRevenueToGovernment`); asserts exact boundary ISO string + 23:59 inclusion. |
+| `backend/src/common/services/ministry-pdf.service.ts` | Height-aware, page-break-aware `renderTable()` | VERIFIED | `heightOfString`, `MIN_ROW_HEIGHT`, `doc.addPage()`, `printHeader()` closure all present and wired as described in the plan. |
+| `backend/src/modules/ministry/ministry.controller.ts` | PDF-only column set excluding `lgaId`, CSV unaffected | VERIFIED | `VISITOR_ENTRIES_PDF_COLUMNS` (4 cols) defined and used only in the PDF branch; `VISITOR_ENTRIES_COLUMNS` (5 cols, with `lgaId`) unchanged, still drives CSV. |
+| `backend/src/common/services/__tests__/ministry-pdf.service.spec.ts` | Tests proving height measurement + page-break/header-reprint | VERIFIED | 2 new tests named `CR-02: ...` present (lines 181, 208); both spy on real `PDFDocument.prototype` methods (genuine pdfkit engine exercised, not a stub). All 8 pre-existing tests remain passing, unmodified. |
 
 ### Key Link Verification
 
 | From | To | Via | Status | Details |
 |------|-----|-----|--------|---------|
-| `events.service.ts` `checkin()` | `visitor-log.service.ts` | `.record().catch(...)` on VALID path only | VERIFIED | Confirmed at line 354-363; never called on NOT_FOUND/ALREADY_USED paths; failure swallowed via `.catch` |
-| `stays.service.ts` `handleStayPayment()` | `visitor-log.service.ts` | `.record().catch(...)` after CONFIRMED, before emails | VERIFIED | Confirmed at line 276-285; `visitedAt: booking.checkIn` (future-dated, per D-02) |
-| `tour-settlement.service.ts` `recordVisitorEntry()` | `visitor-log.service.ts` | called from both solo/group and split-bill-final branches only | VERIFIED | Confirmed at line 345-377; wrapped in try/catch, never throws; `lgaId: tourPackage?.lgaId ?? null` handles nullable LGA |
-| `ministry.controller.ts` | `roles.guard.ts` | class-level `@UseGuards`+`@Roles` | VERIFIED | All 9 routes inherit the same guard; `ministry.controller.spec.ts` asserts `false` for non-Ministry roles, `true` for the 3 allowed |
-| `ministry.controller.ts` | `csv-export.service.ts` / `ministry-pdf.service.ts` | injected, CommonModule-global | VERIFIED | Both services registered in `common.module.ts` providers+exports; controller constructor-injects both |
-| `ministry.service.ts` | `settlement.service.ts` `resolveMinistryWallet()` | fresh resolution per call, no cache | VERIFIED | Called at top of `getRevenueToGovernment()`; null-wallet early-returns the empty shape without throwing |
+| `ministry.controller.ts exportVisitorEntries()` PDF branch | `ministry-pdf.service.ts renderPdf()` | `VISITOR_ENTRIES_PDF_COLUMNS` (no `lgaId`) | VERIFIED | Confirmed at `ministry.controller.ts:111-114`; CSV branch (line 120-123) independently still passes `VISITOR_ENTRIES_COLUMNS` |
+| `ministry.service.ts buildFilters()` | `getVisitorEntriesByLgaAndMonth()` / `getPurposeBreakdown()` | shared `toFilter` fragment via `toExclusiveEndOfDayBoundary()` | VERIFIED | Both methods call `buildFilters()` unchanged; the shared helper fixes both simultaneously |
+| `ministry.service.ts getRevenueToGovernment()` | independent `fromFilter`/`toFilter` block | `toExclusiveEndOfDayBoundary()` (separate call site, not `buildFilters()`) | VERIFIED | Confirmed this is a genuinely separate code path (not accidentally left unfixed) — both call sites of the shared helper are present |
+| `ministry-pdf.service.ts renderTable()` | `pdfkit PDFDocument` | `doc.heightOfString()` + `doc.addPage()` | VERIFIED | Tests spy on the real prototype methods (no full pdfkit mock), so the actual measurement/page-break arithmetic runs during the test |
+
+### Data-Flow Trace (Level 4)
+
+| Artifact | Data Variable | Source | Produces Real Data | Status |
+|----------|---------------|--------|---------------------|--------|
+| `ministry.service.ts` `to` boundary | `toFilter` (Prisma.sql fragment) | `toExclusiveEndOfDayBoundary(to)` → real `Date` arithmetic, no static/hardcoded value | Yes | FLOWING |
+| `web/src/app/admin/ministry/page.tsx` `to` state | `defaultDateRange().to` | `new Date().toISOString().slice(0,10)` — always date-only, real current date | Yes | FLOWING (confirms WR-01's failure mode is never triggered by the dashboard's own UI — see Anti-Patterns below) |
+| `ministry-pdf.service.ts` row height | `rowHeight` | `doc.heightOfString()` on the real row's cell value, not a constant | Yes | FLOWING |
 
 ### Behavioral Spot-Checks
 
 | Behavior | Command | Result | Status |
 |----------|---------|--------|--------|
-| Ministry module test suite (51 tests: service, controller RBAC, PII allowlist, PDF) | `npm test --workspace=backend -- ministry` | 4 suites, 51/51 passed | PASS |
-| VisitorLog write-site + CSV + related regression tests (124 tests: visitor-log, csv-export, events, stays, tour-bookings, tour-settlement) | `npm test --workspace=backend -- visitor-log csv-export events.service stays.service tour-bookings.service tour-settlement.service` | 6 suites, 124/124 passed | PASS |
+| Full ministry module suite (service, controller RBAC, PII allowlist, PDF) | `npm test --workspace=backend -- ministry` | 4 suites, 56/56 passed (up from 51 — 5 new regression tests added by 14-09/14-10) | PASS |
+| Broader regression sweep (ministry.service, csv-export, events/stays/tour-bookings/tour-settlement — all VisitorLog write-site consumers) | `npm test --workspace=backend -- ministry.service csv-export events.service stays.service tour-bookings.service tour-settlement.service` | 6 suites, 137/137 passed, no regressions | PASS |
 | Backend strict type-check | `cd backend && npx tsc --noEmit -p tsconfig.build.json` | exits 0 | PASS |
-| CR-01 code inspection (date filter) | Read `ministry.service.ts` lines 58-63, 139-140 | `toFilter` uses `<=` against `new Date(to)` (UTC midnight) in all 3 methods | CONFIRMS REVIEW FINDING — unfixed |
-| CR-02 code inspection (PDF row overlap) | Read `ministry-pdf.service.ts` lines 125-150 + `ministry.controller.ts` `VISITOR_ENTRIES_COLUMNS` | `rowY` captured once per row, fixed `moveDown(0.4)` advance, no `heightOfString`/page-break logic; `lgaId` raw UUID column present in the PDF section | CONFIRMS REVIEW FINDING — unfixed |
-| Dashboard default filter reproduces CR-01 | Read `web/src/app/admin/ministry/page.tsx` lines 24-32 | `defaultDateRange()` sets `to` = today's date-only string | CONFIRMS bug fires on every default page load |
+| CR-01 fix source inspection | Read `ministry.service.ts` lines 58-65, 72-74, 150-153 | `toExclusiveEndOfDayBoundary()` present; both `to` boundaries use `<` against the exclusive next-day value; `from` boundaries byte-for-byte unchanged (`>=` against `new Date(from)` directly) | CONFIRMS FIX |
+| CR-02 fix source inspection | Read `ministry-pdf.service.ts` lines 137-182 | `heightOfString`-based measurement, `MIN_ROW_HEIGHT` floor, `doc.y = rowY + rowHeight` advance, `doc.addPage()` + `printHeader()` re-invocation present; no `doc.moveDown(0.4)` remaining for data rows | CONFIRMS FIX |
+| Gap-closure commits exist and match SUMMARY claims | `git show --stat 57f3cf8`, `git show --stat 405253e` | Both commits present with exactly the described diffs (`toExclusiveEndOfDayBoundary`, `printHeader()`/`heightOfString`/`addPage`) | CONFIRMS — not fabricated in SUMMARY |
 
 ### Requirements Coverage
 
 | Requirement | Source Plan(s) | Description | Status | Evidence |
 |-------------|-----------------|--------------|--------|----------|
-| MIN-01 | 14-01, 14-03 | `MINISTRY_VIEWER` role, own controller, never shared with mutation endpoint | SATISFIED | Verified above (Truth 1) |
-| MIN-02 | 14-03, 14-04, 14-05, 14-08 | Visitor entry counts by LGA + time period | BLOCKED (data-correctness) | CR-01 causes systematic undercounting |
-| MIN-03 | 14-02, 14-03, 14-04, 14-05, 14-08 | Purpose-of-visit breakdown, new capture point | PARTIALLY SATISFIED | Capture point fully correct; report numbers affected by CR-01 |
-| MIN-04 | 14-06, 14-08 | Revenue-to-government-share from Ministry wallet ledger | PARTIALLY SATISFIED | Sourcing/shape correct; numbers affected by CR-01 |
-| MIN-05 | 14-02, 14-07, 14-08 | CSV export for every report | SATISFIED | CSV fully verified for all 3 reports |
-| MIN-06 | 14-07, 14-08 | Branded PDF export for every report | BLOCKED (Visitor Entries report) | CR-02 corrupts the Visitor Entries PDF for real data |
-| MIN-07 | 14-01, 14-06 | Zero row-level PII, automated test | SATISFIED | Verified above (Truth 6) |
+| MIN-01 | 14-01, 14-03 | `MINISTRY_VIEWER` role, own controller, never shared with mutation endpoint | SATISFIED | Unchanged from prior round, re-confirmed |
+| MIN-02 | 14-03, 14-04, 14-05, 14-08, **14-09** | Visitor entry counts by LGA + time period | **SATISFIED** (was BLOCKED) | CR-01 fix closes the date-range defect |
+| MIN-03 | 14-02, 14-03, 14-04, 14-05, 14-08, **14-09** | Purpose-of-visit breakdown, new capture point | **SATISFIED** (was PARTIALLY SATISFIED) | Capture point already correct; CR-01 fix closes the shared report-numbers defect |
+| MIN-04 | 14-06, 14-08, **14-09** | Revenue-to-government-share from Ministry wallet ledger | **SATISFIED** (was PARTIALLY SATISFIED) | CR-01 fix closes `getRevenueToGovernment()`'s independent boundary defect |
+| MIN-05 | 14-02, 14-07, 14-08 | CSV export for every report | SATISFIED | Unchanged, re-confirmed (CSV column sets untouched by 14-10) |
+| MIN-06 | 14-07, 14-08, **14-10** | Branded PDF export for every report | **SATISFIED** (was BLOCKED) | CR-02 fix closes the Visitor Entries PDF row-overlap defect; fix is generic (any column/row shape), not report-specific |
+| MIN-07 | 14-01, 14-06 | Zero row-level PII, automated test | SATISFIED | Unchanged, re-confirmed |
 
-No orphaned requirements — all 7 phase requirement IDs (MIN-01 through MIN-07) are declared across the 8 plans' frontmatter and cross-reference cleanly against `.planning/REQUIREMENTS.md`'s "Ministry Dashboard" section.
-
-Note: `.planning/REQUIREMENTS.md`'s checkbox/traceability table (lines 46-52, 115-121) marks MIN-01/02/04/06/07 as `[ ] Pending` and MIN-03/05 as `[x] Complete` — this predates/was not updated alongside the phase's actual implementation and code review; it is stale bookkeeping, not independent evidence, and was not relied upon for this verification's conclusions.
+No orphaned requirements. `.planning/REQUIREMENTS.md`'s checkbox table (lines 46-52, 115-121) is still stale bookkeeping (marks MIN-02/04/06 as `[ ] Pending`) — this predates the phase's actual implementation and this gap-closure round; consistent with the prior verification's note, it was not relied upon for this verification's conclusions. **Recommendation:** update `.planning/REQUIREMENTS.md`'s checkboxes to reflect Phase 14's actual completed state as bookkeeping hygiene (not a phase-goal blocker).
 
 ### Anti-Patterns Found
 
 | File | Line | Pattern | Severity | Impact |
 |------|------|---------|----------|--------|
-| `backend/src/modules/ministry/ministry.service.ts` | 60, 140 | Off-by-one date-range boundary (CR-01) | 🛑 Blocker | Silently undercounts every report by default |
-| `backend/src/common/services/ministry-pdf.service.ts` | 125-150 | No height-aware table layout / page-break (CR-02) | 🛑 Blocker | Visitor Entries PDF export corrupts for real data |
-| `backend/src/common/services/visitor-log.service.ts:25`, 3 call sites | — | `as any` cast bypasses Prisma compile-time verification (WR-01, review) | ⚠️ Warning | Future enum rename could fail silently at runtime instead of compile time |
-| `backend/src/modules/tour-bookings/tour-settlement.service.ts:358-371` | — | `recordVisitorEntry()` silently no-ops if buyer lookup returns null (WR-02, review) | ⚠️ Warning | Under-counts Ministry data with no distinguishable operator signal |
-| `backend/src/modules/ministry/dto/ministry-query.dto.ts`, `ministry.controller.ts` (revenue routes), `web/src/app/admin/ministry/page.tsx` | — | `lgaId` accepted on `/ministry/revenue*` but silently ignored; UI presents LGA as a shared filter above all 3 panels (WR-03, review) | ⚠️ Warning | A Ministry viewer filtering by LGA gets no indication the Revenue panel ignores it — not a roadmap SC violation (MIN-04's guaranteed dims are module+month only) but a UX-honesty gap |
-| `web/src/app/admin/ministry/page.tsx:134` | — | Export `Blob` created without explicit MIME type (IN-01, review) | ℹ️ Info | Harmless today (download attribute forces save-as) |
+| `backend/src/modules/ministry/dto/ministry-query.dto.ts:7,12` | 7, 12 | `@IsDateString()` accepts full ISO datetime strings, not just date-only — `toExclusiveEndOfDayBoundary()`'s correctness assumes a date-only string (WR-01, code review) | ⚠️ Warning — **not reopened as BLOCKER** | **Assessed as acceptable residual risk for this dashboard's actual usage pattern**: the web dashboard (`web/src/app/admin/ministry/page.tsx:24-32,191-207`) is the only client of this API today and exclusively sends date-only strings (`toISOString().slice(0,10)` for the programmatic default, `<input type="date">` for user edits — HTML date inputs cannot emit a time component). WR-01 would only trigger via a direct API call bypassing the UI with a full-datetime `to`/`from` value — not a realized defect in the shipped dashboard. Recommend hardening the DTO (`@Matches(/^\d{4}-\d{2}-\d{2}$/)` or truncating in `toExclusiveEndOfDayBoundary()`) as defense-in-depth in a near-term follow-up, but this does not block phase completion. |
+| `backend/src/common/services/ministry-pdf.service.ts:145-154` | 145-154 | The *first* `printHeader()` call (before the data-row loop) has no overflow guard — only re-prints inside the loop after `doc.addPage()` are guarded (WR-02, code review) | ⚠️ Warning — **not reopened as BLOCKER** | **Assessed as acceptable residual risk today**: only reachable in the 3-section Revenue PDF export if an earlier section (e.g. `byModule`) leaves `doc.y` near the page bottom before the next section's header prints. Given `byMonth`'s D-10 "no date floor" default (all-time history), this becomes a real risk only after several years of accumulated monthly data (tens of rows) — not a near-term production risk at current data volume. Recommend tracking as a follow-up (apply the same `if (doc.y + MIN_ROW_HEIGHT > pageBottom) doc.addPage()` guard before the first `printHeader()` call too), but does not block this phase. |
+| `.planning/REQUIREMENTS.md:47-49,116,118,120` | — | Stale checkbox bookkeeping (MIN-02/04/06 marked `[ ] Pending`) | ℹ️ Info | Pre-existing, noted in prior round too; cosmetic only |
 
-No unresolved `TBD`/`FIXME`/`XXX` debt markers found in phase-14-modified files.
+No unresolved `TBD`/`FIXME`/`XXX` debt markers found in phase-14-modified files (14-09/14-10 scope).
 
 ## Human Verification Required
 
-See `human_verification` in frontmatter — 3 items requiring a running server + real/seeded data and a PDF/browser viewer, primarily to confirm the CR-01/CR-02 fixes (once applied) resolve the underlying defects visually/behaviorally, and to confirm branded PDF color fidelity.
+Both prior BLOCKER-tier code defects (CR-01, CR-02) are now closed with strong automated evidence — including, for CR-02, tests that spy on the **real** `pdfkit` engine (genuine `heightOfString` computation, genuine `addPage()` triggered by genuine page-bottom arithmetic), not a fully mocked stand-in. The following remain as recommended pre-launch visual sign-off items, per the standing rule that visual/rendered-binary appearance can never be fully proven by source or unit-test inspection alone — they are NOT evidence of an unresolved code defect, and do not indicate the CR-01/CR-02 fixes are incomplete:
+
+### 1. Visitor Entries PDF visual polish check
+
+**Test:** Generate a Visitor Entries PDF export against real (non-fixture) production-shaped data (real LGA UUIDs if any legacy rows exist, dozens of rows spanning at least one page break) and open it in a PDF viewer.
+**Expected:** Every row renders as a clean, non-overlapping table row; the header repeats identically on page 2+; no cell text is clipped.
+**Why human:** The automated tests prove the correct pdfkit API calls fire with correct measured values (real engine, not mocked) — but pixel-level visual polish (kerning, exact margin alignment) is not something a unit test asserts.
+
+### 2. Revenue PDF branding + multi-section layout check
+
+**Test:** Open a Revenue export PDF (3 sections: By Module / By Month / By LGA) in a PDF viewer, ideally once `byMonth` has accumulated enough rows to approach a page boundary, and visually confirm no header/content overlap at section boundaries (this exercises the WR-02 edge case directly).
+**Expected:** Forest Green (#1A6B3C) headings, Gold (#C8962A) divider, and section headers all render cleanly with no overlap, even at a section boundary.
+**Why human:** Same rationale as above; additionally, this is the one path where WR-02's edge case could still be latent — a human check here provides direct assurance beyond the current single-section-only automated test coverage.
 
 ## Gaps Summary
 
-Phase 14 is architecturally and structurally complete: the `MINISTRY_VIEWER` role, its isolated controller, the `VisitorLog` capture pipeline (3 write sites, all correctly wired and tested), the PII-isolation guarantee (both structural and via a genuinely dual-scanner automated test), and the full read+export+UI surface all exist, are wired end-to-end, and pass 175 backend unit tests plus a clean `tsc --noEmit`. This is a strong implementation.
+Both BLOCKER-severity gaps from the initial verification round are conclusively closed:
 
-However, two confirmed, unfixed code-level defects (independently verified by direct source inspection, not by trusting SUMMARY.md or the prior code review alone) directly undermine the phase goal's literal wording:
+1. **CR-01** (date-range `to` filter truncating the final day) — fixed in `ministry.service.ts` via a shared `toExclusiveEndOfDayBoundary()` helper applied at both independent call sites (`buildFilters()` and `getRevenueToGovernment()`), verified by 3 new regression tests asserting exact boundary values, and confirmed by direct source reading (not SUMMARY-trust).
+2. **CR-02** (PDF row overlap for wrapped cells) — fixed in `ministry-pdf.service.ts` via genuine `doc.heightOfString()` measurement, height-aware row advance, and `doc.addPage()`/header-reprint on overflow; the raw `lgaId` UUID column is also dropped from the Visitor Entries PDF path specifically. Verified by 2 new tests exercising the real pdfkit engine (not a full mock) and confirmed by direct source reading.
 
-1. **CR-01** — the date-range `to` filter drops nearly the entire final day of every query across all 3 report types, and does so on the dashboard's own default view (`to = today`). A government analytics dashboard whose numbers are silently wrong by default does not "show" accurate visitor/purpose/revenue analytics as the goal requires.
-2. **CR-02** — the Visitor Entries PDF export will render overlapping, unreadable rows for any real (non-fixture) LGA UUID dataset. "Every report can be exported... as a formatted, presentable... branded PDF" is not true for this report on real data.
+A fresh code review of the exact 5 changed files surfaced 2 new WARNING-level findings (WR-01: DTO accepts full-datetime strings the boundary math doesn't handle; WR-02: only mid-table row transitions are page-break-guarded, not the very first header print). Both were assessed against the dashboard's actual, shipped usage pattern:
 
-Both defects were already correctly identified in `.planning/phases/14-ministry-dashboard/14-REVIEW.md` as BLOCKER-severity findings; this verification independently confirms via direct code reading (not review-report trust) that neither has been fixed in the current codebase, and traces their downstream impact to the specific roadmap Success Criteria they invalidate (SC2, SC3, SC4, SC5). Everything else — RBAC isolation, PII isolation, CSV export, the write-side capture pipeline, and the web dashboard's wiring/UX — is genuinely solid and verified working.
+- WR-01 is unreachable via the dashboard's own UI (HTML `<input type="date">` + `toISOString().slice(0,10)` never produce a datetime string) — it is a defense-in-depth gap for a hypothetical direct-API caller, not a realized defect in what ships today.
+- WR-02 requires years of accumulated `byMonth` history (no date floor by D-10) to manifest — not a near-term production risk at current data volume.
+
+Neither WARNING reopens the BLOCKER classification or the phase's `gaps_found` status. Both are recorded as follow-up recommendations. All 6 roadmap Success Criteria are now VERIFIED against the current codebase (not merely re-asserted from SUMMARY.md), all 175 backend ministry-adjacent tests + the broader regression sweep pass, and `tsc --noEmit` is clean. The remaining `human_needed` classification reflects standing visual-verification best practice for a rendered-PDF, government-facing deliverable — not an unresolved implementation gap.
 
 ---
 
-*Verified: 2026-07-18T02:20:00Z*
+*Verified: 2026-07-18T08:15:00Z*
 *Verifier: Claude (gsd-verifier)*
