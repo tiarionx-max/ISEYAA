@@ -7,13 +7,14 @@
  */
 
 const mockFindUnique = jest.fn();
-const mockUpsert = jest.fn();
+const mockFindFirst = jest.fn();
+const mockCreate = jest.fn();
 const mockDisconnect = jest.fn().mockResolvedValue(undefined);
 
 jest.mock('@prisma/client', () => ({
   PrismaClient: jest.fn().mockImplementation(() => ({
     platformConfig: { findUnique: mockFindUnique },
-    settlementSplitTier: { upsert: mockUpsert },
+    settlementSplitTier: { findFirst: mockFindFirst, create: mockCreate },
     $disconnect: mockDisconnect,
   })),
 }));
@@ -87,25 +88,30 @@ describe('migrate-settlement-split-tiers', () => {
     expect(result.ministryPct).toBeCloseTo(0.05, 10);
   });
 
-  it('is idempotent — invoking migrateModule() twice against the same mocked config uses update: {} and never mutates an already-active row', async () => {
+  it('is idempotent — invoking migrateModule() twice against the same mocked config finds the existing row on the second call and never creates a duplicate', async () => {
     mockFindUnique.mockImplementation(async ({ where }: any) => {
       if (where.key === 'transport.govt_levy_pct') return mockConfigRow(where.key, 5);
       if (where.key === 'transport.platform_fee_pct') return mockConfigRow(where.key, 10);
       return null;
     });
-    mockUpsert.mockResolvedValue({ id: 'TIER-1' });
+    // No compound unique key exists post-fix (CR-01) — uniqueness among active
+    // rows is enforced by a partial index, not `@@unique`, so the script does
+    // find-then-create instead of upsert. First call: no existing row -> create.
+    // Second call: existing row found -> skip create (idempotent no-op).
+    mockFindFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'TIER-1' });
+    mockCreate.mockResolvedValue({ id: 'TIER-1' });
 
     await migrateModule('transport');
     await migrateModule('transport');
 
-    expect(mockUpsert).toHaveBeenCalledTimes(2);
-    for (const call of mockUpsert.mock.calls) {
-      expect(call[0].where).toEqual({ module_tierName: { module: 'transport', tierName: 'default' } });
-      expect(call[0].update).toEqual({});
+    expect(mockFindFirst).toHaveBeenCalledTimes(2);
+    for (const call of mockFindFirst.mock.calls) {
+      expect(call[0].where).toEqual({ module: 'transport', tierName: 'default' });
     }
+    expect(mockCreate).toHaveBeenCalledTimes(1);
   });
 
-  it('throws and aborts the entire run before any settlementSplitTier.upsert call if a computed percentage is non-finite', async () => {
+  it('throws and aborts the entire run before any settlementSplitTier.create call if a computed percentage is non-finite', async () => {
     mockFindUnique.mockImplementation(async ({ where }: any) => {
       // Malformed config value (non-numeric) forces Number(...) to NaN.
       if (where.key === 'transport.govt_levy_pct') return mockConfigRow(where.key, NaN);
@@ -115,6 +121,6 @@ describe('migrate-settlement-split-tiers', () => {
 
     await expect(main()).rejects.toThrow(/transport/i);
 
-    expect(mockUpsert).not.toHaveBeenCalled();
+    expect(mockCreate).not.toHaveBeenCalled();
   });
 });

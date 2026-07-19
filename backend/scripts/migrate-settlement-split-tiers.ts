@@ -136,20 +136,34 @@ export async function computeModuleSplit(module: string): Promise<ComputedSplit>
   return { earnerPct, ministryPct, platformPct: finalPlatformPct };
 }
 
-export async function migrateModule(module: string): Promise<void> {
-  const { earnerPct, ministryPct, platformPct } = await computeModuleSplit(module);
-  await prisma.settlementSplitTier.upsert({
-    where: { module_tierName: { module, tierName: 'default' } },
-    update: {},
-    create: {
+// No compound unique key on (module, tierName) exists anymore (see schema.prisma
+// comment on SettlementSplitTier) — uniqueness is enforced only among ACTIVE rows
+// via a partial index, so `upsert()` can no longer target a `module_tierName`
+// compound key. find-then-create/no-op mirrors the original upsert's semantics
+// (`update: {}` was already a no-op — this script only ever writes on first run).
+async function upsertDefaultTier(
+  module: string,
+  split: ComputedSplit,
+): Promise<void> {
+  const existing = await prisma.settlementSplitTier.findFirst({
+    where: { module, tierName: 'default' },
+  });
+  if (existing) return;
+  await prisma.settlementSplitTier.create({
+    data: {
       module,
       tierName: 'default',
-      earnerPct,
-      ministryPct,
-      platformPct,
+      earnerPct: split.earnerPct,
+      ministryPct: split.ministryPct,
+      platformPct: split.platformPct,
       isActive: true,
     },
   });
+}
+
+export async function migrateModule(module: string): Promise<void> {
+  const split = await computeModuleSplit(module);
+  await upsertDefaultTier(module, split);
   console.log(`Migrated ${module}`);
 }
 
@@ -164,19 +178,7 @@ export async function main(): Promise<void> {
   }
 
   for (const module of modules) {
-    const { earnerPct, ministryPct, platformPct } = splits[module];
-    await prisma.settlementSplitTier.upsert({
-      where: { module_tierName: { module, tierName: 'default' } },
-      update: {},
-      create: {
-        module,
-        tierName: 'default',
-        earnerPct,
-        ministryPct,
-        platformPct,
-        isActive: true,
-      },
-    });
+    await upsertDefaultTier(module, splits[module]);
     console.log(`Migrated ${module}`);
   }
 }

@@ -707,7 +707,13 @@ model SettlementSplitTier {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  @@unique([module, tierName])
+  // No @@unique([module, tierName]) here — a module/tierName pair legitimately
+  // repeats across historical (isActive: false) rows once updateSplitTier()'s
+  // insert-new-row/deactivate-old audit trail (D-05) has run once. Uniqueness
+  // is enforced only among ACTIVE rows via a partial index added by raw SQL
+  // in the migration (Postgres/Prisma can't express a partial unique index
+  // as a `@@unique` schema attribute).
+  @@index([module, tierName])
   @@index([module, isActive])
   @@map("settlement_split_tiers")
 }
