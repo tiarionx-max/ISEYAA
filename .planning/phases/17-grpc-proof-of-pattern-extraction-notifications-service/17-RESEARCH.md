@@ -597,22 +597,25 @@ This phase is establishing new state of the art for this codebase, not following
 
 **If this table is empty:** N/A — see entries above.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **`NOTIFICATIONS_GRPC_URL` (D-04, locked) vs. the already-committed `NOTIFICATIONS_SERVICE_URL`**
    - What we know: `.env.example` already has a full block of `<SERVICE>_SERVICE_URL` vars for all 8 gRPC scaffolds (`AUTH_SERVICE_URL`, `WALLET_SERVICE_URL`, ..., `NOTIFICATIONS_SERVICE_URL=notifications-service.railway.internal:5008`), added in Phase 10 as Wave-3 placeholders. None are consumed by any code today (grep confirms zero references in `backend/src`).
    - What's unclear: Whether D-04's new `NOTIFICATIONS_GRPC_URL` name was chosen deliberately (distinct from the placeholder convention) or simply because CONTEXT.md's author didn't cross-reference `.env.example` at discussion time.
    - Recommendation: Surface this to the user/planner explicitly — either (a) rename D-04's var to reuse the existing `NOTIFICATIONS_SERVICE_URL` (zero `.env.example` churn, matches the convention already set for the other 7 not-yet-live services), or (b) keep `NOTIFICATIONS_GRPC_URL` per D-04 and remove/comment-out the now-permanently-dead `NOTIFICATIONS_SERVICE_URL` placeholder to avoid two vars describing the same endpoint. This is a naming decision, not a technical blocker — either works.
+   - RESOLVED: Option (a) was adopted — Plans 17-03 and 17-05 configure `NOTIFICATIONS_SERVICE_URL` (reusing the existing `.env.example` placeholder) rather than introducing `NOTIFICATIONS_GRPC_URL`. `17-CONTEXT.md`'s D-04 has been annotated as superseded by this resolution so the two documents don't disagree if read independently.
 
 2. **Does `SendPushResponse` need a `reason` field for true zero-behavior-change (Pitfall 5)?**
    - What we know: The in-process service returns a richer failure shape than the current proto's `SendPushResponse` can carry.
    - What's unclear: Whether the REST `POST /notifications/send` endpoint's `reason` field is actually consumed by any web/mobile client code (not investigated in this backend-only research pass — would require a `web/`/`mobile/` grep).
    - Recommendation: A quick `grep -rn "reason" web/src mobile/app` (or equivalent) during planning would settle this in under a minute; if unused by any client, document the gap as accepted in the D-11 audit and skip the proto change.
+   - RESOLVED: Accepted as a documented gap, not a proto change. Plan 17-04's Task 1 (the GRPC-04 caller-graph audit) runs `grep -rni "reason" web/src mobile/app`, confirms zero client consumption of the field, and records the `SendPushResponse.reason` omission as an explicit, non-behavior-visible accepted tradeoff in `17-CALLER-GRAPH-AUDIT.md`.
 
 3. **Railway multi-service dashboard setup mechanics**
    - What we know: `backend/apps/notifications-service/railway.toml` already exists (build/deploy config, `dockerfilePath`, `watchPaths`), following the exact same shape as the other 7 scaffolds' `railway.toml` files. Root `railway.toml` builds the monolith.
    - What's unclear: Whether a Railway *service* (in the dashboard sense — a distinct deployable unit within the Railway project) has actually been created and linked to `backend/apps/notifications-service/railway.toml` yet, or whether the `.toml` file existing in the repo is purely a config-as-code artifact awaiting a human to create the corresponding Railway dashboard service and point it at this file.
    - Recommendation: This is a human action outside repo/tool access this session (no Railway CLI/dashboard access available) — the plan should include a `checkpoint:human-verify` task for "Railway service for notifications-service exists in the dashboard, linked to `backend/apps/notifications-service/railway.toml`, `NOTIFICATIONS_GRPC_URL` (or its resolved name per Open Question 1) is set as an env var on the monolith's Railway service pointing at the private network hostname."
+   - RESOLVED: Deferred to Plan 17-06's `checkpoint:human-verify` task, which requires the user to confirm the Railway dashboard service exists, is linked to `backend/apps/notifications-service/railway.toml`, and has `NOTIFICATIONS_SERVICE_URL` (per Open Question 1's resolution) set as an env var before sign-off.
 
 ## Environment Availability
 
@@ -649,7 +652,7 @@ This phase is establishing new state of the art for this codebase, not following
 | GRPC-03 | `TourNotificationsService`'s 3 crons + 1 event handler still work with the facade substituted, still don't rethrow on failure | unit | `cd backend && npx jest tour-notifications.service.spec.ts -x` | ⚠️ Wave 0 gap — existing file's mock `provide` token needs updating (Pitfall 4) |
 | GRPC-03 | Web/mobile REST response shape for `/notifications/*` is unchanged pre/post cutover | integration (manual boot check: local monolith + local notifications-service via docker-compose or bare-metal, hit the 3 REST endpoints, diff response shapes against pre-cutover) | manual — no automated e2e harness exists for gRPC-backed REST endpoints today | manual-only — no prior precedent in this codebase for this style of before/after diff test |
 | GRPC-04 | Caller-graph audit is accurate and complete | manual (grep-verified, committed markdown artifact) | `grep -rn "NotificationsService" backend/src backend/apps --include="*.ts" \| grep -v ".spec.ts"` (already run in this research — 3 results, 2 real call sites) | N/A — documentation artifact, not a test |
-| GRPC-05 | Zero `ClientGrpc`/`ClientProxyFactory` usage for Wallet/Transport/Delivery/Events/Stays/Marketplace/Auth/Tour modules | manual (grep gate, can be scripted) | `grep -rln "ClientGrpc\|ClientsModule" backend/src/modules/{wallet,delivery,events,stays,marketplace,auth,tour-bookings,tour-packages,tour-guides}` — expect zero matches post-phase | ❌ Wave 0 — not currently run as an automated CI gate, could be added as a one-line assertion test if desired (optional polish) |
+| GRPC-05 | Zero `ClientGrpc`/`ClientProxyFactory` usage for Wallet/Transport/Delivery/Events/Stays/Marketplace/Auth/Tour modules | manual (grep gate, can be scripted) | `grep -rln "ClientGrpc\|ClientsModule" backend/src/modules/{wallet,transport,delivery,events,stays,marketplace,auth,tour-bookings,tour-packages,tour-guides}` — expect zero matches post-phase | ❌ Wave 0 — not currently run as an automated CI gate, could be added as a one-line assertion test if desired (optional polish) |
 
 ### Sampling Rate
 
