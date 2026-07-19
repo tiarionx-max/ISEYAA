@@ -493,22 +493,25 @@ updateSplitTier(id: string, data: { earnerPct?: number; ministryPct?: number; pl
 
 **None of these are [ASSUMED] in the strict provenance sense used elsewhere in this document** — all three are direct, high-confidence inferences from re-reading live source code and CONTEXT.md's own wording this session (HIGH confidence on the underlying facts), but the *recommended resolution* in each case is this research's own judgment call, not an explicit CONTEXT.md decision. Flagging them here so the planner treats them as decisions to make explicitly, not defaults to inherit silently.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Studio's `earnerPct` semantics in the new model**
    - What we know: Studio's `settle()` call today has only a `MINISTRY` recipient — no earner wallet is credited at all; the "platform fee" config value is fetched but only logged into `platformMetadata`, never applied (D-01, confirmed live).
    - What's unclear: Whether `SettlementSplitTier.earnerPct` for Studio should be `0`, `null`, or simply left at whatever the derived-remainder math produces (since nothing reads it).
    - Recommendation: Set explicitly to `0` in the migration script with a comment explaining why, rather than a derived/ambiguous value — makes the row self-documenting for future SETTLE-11e work.
+   - **Resolved:** `18-01-PLAN.md` Task 3 (the migration script) sets `earnerPct = 0` explicitly and unconditionally in the studio-specific branch (not derived from the general `1 - ministryPct - platformPct` formula), with an inline comment citing `studio.service.ts`'s `recipients` array having only a `'MINISTRY'` tag — adopts this recommendation as-is.
 
 2. **In-place update vs. insert-new-row for the admin PATCH endpoint (D-05 audit-history)**
    - What we know: D-05 explicitly states old rows are "never deleted or overwritten."
    - What's unclear: CONTEXT.md doesn't specify the exact mechanism (versioned rows vs. a separate audit log table).
    - Recommendation: Insert-new-row + deactivate-old (`isActive: false` on the previous row, new row with `effectiveFrom: now()`), reusing the `@@unique([module, tierName])` constraint's implication that only ONE row per `(module, tierName)` can be `isActive: true` at a time — enforce this at the application level in `updateSplitTier()`, since Prisma's `@@unique` alone can't express "unique among active rows only" without a partial index (out of scope to add this phase; application-level enforcement in `AdminService` is sufficient given only `SUPER_ADMIN` can write here).
+   - **Resolved:** `18-04-PLAN.md` Task 1's `AdminService.updateSplitTier()` implements exactly this — a single `$transaction` that first sets `isActive: false` on the prior row, then `create()`s a new active row with the updated values — adopts this recommendation as-is.
 
 3. **Whether the flat `PlatformConfig` keys should be marked deprecated/soft-deleted post-migration**
    - What we know: Nothing requires this; the 6 call sites simply stop reading them.
    - What's unclear: Whether leaving them live (readable via the existing generic `GET/PATCH /admin/config/:key`) creates operator confusion (an admin could still "update" `transport.govt_levy_pct` via the old generic endpoint, with zero effect, since nothing reads it anymore).
    - Recommendation: Not blocking for this phase, but worth a one-line note/todo for a future cleanup phase — low priority, no money-flow risk either way since the keys become inert, not actively harmful.
+   - **Resolved:** Deliberately deferred, correctly treated as non-blocking — no plan in this phase takes action on it. Flagged here as a note for a future cleanup phase per the recommendation's own framing; no PLAN.md task references it.
 
 ## Validation Architecture
 
