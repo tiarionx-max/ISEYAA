@@ -1,231 +1,256 @@
-# Architecture Research: v2.0 Microservices, Multi-Channel Auth & Government Partnership
+# Architecture Research: v2.1 Extraction Backlog Clearance & Settlement Flexibility
 
-**Domain:** NestJS modular monolith → real gRPC extraction, channel-choice OTP, Ministry dashboard, generalized settlement splits
-**Researched:** 2026-07-15
-**Confidence:** HIGH (all findings verified against actual source files and a real `nest build` attempt, not assumptions)
+**Domain:** Integrating Delivery/news/waitlist/reviews gRPC extraction, blue-green deploys, scheduled exports, heatmap visualization, and settlement disputes/split tiers into ISEYAA's existing NestJS modular monolith + one live gRPC service (`notifications-service`)
+**Researched:** 2026-07-19
+**Confidence:** HIGH — all findings verified directly against source files (`backend/src/modules/delivery/*`, `backend/src/common/services/settlement.service.ts`, `backend/prisma/schema.prisma`, `docker-compose.yml`, `railway.toml` files, `packages/proto/*.proto`), not training-data assumptions.
 
-## Critical Correction to Milestone Framing
+This file supersedes the prior (2026-07-15, v2.0-scoped) version of this document — that milestone's findings (broken `rootDir` build, Dockerfile error-masking, zero client wiring, missing `MinistryModule`, no `SettlementService`) have all since shipped per `.planning/PROJECT.md` (Phases 10-17). This research does not re-litigate v2.0's settled decisions (real gRPC split over resilience-only, three-way settlement split reusing Phase 9's engine, `SettlementService` as the single atomic N-way fan-out primitive, `notifications-service` as the extraction proof-of-pattern). It focuses on how the 7 new v2.1 features attach to that now-shipped foundation.
 
-`.planning/PROJECT.md` states: *"a code audit confirmed zero `@GrpcMethod`/`ClientGrpc` usage anywhere and a single `NestFactory.create()` in `main.ts`."* This is **half true** and the roadmap needs a second correction, not just the first one.
+---
 
-**What's actually there** (verified 2026-07-15):
+## Q1 — Delivery + news/waitlist/reviews gRPC extraction
 
-`backend/apps/` contains **8 fully-scaffolded gRPC microservice entry points** — `auth-service`, `wallet-service`, `events-service`, `stays-service`, `marketplace-service`, `admin-service`, `ai-service`, `notifications-service`. Each has:
-- A real `@GrpcMethod`-decorated controller (e.g. `backend/apps/wallet-service/src/wallet-grpc.controller.ts` implements `Credit`/`Debit`/`GetBalance`/`GetTransactions` against the *same* `WalletService`/`PrismaService` the monolith uses)
-- A `main.ts` calling `NestFactory.createMicroservice(AppModule, { transport: Transport.GRPC, options: { package, protoPath, url: '0.0.0.0:500X' } })`
-- Its own `Dockerfile` and `railway.toml`
-- A registered project entry in `backend/nest-cli.json` (`projects.wallet-service`, etc.) so `nest build wallet-service` is a real, intended command
+### Finding: Delivery is NOT one coupling problem, it's three, and they're independently sized
 
-So `@GrpcMethod` usage is **not zero** — it exists for 8 services. The "single `NestFactory.create()`" claim is only true of `backend/src/main.ts` (the monolith entry point); it is not true of the repo as a whole.
+`packages/proto/delivery.proto` already defines 4 RPCs: `RequestDelivery`, `AcceptDelivery`, `VerifyDeliveryOtp`, `CompleteDelivery`. Reading `backend/src/modules/delivery/delivery.service.ts` line-by-line against that contract shows the coupling is uneven across the four:
 
-**What's actually broken (this is the real finding, and it's worse than "unwired"):**
+| RPC | Wallet-adjacent? | Socket.IO-coupled? | Verdict |
+|---|---|---|---|
+| `VerifyDeliveryOtp` (`verifyOtp()`, line 489) | No — Redis OTP check + `deliveryOrder.update({ otpVerifiedAt })` only | No — zero `this.gateway.*` calls in this method | **Clean. Extract now.** |
+| `RequestDelivery` (`requestDelivery()`, line 260) | No — order creation, fee estimate, Redis GEOSEARCH | Yes — line 313 `this.gateway.server.to('rider:'+nearestRiderId).emit('delivery:request', order)` | Wallet-clean but socket-coupled |
+| `AcceptDelivery` (`acceptOrder()`, line 357) | No | Yes — line 387 `this.gateway.server.to('delivery:'+orderId).emit('rider:assigned', ...)` | Wallet-clean but socket-coupled |
+| `CompleteDelivery` (`completeDelivery()`, line 525) | **Yes** — calls `SettlementService.settle()` (line 623) behind the `delivery.settlement_engine_enabled` flag (SETTLE-04 cutover) | Yes — line 770 `emit('delivery:completed', ...)` | **Do not extract.** |
 
-1. **The build is broken.** Running `npx nest build wallet-service` from `backend/` fails with `TS6059: File '...apps/wallet-service/src/main.ts' is not under 'rootDir' 'backend/src'`. Root cause: `backend/apps/wallet-service/tsconfig.app.json` extends `backend/tsconfig.json`, which hardcodes `"rootDir": "./src"` and is never overridden per-app. All 8 services share this same tsconfig inheritance and will all fail identically — verified for `wallet-service`, structurally identical for the other 7.
-2. **The failure is deliberately masked.** `backend/apps/wallet-service/Dockerfile` line 18: `RUN cd backend && npx nest build wallet-service 2>/dev/null || true` — swallows the error and continues. The `CMD` then runs `node ./backend/apps/wallet-service/dist/main.js`, which will not exist (or will be stale from a previous successful local build accidentally committed/cached). Any attempt to actually deploy one of these `backend/apps/*/Dockerfile`s today will crash-loop on container start.
-3. **Zero client-side wiring.** `Grep` for `ClientGrpc|ClientProxyFactory|@Client(` across `backend/src` returns nothing. No REST controller anywhere calls these gRPC servers. They are unconsumed islands even where they'd build.
-4. **Not deployed.** Root `railway.toml` and `backend/railway.toml` both point only at `backend/Dockerfile` (the monolith). The 8 `backend/apps/*/railway.toml` files exist but nothing provisions or points a Railway service at them — matches PROJECT.md's confirmation that Railway currently runs a single monolith service.
-5. **No local dev wiring either.** `backend/package.json` has no `start:wallet-service`-style scripts, and `docker-compose.yml` only builds `backend/Dockerfile.dev` (the monolith) — the 8 services can't be run locally today without hand-written tooling.
-6. **Coverage gap confirmed correct.** Proto contracts exist for exactly these 8 modules; `transport`, `delivery`, `tour-packages`, `tour-guides`, `news`, `waitlist`, `reviews` have zero `.proto` files under `packages/proto/` — this part of the roadmap claim is accurate.
+`DeliveryGateway` (`backend/src/modules/delivery/delivery.gateway.ts`) is a plain `@WebSocketGateway()` with no explicit port — it attaches to the same HTTP server as the REST API (port 3001), i.e. the same process as `DeliveryService`. Every lifecycle transition in `DeliveryService` reaches into that same in-process `Server` instance directly (`this.gateway.server.to(room).emit(...)`) — there is no message bus between them today. Moving any of `RequestDelivery`/`AcceptDelivery`/`CompleteDelivery` into `delivery-service` as a separate Railway process breaks these `emit()` calls outright unless something bridges the two processes' Socket.IO servers.
 
-**Implication for the roadmap:** this is not "wire up 8 dead contract files from scratch." It's "fix a broken build (rootDir), then build the actually-missing half: gRPC clients + hybrid-app bootstrap + real Railway service provisioning + local dev orchestration," while also doing greenfield proto+wiring for the 7 never-stubbed modules. Both halves are real work, but the *scaffolding pattern to copy* already exists and is proven correct in shape (controller reuses the existing service class, doesn't reimplement logic) — only the tsconfig/build/deploy/client layers are missing or broken.
+**Recommendation for GRPC-07 (Delivery):**
 
-## Standard Architecture (Target State)
+1. **Extract `VerifyDeliveryOtp` only, this milestone.** It is the single RPC in the existing proto contract with zero wallet and zero socket coupling — same extraction shape as `notifications-service` (stateless, side-effect-free beyond Redis + one DB row). This gives GRPC-07 a real, safe increment without inventing new infrastructure.
+2. **Keep `RequestDelivery`, `AcceptDelivery`, and `CompleteDelivery` (and `DeliveryGateway` itself) in the monolith this milestone.** `CompleteDelivery` is blocked on the same outbox/saga gap that already keeps Transport/Wallet/Tour* in-process (GRPC-05) — extracting it now would put a `SELECT FOR UPDATE` wallet transaction behind a network hop with no compensating-transaction safety net, which is exactly the risk profile the codebase has explicitly deferred everywhere else.
+3. **If a fuller Delivery extraction is wanted in a future milestone, the actual prerequisite is a Socket.IO Redis adapter** (`@socket.io/redis-adapter`, backed by the existing Upstash Redis instance — no new infra cost), so `delivery-service` can `emit()` into rooms hosted by the monolith's `DeliveryGateway` (or vice versa) across processes. This is the standard fix for horizontally-scaled Socket.IO and is a smaller, better-scoped piece of work than a full outbox/saga — but it is still new infrastructure, so treat it as a separate future GRPC-0x item, not bundled into this milestone's Delivery slice.
+4. Do **not** move `DeliveryGateway` itself this milestone. Mobile clients are already connected to it on the monolith's port 3001; moving it means a new public WS endpoint, a Redis-adapter dependency, and touching every lifecycle call site simultaneously — disproportionate to what GRPC-07 needs to deliver.
 
-### System Overview — End State After Full gRPC Extraction
+**"remaining core modules" (GRPC-07 second half):** Re-run the same wallet/gateway coupling check per module before claiming a clean extraction. From the existing caller-graph audit (Phase 17, GRPC-05) Wallet/Transport/Delivery/Auth/Tour* are wallet-adjacent and stay in-process. Among what's left unextracted (`events-service`, `stays-service`, `marketplace-service`, `admin-service`, `ai-service` scaffolds already exist per `backend/apps/`), Events/Stays/Marketplace/Studio all call `SettlementService.settle()` directly in their booking/purchase completion paths (confirmed: `marketplace.service.ts:285`, `events.service.ts:263`, `stays.service.ts:361`) — same blocker as Delivery's `CompleteDelivery`. Treat those as **not clean** either; `admin-service`/`ai-service` scaffolds are read-mostly (admin) or externally-vendored (ai, already resilience-wrapped) and are better GRPC-07 candidates than the settlement-triggering modules if "remaining core modules" needs a second target this milestone.
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│  CLIENTS (Web / Mobile)  →  REST  →  api-gateway (was: monolith)    │
-└───────────────────────────────────┬───────────────────────────────────┘
-                                     │ HTTP /api/v1/*
-                                     ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│         backend/src (REST edge — "api-gateway" role)                 │
-│  Controllers stay REST. For EXTRACTED modules, the module's          │
-│  service is replaced by a gRPC-client proxy implementing the same    │
-│  method signatures (see Pattern 1). For NOT-YET-extracted modules,   │
-│  controller → service → Prisma stays exactly as today (in-process).  │
-└───┬─────────────────────────────────────────────────────┬───────────┘
-    │ gRPC (extracted)                                     │ in-process
-    ▼                                                       ▼
-┌───────────────────┐  ┌───────────────────┐   ┌─────────────────────┐
-│ wallet-service     │  │ auth-service       │   │ transport, delivery, │
-│ backend/apps/      │  │ backend/apps/      │   │ tour-*, marketplace,  │
-│ wallet-service/     │  │ auth-service/       │   │ stays, events, admin  │
-│ own PrismaClient    │  │ own PrismaClient    │   │ (still in monolith)   │
-│ own Railway service │  │ own Railway service  │   │                       │
-└─────────┬──────────┘  └─────────┬──────────┘   └───────────┬───────────┘
-          │                       │                            │
-          └───────────┬───────────┴────────────────────────────┘
-                       ▼
-              ┌─────────────────┐
-              │ Neon PostgreSQL  │  ← ALL services (extracted + monolith)
-              │ ONE DATABASE_URL │    share the same DB, different pools
-              └─────────────────┘
-```
+### Finding: news/waitlist/reviews are genuinely clean — but Reviews has one caveat
 
-**Answer to "does @Global() PrismaModule/CommonModule still work post-extraction":** No, not across process boundaries — `@Global()` only broadcasts within a single Nest DI container. Each `backend/apps/*/app.module.ts` re-imports `PrismaModule`, `CommonModule`, `RedisModule` itself (already correctly done in `wallet-service`'s `app.module.ts`) and gets its **own** `PrismaClient` instance = its own connection pool, against the **same** `DATABASE_URL`. This is correct and matches how the scaffolding was already built. The consequence to flag: monolith + 8 extracted services = 9 separate Postgres connection pools all hitting the same Neon instance. Neon's free/hobby tier has a hard concurrent-connection ceiling; this needs either Neon's pooled connection string (`-pooler` suffix, PgBouncer) on every service's `DATABASE_URL`, or a shared PgBouncer sidecar. This was not previously a concern with 1 process; it's the first real capacity risk introduced by extraction and belongs in Phase planning, not left implicit.
+Grepped `backend/src/modules/news/news.service.ts`, `backend/src/modules/waitlist/waitlist.service.ts`, `backend/src/modules/reviews/reviews.service.ts` for `WalletService`/`SettlementService`/`wallet.` — **zero matches across all three.** None of them touch a wallet, a `PlatformConfig` split key, or `SettlementService`. They are the same extraction shape as `notifications-service`: CRUD + read endpoints, no atomic multi-recipient money movement.
 
-### Component Responsibilities (New/Modified for v2.0)
+**One caveat for Reviews (`reviews.service.ts`):** the aggregate-rating recompute (`recomputeTargetRating`, debounced via `scheduleRecompute`) uses an **in-memory `Map<string, NodeJS.Timeout>`** (`pendingRecomputes`) to coalesce bursts of reviews on the same target into one DB write. This is already documented in the code as "NOT cluster-safe" for horizontal scale-out. Extracting `reviews-service` to its own single Railway instance doesn't break this (the caveat is about *multiple instances of the same service*, not about being in a different process from the monolith) — but if `reviews-service` is ever scaled to 2+ replicas, this debounce needs to move to Redis (`SETEX` + leader-elect, or drop the debounce and always write immediately). Flag this as a known follow-up, not a blocker for GRPC-08.
 
-| Component | Responsibility | New or Modified | File |
-|-----------|----------------|------------------|------|
-| `backend/apps/<name>-service/` (×8) | Standalone gRPC server per extracted module | Modified — fix build, wire deploy | `backend/apps/*/` |
-| gRPC client proxies | REST controllers' new dependency when their module is extracted; implements same method surface as the in-process service so controllers don't change | New | `backend/src/modules/<name>/<name>.grpc-client.ts` (proposed) |
-| `OtpChannelService` | Dispatch OTP via SMS (Termii)/WhatsApp/Email based on user selection; replaces inline `sendTermii`/`sendTwilio` in `auth.service.ts` | New (extracted from existing private methods) | `backend/src/common/services/otp-channel.service.ts` (proposed) |
-| `MinistryModule` (`MinistryController` + `MinistryService`) | Read-only KPI/visitor-entry dashboard + CSV/PDF export for `MINISTRY_VIEWER` role | New | `backend/src/modules/ministry/` (proposed) |
-| `VisitorLog` (Prisma model) | Visitor-entry + purpose-of-visit tracking, LGA-scoped | New schema | `backend/prisma/schema.prisma` |
-| `SettlementService` | Generic N-way atomic wallet fan-out (vendor/rider, Ministry, platform), generalized from `TourSettlementService` | New, in `CommonModule` | `backend/src/common/services/settlement.service.ts` (proposed) |
-| `UserRole.MINISTRY_VIEWER` | New enum member, read-only role | New | `backend/src/common/enums/user-role.enum.ts` |
+**Recommendation for GRPC-08 (news/waitlist/reviews):** All three are clean, `notifications-service`-shaped extractions. Build order within GRPC-08: **waitlist → news → reviews** (waitlist is the simplest — no relations beyond its own table; news likely has zero or thin FK relations; reviews touches `TourBooking`/`TourGuide`/`TourPackage`/`Property` cross-module reads for eligibility checks and the rating-recompute writes, so it's the most work to wire into a separate Prisma-backed process even though it has no wallet dependency).
 
-## Integration Point 1: Real gRPC Extraction
+### New components needed for GRPC-07 (VerifyDeliveryOtp slice) and GRPC-08
 
-### What already exists and is reusable as-is
-- `packages/proto/*.proto` for auth, wallet, events, marketplace, notifications, stays, admin, ai — message/service shapes are already reasonable (verified `wallet.proto`: `Credit`/`Debit`/`GetBalance`/`GetTransactions`).
-- `backend/apps/*/[-name]-grpc.controller.ts` — correct pattern: thin `@GrpcMethod` controller that calls into the existing feature service, doesn't duplicate business logic. This is the pattern to replicate for the 7 unstubbed modules (transport, delivery, tour-packages, tour-guides, news, waitlist, reviews).
-- `@grpc/grpc-js`, `@grpc/proto-loader`, `@nestjs/microservices`, `ts-proto` already in `backend/package.json` dependencies — no new package installs needed.
-- `KafkaModule`/`KafkaService` (`backend/src/kafka/`) is a working, `@Global()`, optional (no-ops when `KAFKA_BROKER_URL` unset) async event bus already used as a **secondary, cross-pod-durable** channel alongside `EventEmitter2` in `TourSettlementService`. This is directly relevant: it's a second, already-proven mechanism for cross-service communication that doesn't require gRPC request/response — worth considering for event-style integrations (e.g., "wallet credited" notifications) instead of always reaching for synchronous gRPC calls.
+- `backend/apps/delivery-service/` — new gRPC microservice scaffold (own `main.ts`, `app.module.ts`, `tsconfig.app.json`, `Dockerfile`, `railway.toml`), mirroring `backend/apps/notifications-service/` exactly. Only wires the `VerifyDeliveryOtp` RPC this milestone; the proto's other 3 RPCs stay unimplemented server-side in this service (or the whole delivery.proto could be split into a smaller `delivery-otp.proto` if you want the contract boundary to visibly match the extraction boundary — recommended, since a proto that advertises 4 RPCs but only implements 1 is misleading).
+- `backend/apps/news-service/`, `backend/apps/waitlist-service/`, `backend/apps/reviews-service/` — same scaffold shape, one per module.
+- `backend/src/modules/delivery-otp-client/` (or fold into existing `delivery` module) — new `ClientGrpc` registration + facade service, mirroring `backend/src/modules/notifications-client/notifications-client.module.ts` + `notifications-client.service.ts` exactly: `ClientsModule.registerAsync` with `NOTIFICATIONS_SERVICE_URL`-style env var (`DELIVERY_OTP_SERVICE_URL`, etc.), wrapped in `ResilienceService.execute('deliveryOtpGrpc', ...)` with a new `Vendor` entry added to `backend/src/resilience/resilience.types.ts`'s `RESILIENCE_DEFAULTS`.
+- Equivalent `*-client` modules for news/waitlist/reviews, each adding a new `Vendor` key to `resilience.types.ts`.
+- `docker-compose.yml` — add one service block per new gRPC service (copy the `notifications-service` block, new container name/port), and add each as a `depends_on: { condition: service_started }` for `backend`.
+- `backend/nest-cli.json` — register each new `apps/*-service` as a build project (same as the 8 existing scaffolds already are).
 
-### What must be fixed before ANY service can be extracted
-1. **tsconfig `rootDir` fix** — every `backend/apps/*/tsconfig.app.json` needs its own `rootDir` (typically `"rootDir": "../.."` relative to the app folder, or restructure to compile with `backend/` as the TS project root) so `nest build <service>` actually succeeds. This blocks all 8 services identically; fix once, verify against `wallet-service`, apply to the rest.
-2. **Remove the `2>/dev/null || true` build-failure mask** in every `backend/apps/*/Dockerfile` — replace with a real build step that fails the Docker build on error (standard `RUN npx nest build <service>` with no suppression).
-3. **Add `ClientGrpc` proxies on the REST side.** For each extracted module, the existing REST controller needs its injected `<Name>Service` swapped for a thin gRPC client wrapper implementing the same method signatures — this is the piece with literally zero prior art in this repo; it must be built from scratch per module. Standard NestJS pattern: `ClientsModule.register([{ name: 'WALLET_PACKAGE', transport: Transport.GRPC, options: { package: 'wallet', protoPath, url } }])` in the consuming module, then `@Inject('WALLET_PACKAGE') private client: ClientGrpc` → `client.getService<WalletServiceClient>('WalletService')` in `onModuleInit`.
-4. **Deploy wiring** — each extracted service needs its own provisioned Railway service pointed at its `backend/apps/<name>-service/railway.toml` (the file exists; the Railway-side service does not, per PROJECT.md's confirmation of single-service deploy). `docker-compose.yml` needs a new service block per extracted module for local dev (mirroring the `backend`/`web` block pattern already there), each exposing its gRPC port (`5001`, `5002`, ... — `wallet-service` already claims `5002`).
-5. **Connection pool ceiling** — see System Overview note above. Must be resolved (pooled connection string) before more than 1-2 services run concurrently against Neon, or connections will exhaust under load testing.
+---
 
-### Migration path: which module first, and why
-**Recommend `notifications-service` as the proof-of-pattern extraction, not `wallet-service`.**
+## Q2 — Blue-green/canary deploys on Railway for 2+ gRPC services
 
-Rationale:
-- `notifications-service`'s gRPC surface (`SendPush`, `RegisterToken`) is the **lowest blast-radius** of the 8 — it's fire-and-forget FCM push, not in the payment-critical path. A bug in the client-proxy wiring here degrades push notifications, not money movement.
-- It has no `SELECT FOR UPDATE` / transactional wallet semantics to get subtly wrong across a network boundary — `wallet-service`'s `Debit` RPC (verified in `wallet-grpc.controller.ts`) does its own `$transaction` with balance check-then-update, but this duplicates (and could drift from) `WalletService`'s own `debitWallet` idempotency-key logic (`backend/src/modules/wallet/wallet.service.ts:272`) — extracting wallet first means immediately confronting distributed-transaction/idempotency questions that are better solved once the extraction *mechanics* (build, deploy, client wiring, pooling) are proven on a safe module.
-- `notifications.service.ts` has almost no cross-module Prisma reads (`user.findUnique` for the FCM token) — minimal blast radius if the extracted service's Prisma pool misbehaves.
+### Finding: `notifications-service` currently has NO Railway healthcheck, and gRPC has no native HTTP healthcheck path
 
-**Do NOT extract `wallet-service` until after the settlement generalization (Integration Point 4) is designed**, because `TourSettlementService`'s multi-wallet `$transaction` pattern (5+ `SELECT FOR UPDATE` locks across vendor + system wallets in ONE transaction) is fundamentally incompatible with wallet operations living in a separate process — you cannot hold a Postgres row lock across a gRPC call boundary inside another service's transaction. If `SettlementService` is generalized to live in `CommonModule` and called synchronously in-process by Transport/Delivery/Events/Stays/Marketplace (as recommended in Integration Point 4), then `WalletModule` **must stay in-process** for the foreseeable future — extracting it would force settlement to become a distributed transaction (2-phase commit or saga), which is a much larger undertaking than this milestone scopes. Flag `wallet-service` extraction as a **future milestone**, not part of v2.0, and correct the roadmap accordingly if it currently implies wallet gets extracted too.
+`backend/apps/notifications-service/railway.toml` has no `healthcheckPath` (unlike the monolith's `railway.toml`/`backend/railway.toml`, which both set `healthcheckPath = "/api/v1/health"`). This isn't an oversight to "fix later" — Railway's healthcheck mechanism expects an HTTP `GET`, and `notifications-service` only exposes port 5008 as raw gRPC. Without a healthcheck, Railway can only detect "process crashed" (via `restartPolicyType = "on_failure"`), not "process is up but broken" (e.g. DB connection exhausted, a bad deploy that boots but 500s every RPC). This gap matters more once GRPC-06 wants blue-green/canary, because canary promotion needs a real readiness signal, not just "the container didn't exit."
 
-**Suggested order:** `notifications-service` (prove the pattern) → `ai-service` (stateless, streaming, no wallet coupling, isolates the Anthropic API blast radius which was the original stated goal — "resilience... around every external vendor call") → `admin-service` (read-mostly, only mutation is `setConfig`/status patches, low risk) → stop there for v2.0. Leave `auth-service`, `events-service`, `stays-service`, `marketplace-service`, `wallet-service` in-process pending the settlement/wallet redesign; extracting them now would be premature given the transactional coupling found in Integration Point 4.
+**What's needed for GRPC-06, concretely:**
 
-## Integration Point 2: WhatsApp Business API OTP Channel
+1. **Add gRPC Health Checking Protocol (`grpc.health.v1.Health`) to every extracted service.** `@nestjs/microservices` supports registering additional services alongside the primary one in the same `Transport.GRPC` microservice — add a small `HealthController` implementing `Check`/`Watch` per the standard `grpc_health_v1` proto (widely available as an npm package or hand-rolled 2-message proto), served on the same port. This is the idiomatic gRPC-world equivalent of the monolith's `/api/v1/health` REST endpoint and is what load balancers/orchestrators (including Railway's own proxy and any future k8s-style tooling) expect to probe.
+2. **Railway-specific canary mechanics:** Railway doesn't have a first-class "canary %" primitive like a service mesh does. The practical pattern on Railway for 2+ independently-deployed gRPC services is:
+   - Each extracted service keeps its **own Railway service + own `railway.toml`** (already the established pattern — `backend/apps/notifications-service/railway.toml` sets `watchPaths` scoped to just that service's source, so unrelated monolith commits don't trigger a redeploy of it). Extend this per new service (`delivery-otp-service/railway.toml`, etc.) with matching `watchPaths` scoping.
+   - Railway's built-in "deploy triggers on push, previous deploy stays live until the new one passes healthcheck" behavior **is** the blue-green primitive here — it already does not cut traffic to the new instance until `healthcheckPath` succeeds. This means step 1 (adding a real gRPC healthcheck) is the actual unlock for "blue-green," not a new Railway feature to configure. Today, with no healthcheck at all, Railway's rollout is closer to "recreate" than "blue-green" (new container starts, old one may already be torn down before the new one is confirmed serving traffic correctly).
+   - True canary (X% of traffic to the new version before full cutover) is not natively supported by Railway's proxy for a raw TCP/gRPC port the way it is for HTTP services with weighted routing. If a genuine percentage-based canary is required (vs. Railway's default "health-gated full cutover"), the realistic v2.1-scoped option is an **application-level canary flag** — reuse the exact pattern already proven for the settlement engine cutover (`platformConfig` key `delivery.settlement_engine_enabled`, gated in `DeliveryService`): a `platformConfig` boolean/percentage key per gRPC client (e.g. `grpc.delivery_otp_service.enabled`) that `ClientGrpc`-calling code checks before routing to the extracted service vs. falling back to the still-present in-process implementation. **This only works if the in-process fallback code path still exists** — i.e. don't delete the monolith's original in-process `verifyOtp()` logic when extracting; keep both, flag-gated, exactly like Transport/Delivery's settlement cutover. This is more effort than Railway-native rollout but gives you the actual canary percentage control the question is asking about, using a pattern the team has already built and shadow-verified once (SETTLE-09's Stage 1 batch shadow-verify / Stage 2 live dual-run).
+3. **`ClientGrpc` connection handling during cutover:** `@nestjs/microservices`' gRPC client (`ClientsModule.registerAsync`, as configured in `notifications-client.module.ts`) resolves its target via a static `url` from `ConfigService` at module init (`NOTIFICATIONS_SERVICE_URL`) and relies on gRPC's own channel-level reconnection (grpc-js retries/backoff at the connection level, independent of the `ResilienceService` cockatiel policies layered on top). During a Railway blue-green cutover, the DNS/URL for a service does **not** change — Railway services get a stable internal hostname, so the new container comes up behind the same `notifications-service:5008`-style address the client already targets. This means `ClientGrpc` does not need any reconfiguration during a cutover: the underlying gRPC channel will simply reconnect to whichever container Railway is currently routing that hostname to, once the healthcheck (item 1) gates the switch. The one thing to verify per new service: `ResilienceService`'s circuit breaker (`RESILIENCE_DEFAULTS[vendor].failureThreshold`) must be loose enough (or `halfOpenAfterMs` short enough) that a brief blue-green cutover window doesn't trip the breaker open and cause a cascade of `ServiceUnavailableException`s to end users — the existing `notificationsGrpc` entry (`timeoutMs: 5000, retryCount: 1, failureThreshold: 8, halfOpenAfterMs: 20000`) is a reasonable template to copy for new gRPC vendor entries, but confirm 8 consecutive failures won't realistically occur within one healthcheck-gated cutover window given the extracted service's actual request volume.
 
-### What already exists (more than the milestone brief implies)
-`AuthService.sendOtp()` → private `sendTermii()` (`backend/src/modules/auth/auth.service.ts:288-333`) **already has WhatsApp-adjacent logic**: when `TERMII_WHATSAPP_SENDER_ID` is configured, it sets `channel: 'whatsapp'` in the Termii API call, which routes the OTP through Termii's own WhatsApp Business API pass-through rather than SMS. There is a Twilio SMS fallback below that, and a final console-log stub if nothing is configured.
+**Recommendation:** GRPC-06 (blue-green/canary) is infrastructure that benefits every future extraction, so it makes sense to build it **before** GRPC-07/GRPC-08 wire any new services into production traffic, or at minimum before flipping any new service's `ClientGrpc` client on for real users. Practically: add the gRPC health endpoint pattern to `notifications-service` first (retrofit, low risk, no new service yet), prove Railway's healthcheck-gated rollout actually behaves as expected for gRPC, *then* apply the same scaffold to the new services GRPC-07/GRPC-08 create. Don't build a bespoke percentage-canary flag system speculatively — only add it if Railway's native health-gated cutover proves insufficient once observed in practice.
 
-**This is not the same thing as user-selectable multi-channel OTP.** Today: (a) channel selection is automatic/config-driven, not user-chosen; (b) there is no `channel` field anywhere in `OtpSendDto` (verified — it has only `phone: string`) or `RegisterDto`; (c) email is never used as an OTP channel — `SendgridService` (already `@Global()` via `CommonModule`) is only ever used for ticket QR delivery emails, never OTP.
+### New components for GRPC-06
 
-### Where it plugs in
-**Recommendation: extract a new `OtpChannelService` into `CommonModule`, keep the OTP state machine (Redis TTL/lockout) in `AuthService`.**
+- Small `grpc.health.v1.Health` proto + `HealthController` per extracted service (shared boilerplate — worth a tiny `packages/proto/grpc-health.proto` + a reusable NestJS provider rather than copy-pasting per service).
+- `railway.toml` per service updated with a gRPC-aware healthcheck once Railway's health-check config supports specifying a gRPC health check (verify current Railway support at build time — if Railway's `healthcheckPath` truly only supports HTTP, the fallback is a tiny sidecar HTTP `/healthz` in each gRPC service's same process, reusing `@nestjs/common`'s `HttpAdapterHost` alongside the `Transport.GRPC` microservice — NestJS supports a hybrid app that listens on both).
+- No new `docker-compose.yml` structural change beyond what GRPC-07/08 already add — blue-green is a Railway-deploy-time concern, not a local-dev-compose concern.
 
-Do not extract OTP dispatch into the existing `notifications` module/service, and do not route it through `notifications-service` gRPC once that's extracted. Reasoning:
-- `NotificationsModule` is scoped to FCM push (`sendPush`, `registerToken`) — semantically a different concern (push vs. verification-critical delivery) and it's explicitly `@Global()`-excluded, requiring per-module `imports: [NotificationsModule]` (seen in `TourBookingsModule`). Auth doesn't currently import it and shouldn't need to for something this core.
-- OTP dispatch is on the critical path of registration/login. If `notifications-service` is gRPC-extracted (per Integration Point 1's suggested order, it's extracted early), routing OTP through it adds a network hop and a new failure mode to the single most latency- and reliability-sensitive flow in the app. Keep OTP dispatch in-process, co-located with the Redis TTL/lockout logic it's tightly coupled to.
-- `CommonModule` is `@Global()` and already hosts exactly this shape of external-vendor-wrapper service (`PaystackService`, `SendgridService`, `S3Service`) — `OtpChannelService` fits the existing idiom precisely: inject `SendgridService` for email, add a new `WhatsAppService` (or extend the existing Termii call) for WhatsApp, keep the Termii/Twilio SMS logic, and unify behind one `send(phone, otp, channel)` method that `AuthService` calls instead of its current private `sendTermii`.
+---
 
-### Data flow change
-1. Add `channel: OtpChannel` (`enum { SMS, WHATSAPP, EMAIL }`, default `SMS`) to `OtpSendDto` and thread it through `verifyOtp`'s Redis key metadata if channel-specific retry logic is needed (likely not — Redis state stays channel-agnostic).
-2. `RegisterDto` gains an optional `preferredChannel` for a persisted preference (new `User.preferredOtpChannel` column) if the product wants "remember my choice" — confirm with stakeholder before adding schema; not implied as required by the milestone brief, just a natural extension.
-3. `EMAIL` channel requires an actual OTP email template via `SendgridService` — doesn't exist today (SendGrid is only wired for ticket delivery). New template + new `SendgridService.sendOtpEmail()` method.
-4. `WHATSAPP` channel: decide between (a) keep using Termii's WhatsApp pass-through (already partially wired, fastest path, but adds a dependency on Termii's WhatsApp product tier) or (b) integrate Meta's WhatsApp Cloud API directly (matches "WhatsApp Business API (net new)" language in the milestone brief more literally, but is a new vendor integration with its own webhook verification, template-approval process via Meta Business Manager, and rate limits). **Given PROJECT.md explicitly calls this "net new," treat it as (b)** — a genuinely new `WhatsAppService` in `CommonModule` calling Meta's Cloud API (`graph.facebook.com/v.../messages`), not a relabeling of the existing Termii pass-through. Flag this as a phase needing focused research (Meta Business verification requirements, template message approval lead time — this is often a multi-day approval process with Meta, a real scheduling risk for the milestone timeline).
+## Q3 — Scheduled Ministry exports (MIN-08)
 
-## Integration Point 3: Ministry Dashboard + MINISTRY_VIEWER
+### Finding: this is a `@Cron` job, not a queue — the codebase already has 6 precedents and zero queue infrastructure
 
-### Role wiring — trivial, guard needs no changes
-`RolesGuard` (`backend/src/common/guards/roles.guard.ts`) is fully generic — `requiredRoles.includes(user?.role)` — adding `UserRole.MINISTRY_VIEWER` to the enum (`backend/src/common/enums/user-role.enum.ts`) and decorating new endpoints with `@Roles(UserRole.MINISTRY_VIEWER, UserRole.SUPER_ADMIN)` is the entire guard-layer change. **Do not add `MINISTRY_VIEWER` to `REGISTERABLE_ROLES`** — it must be a role assignable only by an admin (matches how `LGA_ADMIN`/`SUPER_ADMIN`/`STATE_ADMIN`/`DRIVER`/`TOUR_GUIDE`/`CREATIVE` are already excluded from self-registration).
+No BullMQ/Bull/Agenda/node-cron in `backend/package.json` — `@nestjs/schedule` (`^6.1.3`) is the only scheduling primitive in the codebase, and it's already used for exactly this shape of problem: `DeliveryService` (`@Cron(CronExpression.EVERY_30_SECONDS)`, match-timeout sweep), `TransportService` (same), `StaysService` (`@Cron(CronExpression.EVERY_HOUR)`, escrow release), and — most relevant — `TourNotificationsService` (`backend/src/modules/tour-bookings/tour-notifications.service.ts`), which already runs **three** `@Cron` jobs (`EVERY_HOUR`, two `'*/15 * * * *'`) to scan bookings and fire time-windowed SendGrid emails + push notifications, using idempotency flags stored in `metadata` JSON on the target row so a cron tick doesn't double-send.
 
-### New controller, not an extension of AdminController — this is a real safety finding, not a style preference
-`AdminController` (`backend/src/modules/admin/admin.controller.ts`) sets `@Roles(UserRole.SUPER_ADMIN, UserRole.LGA_ADMIN)` at the **class level**, then only 2 of 9 routes narrow it further with a method-level `@Roles(UserRole.SUPER_ADMIN)` override (`getRevenue`, and implicitly none else). NestJS's `reflector.getAllAndOverride` means **method-level always wins, but where no method-level decorator exists, the class-level default applies**. Concretely: `updateUserStatus`, `updateVendorStatus`, `updateStudioSlot`, `setConfig` — all mutation endpoints — have no method-level override and would inherit whatever role set is added at the class level. If `MINISTRY_VIEWER` were added to the class-level `@Roles(...)` to get dashboard access, it would silently also grant Ministry viewers the ability to suspend users, approve/suspend vendors, and rewrite `platformConfig` values (including fee percentages). That is a straightforward compliance violation for a role explicitly named "read-only" in the milestone brief.
+This is a strong, proven precedent to copy directly for MIN-08. A queue (BullMQ etc.) would be new infrastructure this codebase has deliberately avoided everywhere else scheduling was needed — introducing one just for Ministry exports (a low-volume, infrequent job — daily/weekly recipient emails, not a high-throughput job stream) would be disproportionate and inconsistent with the existing pattern.
 
-**Build a new `MinistryModule`** (`ministry.controller.ts` + `ministry.service.ts` + own DTOs) with `@Roles(UserRole.MINISTRY_VIEWER, UserRole.SUPER_ADMIN)` applied **per-route**, all `@Get`, none writable. This matches the existing "self-contained NestJS module" convention (CLAUDE.md: `controller → service → prisma`) and sidesteps the class-level-inheritance trap entirely by never sharing a controller class with mutation endpoints.
+**Recommendation:** New `@Cron` job living in a **new dedicated service inside the existing `MinistryModule`** (`backend/src/modules/ministry/`), not `AdminModule` — the codebase already deliberately separated `MinistryController`/`MinistryService` from `AdminController`/`AdminService` specifically to keep the Ministry's read-only surface isolated (see the comment at the top of `ministry.controller.ts`: *"This controller MUST NEVER gain a @Patch/@Post/@Delete handler... isolated from every mutation endpoint"*). A scheduled export IS a mutation-adjacent concern (writing a delivery log row, sending email) — but it belongs architecturally with Ministry's domain (its data, its recipients, its export format code), not Admin's. Put the cron trigger in a new `MinistryExportSchedulerService` inside `MinistryModule`, separate class from `MinistryService` (which stays pure read-query) and separate from `MinistryController` (which stays GET-only) — this preserves both existing isolation invariants while adding the new capability.
 
-### Query pattern reuse
-`AdminService.getRevenue()` (`backend/src/modules/admin/admin.service.ts:50-98`) is the direct template: `Promise.all` of an `aggregate` + three `$queryRaw` breakdowns (by LGA, by status, by month). `MinistryService` should reuse this exact shape for visitor-entry KPIs — LGA breakdown, purpose-of-visit breakdown, monthly trend — swapping `orders`/`govtLevy` for the new `VisitorLog` table. Do not import `AdminService` into `MinistryModule` and call its methods directly (would re-couple the two after just separating them for the role-safety reason above); instead have `MinistryService` run its own equivalent Prisma queries against `VisitorLog` and reuse the read-only `platformConfig`/revenue aggregates by querying `PrismaService` directly, same as `AdminService` does — both services independently reading, neither depending on the other.
+**Reuse, don't rebuild:** `MinistryExportSchedulerService` should call the **exact same** `MinistryService.getVisitorEntriesByLgaAndMonth()` / `getPurposeBreakdown()` / `getRevenueToGovernment()` query methods and the **exact same** `CsvExportService.toCsv()` / `MinistryPdfService.renderPdf()` rendering methods the on-demand export routes already use (`MinistryController`'s `/export` endpoints, `ministry.controller.ts` lines 103-202) — zero duplication of query or rendering logic, only a new orchestration layer that runs on a timer instead of an HTTP request, writes the resulting buffer to an email attachment instead of an HTTP response, and records a delivery-log row instead of just streaming bytes back.
 
-### Visitor-entry / purpose-of-visit schema — needs a new table, does not piggyback cleanly
-Checked whether this can piggyback on existing booking data: `EventsModule` has QR-based ticket check-in (ticketed events only), `StaysModule` has booking + escrow (accommodation only, no "purpose of visit" concept), `TourismModule`/`LgasModule` are **read-only catalog** endpoints with zero visit-tracking or check-in mechanism at all today (verified — `TourismModule` responsibility is "Attractions CRUD; category/LGA filtering," nothing else). There is no unified "someone physically visited an LGA/attraction" signal in the schema today, and "purpose of visit" (tourism / business / relocation / other — whatever taxonomy the Ministry wants) has no home in any existing model.
+**Gap: `SendgridService` has no attachment support today.** Every existing method (`sendEmail`, `sendOtpEmail`, `sendTicketConfirmation`, etc. in `backend/src/common/services/sendgrid.service.ts`) calls `sgMail.send({ to, from, subject, html })` with no `attachments` field. `@sendgrid/mail` (already a dependency, v8.1.6) supports a base64-encoded `attachments` array natively — this needs a **new method**, e.g. `sendEmailWithAttachment(to, subject, html, attachments: { filename, content /* base64 */, type }[])`, added to `SendgridService`. Small, additive change; no existing call site needs to change.
 
-**New `VisitorLog` model required:**
+### New components for MIN-08
+
+- **Prisma model: `MinistryExportSubscription`** (or `MinistryExportRecipient`) — new table: `id`, `email` (or `userId` FK to a `MINISTRY_VIEWER`/`STATE_ADMIN` user), `reportType` (enum-like string: `'visitor-entries' | 'purpose-breakdown' | 'revenue'`, matching the existing `ExportSlug` union already used in the web dashboard), `frequency` (`'DAILY' | 'WEEKLY' | 'MONTHLY'`), `format` (`'csv' | 'pdf'`), `lgaId` (nullable, optional recipient-specific filter), `isActive`, `createdAt`/`updatedAt`. This is new — no existing table models "who wants a recurring report."
+- **Prisma model: `MinistryExportDeliveryLog`** — `id`, `subscriptionId` FK, `sentAt`, `status` (`'SENT' | 'FAILED'`), `errorMessage` (nullable), `recipientEmail` (denormalized snapshot, so a later change to the subscription's email doesn't rewrite history). This is the audit trail the question asks for ("delivery log").
+- **`MinistryExportSchedulerService`** (new, in `MinistryModule`) — one or a small number of `@Cron` jobs (daily tick is enough; weekly/monthly subscriptions are just "due today" checks against `frequency` + `lastSentAt`, same idempotency-flag-on-the-row pattern as `TourNotificationsService`) that: queries active subscriptions due today → calls the relevant `MinistryService` query method → renders via `CsvExportService`/`MinistryPdfService` → sends via the new `SendgridService.sendEmailWithAttachment()` → writes a `MinistryExportDeliveryLog` row.
+- **New CRUD endpoints** on `MinistryController` (or a small new `MinistryExportSubscriptionController` if you want to keep `MinistryController` GET-only per its documented invariant — recommended, given the comment explicitly says that controller must never gain a mutating verb) for `MINISTRY_VIEWER`/`STATE_ADMIN` to create/list/deactivate their own subscription rows.
+- **Web:** a small settings panel on `web/src/app/admin/ministry/page.tsx` (or a new sub-route) to manage subscriptions — reuses the existing `fetcher`/`api` client pattern already used throughout that page.
+
+---
+
+## Q4 — Settlement dispute/adjustment workflow (SETTLE-10)
+
+### Finding: `SettlementService` has a proven compensating-transaction precedent (`RefundService`) — disputes should follow the same shape, not reverse rows in place
+
+`SettlementService.settle()`'s idempotency and drift invariants (`backend/src/common/services/settlement.service.ts`) are locked (per its own header comment: *"Architectural commitments (LOCKED — carried over from Tour, do not deviate)"*) — one `$transaction`, `SELECT FOR UPDATE` on every wallet touched, idempotency via `reference`-prefix precheck + `P2002` fallback, reference scheme `${reference}-${refSuffix}`. A dispute workflow must not touch or rewrite existing `Transaction` rows (that would break the immutable audit ledger the whole system is built on) — it must **create new rows**, exactly like `RefundService.refund()` already does for buyer-side refunds (`backend/src/common/services/refund.service.ts`): the original charge `Transaction` is never mutated; a new `REFUND` transaction is written with reference `${paystackReference}-RFND`, balance-neutral where the money didn't actually move through the wallet (`gateway: 'PAYSTACK'`) or a real wallet debit/credit where it did (`gateway: 'WALLET'`).
+
+**Answering "does a dispute reverse or compensate":** **Compensate, always.** Reversing a settlement `Transaction` row in place is exactly the anti-pattern the codebase has already engineered around (`RefundService`'s own doc comment: *"Balance neutrality... the row exists purely as a ledger marker for audit and idempotency"*). A dispute resolution should produce one or more new `Transaction` rows, keyed off the original settlement's reference, that net out to the corrected split.
+
+**Key architectural gap this creates:** `SettlementService.settle()` currently has a **defensive floor check that rejects negative recipient amounts outright** (`settlement.service.ts` lines 108-116: *"a negative recipient amount... must never silently debit a wallet under CREDIT transaction semantics"*) — every credit in `settle()` is written as `type: 'CREDIT'`. A dispute that needs to **claw back** an over-paid recipient (e.g. Ministry was over-credited due to a wrong split tier, or a vendor was credited for a delivery later ruled fraudulent) cannot reuse `settle()` as-is, because `settle()` has no debit path. This needs a **new method** on `SettlementService`, not a bent version of `settle()` — e.g. `adjust(input: SettlementAdjustmentInput)` that:
+- Takes an `originalReference` (must already exist as a settled `Transaction`, else reject — disputes can't be raised against non-existent settlements),
+- Takes one or more `{ walletId, deltaNgn }` lines (positive = credit / negative = debit, both allowed here since this is a controlled internal correction path, not the general-purpose `settle()` entrypoint),
+- Runs its own `$transaction` with `SELECT FOR UPDATE` on every wallet touched, in the **same canonical sorted-by-walletId lock order** `settle()` already uses (line 159 — must be reused verbatim to avoid the exact deadlock class `settle()`'s own comment describes for two settlements sharing wallets in different array order),
+- Writes `Transaction` rows with reference `${originalReference}-ADJ-${n}` (parallel to `-RFND`), `type: 'DEBIT'` or `'CREDIT'` as appropriate, `metadata: { disputeId, module, adjustmentReason }`,
+- Is itself idempotency-checked the same way (`reference`-prefix precheck before entering the transaction) so a dispute can't be double-applied.
+- For a debit against a recipient (vendor/rider) wallet: **must check sufficient balance before debiting** (unlike `settle()`'s credit-only path, a debit can legitimately fail if the wallet has since been drained — e.g. vendor already withdrew). This needs an explicit insufficient-funds error path feeding into the dispute's state machine (see below) rather than a silent negative balance.
+
+**New Prisma models (state machine):** Modeled directly on the existing `AdminReviewFlag` precedent (`backend/prisma/schema.prisma` line 1089 — `status: String @default("OPEN")`, `OPEN | IN_REVIEW | RESOLVED | DISMISSED`, `assignedTo`, `resolution`, `resolvedAt`) — same shape, same string-based status field (not a Prisma enum, matching the codebase's stated preference for flexibility here), extended with settlement-specific fields:
+
 ```prisma
-model VisitorLog {
-  id          String   @id @default(uuid())
-  lgaId       String
-  lga         Lga      @relation(fields: [lgaId], references: [id])
-  userId      String?  // nullable — anonymous/kiosk entries allowed
-  purpose     String   // enum candidate once taxonomy is confirmed with Ministry
-  sourceType  String   // 'MANUAL' | 'EVENT_CHECKIN' | 'STAY_BOOKING' | 'KIOSK'
-  sourceRefId String?  // ticket/booking id when sourceType correlates to an existing record
-  createdAt   DateTime @default(now())
-  @@index([lgaId, createdAt])
+model SettlementDispute {
+  id                String    @id @default(uuid())
+  settlementReference String  // the original Transaction.reference prefix this dispute targets
+  module            String    // 'transport' | 'delivery' | 'events' | 'marketplace' | 'stays' | 'studio' | 'tour'
+  raisedByUserId    String
+  raisedBy          User      @relation(fields: [raisedByUserId], references: [id])
+  reason            String
+  status            String    @default("OPEN") // OPEN | IN_REVIEW | RESOLVED | DISMISSED
+  requestedAdjustmentNgn Decimal? // what the raiser believes the correction should be, nullable (reviewer determines final)
+  assignedTo        String?   // STATE_ADMIN/SUPER_ADMIN userId
+  resolution        String?
+  resolvedAt        DateTime?
+  adjustmentReference String? // set once resolved+applied — the `${originalReference}-ADJ-*` prefix actually written
+  metadata          Json?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([status])
+  @@index([settlementReference])
+  @@map("settlement_disputes")
 }
 ```
-Where it **can** correlate: when `sourceType` is `EVENT_CHECKIN` or `STAY_BOOKING`, populate `sourceRefId` from the existing QR check-in / booking flow (an `@OnEvent` or direct call from `EventsService`/`StaysService` on confirmed check-in) so Ministry gets automatic counts for the transactional flows, while still allowing standalone manual/kiosk entries for foot traffic with no purchase attached — this is the realistic MVP shape given tourism attractions have no check-in mechanism to build on top of yet.
 
-### CSV/PDF export
-No existing export utility for tabular data — `ItineraryPdfService` (`CommonModule`) exists but is purpose-built for AI itinerary output, not a general reporting PDF generator. `pdfkit` is already a `backend/package.json` dependency (used by `ItineraryPdfService`), reusable for a Ministry report generator; CSV export has no existing helper and is trivial to hand-write (no new dependency needed — plain string-join is sufficient for tabular KPI exports at this data volume).
+State machine: `OPEN` (raised) → `IN_REVIEW` (assigned to a `STATE_ADMIN`/`SUPER_ADMIN` reviewer) → `RESOLVED` (adjustment computed and applied via `SettlementService.adjust()`, `adjustmentReference` recorded) or `DISMISSED` (no adjustment). This mirrors `AdminReviewFlag`'s transitions exactly, so the review-queue UI/controller patterns already built for review flags (`ReviewsService.findFlagQueue()`/`findFlagById()`/`resolveFlag()`) can be near-verbatim copied for a `SettlementDisputeService`.
 
-## Integration Point 4: Generalized Settlement Splits
+**New components:**
+- `backend/src/modules/settlement-disputes/` — new module: `settlement-disputes.controller.ts` (raise, list/queue, get, resolve — role-gated `STATE_ADMIN`/`SUPER_ADMIN` for review/resolve, any authenticated party who was a recipient in the original settlement for raise), `settlement-disputes.service.ts`, DTOs (`raise-dispute.dto.ts`, `resolve-dispute.dto.ts`).
+- `SettlementService.adjust()` — new method, additive, does not change `settle()`'s signature or behavior (existing 6 call sites — transport/delivery/events/marketplace/stays/studio — are untouched by this change).
+- `SettlementDisputeService.resolve()` calls `SettlementService.adjust()` inside its own resolution flow, catching the insufficient-funds case and surfacing it back as a `409`-style error so a reviewer knows the "obvious" resolution isn't mechanically applicable (e.g. vendor already withdrew) and needs a different remediation (platform wallet absorbs the shortfall, logged for manual reconciliation — decide this policy explicitly, don't leave it implicit).
 
-### The real state is worse than "hardcoded two-way splits" — verified per-module
-This is the most consequential finding for sequencing. Checked actual wallet-credit code, not just the PROJECT.md summary:
+---
 
-| Module | What actually happens today (verified in source) | Platform/Ministry cut actually banked? |
-|--------|---|---|
-| **Transport** (`transport.service.ts:516-577`) | `feePct` read from `PlatformConfig` (NOT hardcoded — contradicts the "hardcoded" framing in PROJECT.md for this module specifically), driver wallet credited with `fare - platformFee` inside one `$transaction` with `SELECT FOR UPDATE` on the driver wallet only | **No.** `platformFee` is stored as a column value on the `Trip` row. No system/platform wallet is ever credited. |
-| **Delivery** (`delivery.service.ts:547-568`) | Same shape as Transport — `feePct` from `PlatformConfig`, rider wallet credited, `platformFee` computed | **No.** Same gap — fee is a number, not a wallet transaction. |
-| **Stays** (`stays.service.ts:303-362`, `@Cron releaseEscrow`) | Host wallet credited with the **full** `booking.totalPrice`, 24h after checkout | **No — worse than Transport/Delivery.** `Booking.govtLevyPct` column exists in the schema (default 0) but is never read in the escrow-release code path. Zero platform fee capture of any kind for Stays today. |
-| **Marketplace/Events/Studio** (`webhooks.service.ts`) | `WebhooksService` emits `payment.order_payment` / `payment.ticket_purchase` / `payment.studio_booking` via both `EventEmitter2` and Kafka | **No consumer exists.** Grepped `@OnEvent(` across all of `backend/src` — the only handler is `TourSettlementService`'s `@OnEvent('payment.tour_booking')`. The other three payment events are emitted into the void; nothing listens. (Not necessarily a live bug if these modules settle via a different, synchronous path at booking time the way Stays does — but it means the webhook-driven settlement path for these three is currently dead code, and any future real card-payment flow for them has no consumer to receive it.) |
-| **Tour Bookings** (`tour-settlement.service.ts`) | The only real N-way pattern: one `$transaction`, `SELECT FOR UPDATE` per vendor wallet + system wallet, platform commission genuinely credited to a real `SYSTEM_USER_ID` wallet, idempotency via `<ref>-V-<idx>` / `<ref>-PLAT` transaction rows, drift-assertion, refund-on-failure | **Yes** — this is the only module where the platform's cut is an actual bankable wallet balance. |
+## Q5 — Configurable per-module Ministry split tiers (SETTLE-11)
 
-**Conclusion:** "Generalize the settlement engine to a three-way vendor/Ministry/platform split, replacing today's hardcoded two-way splits" understates the work. Transport/Delivery need a **third leg added to a currently-real-but-incomplete two-way credit** (their percentage math is legitimately config-driven, just single-recipient). Stays needs the **fee capture built from scratch** — today it's zero-way (100% to host, 0% retained anywhere). Marketplace/Events/Studio's webhook-driven path needs a consumer built essentially from nothing (or confirmation that a different synchronous path is the real one, mirroring what Stays does, in which case that synchronous path — not yet located per-module in this research pass — is where `SettlementService` needs to plug in instead).
+### Finding: the "flat model" is actually 6 call sites independently duplicating the same two-key read pattern — the real fix is centralizing the read, not just adding tiers
 
-### Recommendation: `SettlementService` in `CommonModule`, generalized from `TourSettlementService`'s pattern
-Build a shared `SettlementService.settle(params)` in `CommonModule` (parallel to `RefundService`, which already lives there) that accepts:
-```typescript
-interface SettlementParams {
-  chargeAmountNgn: number;
-  reference: string;              // e.g. Paystack ref or internal booking ref
-  splits: Array<{ walletId: string; percentage: number; label: string }>;
-  ministryWalletId?: string;      // resolved from PlatformConfig, e.g. '<module>.ministry_wallet_user_id'
-  module: string;                 // 'transport' | 'delivery' | 'stays' | 'events' | 'marketplace'
+Grep across `transport.service.ts`, `delivery.service.ts`, `marketplace.service.ts`, `events.service.ts`, `stays.service.ts`, `studio.service.ts` shows **all six** independently do:
+```ts
+const feeCfg = await this.prisma.platformConfig.findUnique({ where: { key: '<module>.platform_fee_pct' } });
+const levyCfg = await this.prisma.platformConfig.findUnique({ where: { key: '<module>.govt_levy_pct' } });
+```
+...then compute the split inline before calling `settlementService.settle()`. This is a real per-module keying scheme already (each module has its own `PlatformConfig` rows), but it's flat (exactly 2 percentage keys per module, no concept of tiers — e.g. volume-based, date-effective, or category-based splits) **and duplicated 6 times** rather than owned by one resolver.
+
+**Recommendation: replace the scattered flat keys with a structured `SettlementSplitTier` table, and centralize resolution inside `SettlementService` itself** (not `PlatformConfig` generic key-value rows, which can't cleanly express "more than 2 named percentages" or "multiple tiers per module" without inventing a JSON sub-schema inside `PlatformConfig.value` — a dedicated table is cleaner and matches how `ShadowSettlementComparison` and `AdminReviewFlag` are already modeled as dedicated tables rather than jammed into the generic config table).
+
+```prisma
+model SettlementSplitTier {
+  id            String    @id @default(uuid())
+  module        String    // 'transport' | 'delivery' | 'events' | 'marketplace' | 'stays' | 'studio' | 'tour'
+  tierName      String    @default("default") // supports future volume/category tiering without a schema change
+  minAmountNgn  Decimal?  // nullable — null means "no lower bound" (applies to 'default' tier)
+  maxAmountNgn  Decimal?  // nullable — null means "no upper bound"
+  earnerPct     Decimal   // vendor/rider/host share
+  ministryPct   Decimal   // government levy share
+  platformPct   Decimal?  // optional explicit platform cut; if null, platform absorbs the remainder (matches SettlementService's existing drift-absorption behavior)
+  isActive      Boolean   @default(true)
+  effectiveFrom DateTime  @default(now())
+  metadata      Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([module, tierName])
+  @@index([module, isActive])
+  @@map("settlement_split_tiers")
 }
 ```
-Internally, this is `TourSettlementService`'s steps 4-6 (percentage resolution → drift-safe platform-commission calculation → one `$transaction` with `SELECT FOR UPDATE` per wallet, including a new Ministry wallet leg) lifted out of tour-booking-specific vendor-type resolution. Vendor-type-specific wallet resolution (GUIDE→TourGuide.userId, HOST→Property.hostId, etc.) stays in each calling module — `SettlementService` should accept already-resolved `walletId`s, not know about Transport's `Driver` model or Stays' `Property` model. This keeps `SettlementService` domain-agnostic and reusable, matching how `RefundService` is domain-agnostic today.
 
-`TourSettlementService` itself should be refactored to call the new shared `SettlementService` rather than duplicating the logic — do this refactor as part of generalizing, not left as a second parallel implementation (two implementations of the same critical financial logic is its own pitfall).
+- **`tierName` defaulting to `'default'`** means a straight migration of the existing 6 modules' current two-key values into one `SettlementSplitTier` row each (`tierName: 'default'`) is a zero-behavior-change migration — no call site's computed split changes on day one.
+- **`minAmountNgn`/`maxAmountNgn`** give "tiers" real meaning (e.g. a `'high_value'` tier for Delivery orders above ₦50,000 with a different Ministry cut) without a schema change later — this is speculative but cheap to include now given the model's already being created; if the actual v2.1 requirement is only "per-module" (not "per-module-per-volume-tier"), these columns just stay unused (`null`/`null`, one row per module), no harm.
+- **New method: `SettlementService.resolveSplit(module: string, amountNgn: number): Promise<{ earnerPct, ministryPct, platformPct }>`** — centralizes the lookup (queries `SettlementSplitTier` for the module, picks the tier whose `[minAmountNgn, maxAmountNgn]` range contains `amountNgn`, falls back to `'default'` if no range matches), replacing all 6 duplicated `platformConfig.findUnique` pairs. Mirrors the existing `resolveMinistryWallet()` method's "always fresh, never cached" discipline (line 319-328) — same freshness guarantee, same place on the class.
 
-### Sequencing: settlement generalization must land before further gRPC extraction touches these modules
-Given `SettlementService`'s `$transaction` needs `SELECT FOR UPDATE` locks across **multiple** wallets in one atomic unit, it must run **in-process** relative to `WalletModule`. This reinforces the Integration Point 1 recommendation: do not extract `wallet-service` (or `transport`, `delivery`, `stays`, `events`, `marketplace` once they gain real settlement) until/unless a distributed-transaction pattern is separately designed. **Land settlement generalization before or alongside the gRPC proof-of-pattern work (notifications/ai/admin), not after** — it doesn't block those low-risk extractions, but it does constrain which modules are safe to extract later, so getting the constraint identified early avoids the roadmap accidentally scheduling `wallet-service`/`transport-service` extraction before this is understood.
+**Call sites that change:** `transport.service.ts`, `delivery.service.ts`, `marketplace.service.ts`, `events.service.ts`, `stays.service.ts`, `studio.service.ts` — each replaces its inline two-`findUnique` block with one `await this.settlementService.resolveSplit(module, amountNgn)` call before building the `SettlementRecipient[]` array passed to `settle()`. This is a mechanical, low-risk change per call site (same shape as the SETTLE-04 cutover already done for Transport/Delivery — swap the computation, keep the `settle()` call identical) and can be shadow-verified the same way SETTLE-09 already proved Transport/Delivery's cutover: compute both the old flat-key result and the new tiered result, log a `ShadowSettlementComparison`-style row, confirm zero discrepancy before switching any call site over for real.
 
-## Suggested Build Order (Cross-Cutting)
+**Migration/seed note:** `prisma/seed.ts` currently seeds the flat `<module>.platform_fee_pct`/`<module>.govt_levy_pct` `PlatformConfig` rows (referenced by `transport.service.ts`/`delivery.service.ts` comments citing seed line numbers). The migration needs a one-time data migration script that reads each module's existing two `PlatformConfig` rows and writes the corresponding `SettlementSplitTier` `'default'` row — do this as a Prisma migration + a one-off script, not a `seed.ts` edit alone, since production already has these `PlatformConfig` rows with real (possibly stakeholder-tuned) values that must carry over, not be reset to seed defaults.
 
-1. **Fix the gRPC build (`rootDir`) + remove Dockerfile build-failure masking** — near-zero risk, unblocks everything else in Integration Point 1, and is a pure bug fix with no design decisions pending.
-2. **Ministry dashboard (`MinistryModule` + `MINISTRY_VIEWER` role + `VisitorLog` schema)** — fully independent of the other three; no shared code paths, no sequencing risk. Safe to parallelize with anything else.
-3. **Settlement generalization (`SettlementService`)** — before extracting any payment-touching module to gRPC, because it determines which modules *can't* be extracted soon. Also unblocks real revenue capture for Stays (currently zero) and Transport/Delivery (currently fee-tracked-but-unbanked), which is likely higher business value than the gRPC work itself.
-4. **WhatsApp OTP channel** — independent of gRPC/settlement; can run in parallel. Sequence it slightly behind an early gRPC decision only if `notifications-service` extraction timing matters to it (it doesn't, per the recommendation to keep OTP dispatch in-process regardless).
-5. **gRPC proof-of-pattern extraction: `notifications-service` → `ai-service` → `admin-service`** — only after (1) is fixed and (3) has clarified that `wallet-service`/payment-path modules are out of scope for this milestone's extraction work.
+---
 
-## Anti-Patterns to Avoid
+## Bonus finding relevant to MIN-09 (heatmap) — no mapping library present today
 
-### Anti-Pattern 1: Adding `MINISTRY_VIEWER` to `AdminController`'s class-level `@Roles(...)`
-**What people do:** Extend the existing dashboard controller's role list since it "already has KPIs."
-**Why it's wrong:** Class-level `@Roles` is the fallback for any method without its own override — 4 of `AdminController`'s 9 routes are unguarded mutation endpoints today. This grants write access to a role explicitly specified as read-only.
-**Do this instead:** New `MinistryModule`/`MinistryController`, every route individually decorated `@Get` + `@Roles(UserRole.MINISTRY_VIEWER, UserRole.SUPER_ADMIN)`.
+Not one of the 5 core questions, but discovered while researching the Ministry dashboard: `web/package.json` has `recharts` (`^3.8.0`) but **no** `react-leaflet`/`mapbox-gl`/`@react-google-maps` — despite `GOOGLE_MAPS_API_KEY` existing as a documented env var, grepping `web/src` and `mobile/` for `google.maps`/`GoogleMap` usage returns nothing (the key is only referenced in mobile's native `AndroidManifest.xml`/`build.gradle`/`app.json` for the native Maps SDK, not the web dashboard). `LGA` already has nullable `latitude`/`longitude` columns, and `VisitorLog` already has `lgaId` + `visitedAt`, so the query side (`MinistryService.getVisitorEntriesByLgaAndMonth()`, already grouped by LGA+month) needs no new schema for a heatmap — only a rendering choice:
+- **Cheapest, zero-new-dependency option:** an LGA-by-month **matrix/grid heatmap** (color-intensity cells, GitHub-contributions-graph style) built as a small custom SVG/React component or with `recharts`' existing primitives — no new library, no API key/cost, ships fastest.
+- **True geo heatmap option:** `react-leaflet` + free OpenStreetMap tiles (no API key, no cost) plotting intensity at each LGA's `latitude`/`longitude` — more visually "map-like" but is a new dependency and a small new skill surface for the team; avoid Google Maps JS API specifically given it's unused today and has a real per-load cost that cuts against the project's stated ~$11/mo free-first cost target.
+Recommend starting with the grid heatmap (reuses existing `recharts`/chart component patterns already in `web/src/components/admin/ministry/`) and only reaching for `react-leaflet` if the Ministry stakeholder specifically wants a literal map, not a data-density grid.
 
-### Anti-Pattern 2: Extracting `wallet-service` (or any payment-path module) to gRPC before settlement generalization is designed
-**What people do:** Follow the roadmap's literal service list and extract `wallet-service` early since its scaffold already exists and looks "furthest along."
-**Why it's wrong:** `SettlementService`'s multi-wallet `SELECT FOR UPDATE` transaction cannot span a gRPC call boundary without becoming a distributed transaction — a much larger, unscoped problem.
-**Do this instead:** Extract read-mostly / non-transactional modules first (`notifications-service`, `ai-service`, `admin-service`); leave `wallet-service` and any module `SettlementService` will call in-process for a future milestone.
+---
 
-### Anti-Pattern 3: Trusting `backend/apps/*/Dockerfile`'s green build as proof the service works
-**What people do:** See `RUN ... || true` "succeed" in CI/build logs and assume the service compiled.
-**Why it's wrong:** The `|| true` masks a real `TS6059` failure; the container will crash-loop on `CMD` because `dist/main.js` doesn't exist.
-**Do this instead:** Fix `rootDir` in each `tsconfig.app.json` first, then remove the `|| true` so genuine build failures fail the pipeline loudly.
+## Build Order Across All 7 Features
+
+Ordering driven by three dependency chains found during this research, not by ticket number order:
+
+1. **SETTLE-11 (split tiers) before SETTLE-10 (disputes).** A dispute's resolution needs to reference "what the correct split *should have been*" — if that's still 6 duplicated flat-key reads scattered across modules, the dispute resolver has no single source of truth to diff against. Once `SettlementService.resolveSplit()` exists, `SettlementDisputeService.resolve()` can call it directly to compute the corrected split, then feed the delta into the new `SettlementService.adjust()`. Building disputes first would mean either duplicating split-resolution logic inside the dispute service (throwaway work) or building `adjust()` against the old flat-key shape and refactoring it right after.
+
+2. **GRPC-06 (blue-green health-check infra) before any new `ClientGrpc` client is flipped on for real users — i.e. before GRPC-07/GRPC-08's extracted services go live, even if their scaffolds are built in parallel.** The scaffolding work (new `apps/*-service` directories, proto contracts, `*-client` modules) has no ordering dependency on GRPC-06 and can proceed independently. But cutting real traffic to `VerifyDeliveryOtp` extraction (or news/waitlist/reviews) without a working healthcheck means Railway's rollout behaves like a blunt recreate, not the blue-green safety net the milestone is explicitly trying to add — do the healthcheck retrofit on the existing `notifications-service` first (cheap, no new service needed, immediately provable), then apply the same pattern when GRPC-07/GRPC-08's new services are ready to take live traffic.
+
+3. **MIN-09 (heatmap) and MIN-08 (scheduled exports) are independent of each other and of everything else** — MIN-09 reads the same `MinistryService.getVisitorEntriesByLgaAndMonth()` query (or a close variant) the dashboard already has; MIN-08 wraps existing export rendering in a cron. Neither touches gRPC extraction or settlement. They can be built in either order or in parallel with the gRPC/settlement work; MIN-08 is slightly better done after MIN-09 only if both land in the same web dashboard update cycle (avoids two separate `/admin/ministry` page revisions in quick succession), but there's no technical dependency.
+
+4. **Within GRPC-07, `VerifyDeliveryOtp` extraction has no dependency on GRPC-08's modules and vice versa** — parallelizable. Within GRPC-08, waitlist → news → reviews is the recommended internal order (increasing complexity, not a hard dependency).
+
+**Recommended overall sequence:**
+
+```
+Phase A: SETTLE-11 (split tiers, centralize resolveSplit(), shadow-verify against existing 6 call sites)
+Phase B: SETTLE-10 (disputes, built on resolveSplit() + new adjust() method)
+Phase C: GRPC-06 healthcheck retrofit on notifications-service (small, independent, unblocks D/E going live)
+Phase D: GRPC-07 (VerifyDeliveryOtp extraction) + GRPC-08 (waitlist/news/reviews extraction) — parallelizable, both gated on Phase C before real cutover
+Phase E: MIN-08 + MIN-09 — parallelizable with everything above, no shared dependency
+```
+
+A and B together de-risk the highest-consequence code (money movement + a new state machine touching wallets) before touching deploy infrastructure or adding more independently-deployed processes to reason about. C before D avoids shipping new gRPC services into a deploy pipeline that still can't tell a "healthy but broken" cutover from a healthy one — repeating that exact gap for 3-4 new services compounds the operational risk each time. E has no reason to block on any of the above and is good filler/parallel work for a second workstream.
+
+---
 
 ## Sources
 
-- Direct source inspection: `backend/src/main.ts`, `backend/src/app.module.ts`, `backend/apps/wallet-service/**`, `backend/apps/notifications-service/**`, `backend/nest-cli.json`, `backend/tsconfig.json`, `packages/proto/wallet.proto`, `backend/src/modules/auth/auth.service.ts`, `backend/src/modules/auth/dto/otp-send.dto.ts`, `backend/src/modules/auth/dto/register.dto.ts`, `backend/src/common/common.module.ts`, `backend/src/common/guards/roles.guard.ts`, `backend/src/common/enums/user-role.enum.ts`, `backend/src/modules/admin/admin.controller.ts`, `backend/src/modules/admin/admin.service.ts`, `backend/src/modules/tour-bookings/tour-settlement.service.ts`, `backend/src/modules/tour-bookings/tour-bookings.module.ts`, `backend/src/modules/transport/transport.service.ts`, `backend/src/modules/delivery/delivery.service.ts`, `backend/src/modules/stays/stays.service.ts`, `backend/src/modules/webhooks/webhooks.service.ts`, `backend/src/kafka/kafka.service.ts`, `backend/prisma/schema.prisma`, `docker-compose.yml`, `railway.toml`, `backend/railway.toml`, `backend/apps/wallet-service/Dockerfile`, `backend/apps/wallet-service/railway.toml`.
-- Verification action: actually ran `npx nest build wallet-service` from `backend/` (not assumed) — confirmed `TS6059` rootDir compile failure, cross-checked against the Dockerfile's error-suppression, confirming the scaffold is currently non-functional end-to-end.
-- Verification action: `Grep` for `@OnEvent(` across `backend/src` confirmed only 3 handlers exist codebase-wide (`reviews.service.ts`, `tour-settlement.service.ts`, `tour-notifications.service.ts`), proving `payment.stay_booking`/`payment.ticket_purchase`/`payment.order_payment`/`payment.studio_booking` events have no consumer.
-- Verification action: `Grep` for `ClientGrpc|ClientProxyFactory|@Client(` across `backend/src` returned zero matches, confirming no gRPC client usage exists anywhere in the REST layer.
+All findings sourced directly from the ISEYAA repository at commit state as of 2026-07-19 (branch `microservices-redesign`):
+- `backend/prisma/schema.prisma` (models: `PlatformConfig`, `VisitorLog`, `LGA`, `DeliveryOrder`/`DeliveryRider`/`DeliveryEvent`, `Transaction`, `AdminReviewFlag`, `ShadowSettlementComparison`)
+- `backend/src/common/services/settlement.service.ts`, `refund.service.ts`, `sendgrid.service.ts`, `ministry-pdf.service.ts`
+- `backend/src/modules/delivery/delivery.service.ts`, `delivery.gateway.ts`
+- `backend/src/modules/ministry/ministry.controller.ts`, `ministry.module.ts`
+- `backend/src/modules/reviews/reviews.service.ts`, `news/`, `waitlist/` (grepped, no wallet coupling found)
+- `backend/src/modules/notifications-client/notifications-client.module.ts`, `notifications-client.service.ts` (extraction pattern template)
+- `backend/apps/notifications-service/main.ts`, `Dockerfile`, `railway.toml` (live gRPC service template)
+- `backend/src/resilience/resilience.service.ts`, `resilience.types.ts`
+- `docker-compose.yml`, `railway.toml`, `backend/railway.toml`
+- `packages/proto/delivery.proto`
+- `.planning/PROJECT.md` (v2.0 shipped state, v2.1 active requirements)
+- `backend/src/modules/tour-bookings/tour-notifications.service.ts` (`@Cron` precedent for MIN-08)
+- `backend/src/modules/marketplace/marketplace.service.ts`, `events/events.service.ts`, `stays/stays.service.ts`, `studio/studio.service.ts` (flat split-key duplication, SETTLE-11 evidence)
+- `web/package.json`, `web/src/app/admin/ministry/page.tsx` (heatmap library check)
+
+No external/Context7/WebSearch sources were needed — this research is entirely a codebase-integration analysis for an existing internal system, not a survey of external ecosystem options.
 
 ---
-*Architecture research for: ISEYAA v2.0 milestone (gRPC extraction, WhatsApp OTP, Ministry dashboard, settlement generalization)*
-*Researched: 2026-07-15*
+*Architecture research for: ISEYAA v2.1 milestone integration*
+*Researched: 2026-07-19*

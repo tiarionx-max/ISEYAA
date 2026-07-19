@@ -1,14 +1,17 @@
 # Stack Research
 
-**Domain:** Real gRPC microservice extraction + WhatsApp OTP channel + government dashboard export + generalized multi-recipient settlement (v2.0 milestone additions to an existing NestJS 10/11 modular monolith)
-**Researched:** 2026-07-15
-**Confidence:** HIGH (gRPC, resilience, export — verified against installed `backend/package.json`, npm registry, and official docs) / MEDIUM (WhatsApp cost comparison — Termii's exact per-message NGN rate not published, only USD list price found)
+**Domain:** Live gRPC extraction (Delivery + core modules + news/waitlist/reviews), Railway blue-green/canary deploys, scheduled Ministry export delivery, settlement dispute/adjustment + tiered splits (v2.1 milestone additions on top of the v2.0 gRPC/settlement/resilience foundation)
+**Researched:** 2026-07-19
+**Confidence:** HIGH (gRPC/health, Railway deploy behavior, Kafka/BullMQ/QStash tradeoffs — verified against official docs, live registry, and direct codebase inspection) / MEDIUM (exact dispute-workflow schema — inferred from the existing `SettlementService` implementation, not an external standard)
 
-## Important correction before recommendations
+## Headline Finding
 
-`backend/package.json` (read directly, not assumed) shows the backend is **already on NestJS 11.1.20**, not "NestJS 10.3.x" as `CLAUDE.md`/`PROJECT.md` state — that documentation is stale (repo is on branch `microservices-redesign`, mid-upgrade). More importantly for this milestone: **`@grpc/grpc-js` (^1.14.3), `@grpc/proto-loader` (^0.8.1), `@nestjs/microservices` (^11.1.19), and `ts-proto` (^2.11.8) are already installed dependencies**, and `packages/proto/generate.sh` already runs `ts-proto` with `nestJs=true, outputServices=grpc-js` to produce `packages/proto/generated/*.ts`. A grep of `backend/src` for `GrpcMethod|ClientGrpc|connectMicroservice|Transport.GRPC` returns zero matches — confirming PROJECT.md's claim: the gRPC toolchain is fully installed and codegen'd but **never wired into a running handler**. This changes the scope of "stack additions" for gRPC from *"add a library"* to *"wire up what's already installed, add proto stubs for 7 un-stubbed modules, and decide the mTLS/auth story."*
+**None of the four v2.1 features require a new *mandatory* runtime dependency.** The stack already installed (`@nestjs/microservices` 11.1.19, `@grpc/grpc-js` 1.14.3, `@nestjs/terminus` 11.1.1, `@nestjs/schedule` 6.1.3, `@sendgrid/mail` 8.1.6, `fast-csv` 5.0.7, `pdfkit` 0.19.1, Prisma 5.22, `cockatiel` 3.2.1) already covers every mechanism needed. What's missing is **usage patterns**, not packages — confirmed by reading `backend/package.json`, `backend/apps/notifications-service/`, `backend/src/common/services/settlement.service.ts`, and `backend/prisma/schema.prisma` directly rather than assuming:
 
-Also already installed and reusable (do not re-add): `kafkajs` ^2.2.4 (`backend/src/kafka/kafka.service.ts` — optional async event bus, no-ops when `KAFKA_BROKER_URL` unset, already consumed by `TourSettlementService` for cross-pod durability), `@nestjs/terminus` ^11.1.1 (health checks — reuse for gRPC service readiness probes on Railway), `@sentry/nestjs` + `@opentelemetry/*` (already wired — reuse for circuit-breaker state-change telemetry, no new observability library needed), `pdfkit` ^0.19.1 (`backend/src/common/services/itinerary-pdf.service.ts` — reuse pattern for Ministry export, do not add a second PDF library).
+1. Every new `apps/*-service` gRPC scaffold needs an HTTP health endpoint it doesn't have today. Railway's healthcheck system is **HTTP-only, verified no TCP/gRPC support** — and `notifications-service`'s own `railway.toml` currently has **no `healthcheckPath`** at all, so it doesn't even get Railway's automatic zero-downtime swap today. Fix this before treating it as the extraction template for GRPC-07/08.
+2. Delivery is wallet-adjacent (`SELECT FOR UPDATE` inside `completeDelivery()` → `SettlementService.settle()`); v2.0 explicitly deferred extracting it because a live gRPC boundary can't safely wrap that transaction without an outbox/saga. GRPC-07 pulls Delivery back into scope, so that outbox now has to actually be built — it needs a **Postgres-backed transactional outbox**, not a new message broker.
+3. Railway has **no native canary or traffic-splitting** — confirmed directly against Railway's own docs and a staff-answered community thread. Railway's "blue-green" is *automatic, per-service* zero-downtime swap (new deployment must pass an HTTP healthcheck before the old one is retired); it does **not** coordinate two independently-versioned instances of the same service or shift a percentage of traffic between them.
+4. `KafkaService`/`KAFKA_BROKER_URL` already exists in the repo (used today to decouple `WebhooksService` from Events/Marketplace/Stays/Studio settlement consumers) but is **dormant** — absent from `.env.example`, disabled unless the env var is set — and **Upstash Kafka was fully discontinued 11 March 2025**, so there is no drop-in free-tier provider to actually point it at anymore. Don't build the new Delivery outbox on top of it.
 
 ## Recommended Stack
 
@@ -16,203 +19,116 @@ Also already installed and reusable (do not re-add): `kafkajs` ^2.2.4 (`backend/
 
 | Technology | Version | Purpose | Why Recommended |
 |------------|---------|---------|-----------------|
-| `@nestjs/microservices` | `^11.1.20` (bump from installed `^11.1.19` to exactly match `@nestjs/core`) | gRPC transporter for NestJS hybrid app | Already installed; NestJS convention is to pin every `@nestjs/*` package to the identical version as `@nestjs/core` to avoid DI/decorator metadata drift between packages. |
-| `@grpc/grpc-js` | `^1.14.4` (bump from installed `^1.14.3`) | Pure-JS gRPC implementation (client + server) | Official Node gRPC library recommended by both NestJS docs and the gRPC project itself over the legacy native-binding `grpc` package (deprecated since 2021). Already the transporter `ts-proto`'s codegen targets (`outputServices=grpc-js`). |
-| `@grpc/proto-loader` | `^0.8.1` (already latest, no change) | Loads `.proto` files at runtime for the `ReflectionService`/dynamic paths | Required peer of `@grpc/grpc-js`; already installed and pinned to current. |
-| `ts-proto` | `^2.12.0` (bump from installed `^2.11.8`) | Generates NestJS-shaped TS interfaces + gRPC-js service stubs from `.proto` | Already the codegen tool in `packages/proto/generate.sh`. Do not introduce `grpc-tools`/`protoc` native codegen or `@nestjs/proto` alternatives — `ts-proto`'s `nestJs=true` flag produces exactly the `@GrpcMethod`-decoratable interfaces NestJS controllers expect. |
-| `cockatiel` | `^4.0.0` | Composable resilience policies (retry, circuit breaker, timeout, bulkhead, fallback) around Paystack/Termii/Anthropic/R2/FCM calls | See dedicated comparison below. Net-new dependency — no existing retry/circuit-breaker logic found anywhere in `backend/src` (`paystack.service.ts` has a bare 10s axios timeout and nothing else). |
-| `@json2csv/node` | `^7.0.6` | Streaming JSON→CSV transform for Ministry dashboard export | Net-new. Streams directly to the NestJS `@Res()` response or an S3 upload without buffering the full result set in memory — important since Ministry exports are open-ended date-range aggregate queries that could return large row counts. |
+| `@nestjs/microservices` + `@grpc/grpc-js` (hybrid app pattern) | 11.1.19 / 1.14.3 (already pinned; 1.14.4 patch available for grpc-js, non-blocking) | Every new extracted service becomes a **hybrid application** — `NestFactory.create(AppModule)` → `app.connectMicroservice({transport: Transport.GRPC, ...})` → `app.startAllMicroservices()` → `app.listen(httpPort)` — instead of the gRPC-only `createMicroservice()` bootstrap `notifications-service` uses today | Confirmed current NestJS pattern (`docs.nestjs.com/faq/hybrid-application`, unchanged since Nest 6, verified against 2026 sources). Gives each new service both its gRPC port *and* an HTTP port purely for `/healthz` — required because Railway can only healthcheck HTTP endpoints |
+| `@nestjs/terminus` | ^11.1.1 (already pinned, powers the monolith's `/api/v1/health`) | Reuse the exact `HealthController`/`HealthCheckService` pattern from `backend/src/health/` for every new service's `/healthz` | Zero new dependency; keeps healthcheck implementation identical across the monolith and every extracted service, no drift |
+| Prisma schema additions (no version change) | ^5.22.0 (already pinned) | New models: `OutboxEvent` (wallet-adjacent extraction reliability), `SettlementDispute` + `SettlementAdjustment` (dispute workflow); widen `PlatformConfig.value` JSON shape for tiered splits | Reuses the single ORM already governing every other domain table (Wallet, Transaction, PlatformConfig, AuditLog) — no second data-access layer, no migration-tooling change |
+| `@nestjs/schedule` | ^6.1.3 (already pinned, already used for the Stays escrow-release cron) | Cron trigger for (a) scheduled Ministry export delivery (MIN-08) and (b) the outbox-relay poller for Delivery's gRPC extraction (GRPC-07) | Railway runs ISEYAA as a **persistent container**, not a serverless/edge function — in-process cron has no cold-start problem to solve, so a full queue system is unjustified (see "What NOT to Use") |
 
 ### Supporting Libraries
 
 | Library | Version | Purpose | When to Use |
 |---------|---------|---------|-------------|
-| `pdfkit` | `^0.19.1` (already installed — **do not add a second PDF library**) | Ministry dashboard PDF export | Reuse `backend/src/common/services/itinerary-pdf.service.ts` as the template: build a sibling `MinistryDashboardPdfService` following the same stream-to-Buffer→S3-or-response pattern. `puppeteer`/`pdf-lib` are explicitly forbidden by the same rationale already documented in `itinerary-pdf.service.ts` (puppeteer bundles ~150MB headless Chrome, blows the free-tier container budget; pdf-lib is a heavier API for list-style documents). |
-| `p-timeout` | not needed | — | Cockatiel's own `timeout()` policy covers this — do not add a separate timeout library. |
-| Axios (`axios` ^1.6.7, already installed) | — | HTTP client for Termii WhatsApp Token API | No new HTTP client needed — extend the existing Termii integration (same base URL, same `api_key` auth) with a `channel: "whatsapp_otp"` request variant. |
+| `grpc-js-health-check` | 1.2.2 | Implements the standard gRPC Health Checking Protocol (`grpc.health.v1.Health`) server-side, layered on the same grpc-js server `@nestjs/microservices` already creates | Optional, additive to the mandatory HTTP `/healthz`. Gives the monolith's `ClientGrpc` callers — and a future canary router — a protocol-native way to ask "is this specific gRPC instance healthy," distinct from Railway's own HTTP probe. Most useful once two live instances of the same service (canary + stable) exist and the caller must pick one |
+| `@sendgrid/mail` | ^8.1.6 (already pinned) | Extend `SendgridService` with an `attachments: [{content: base64, filename, type, disposition: 'attachment'}]` array | MIN-08: attach the CSV/PDF the cron job generates directly to the recurring Ministry export email. Native SDK feature — no version bump, no new package, no new vendor |
+| `fast-csv` / `pdfkit` | ^5.0.7 / ^0.19.1 (already pinned) | Reuse `CsvExportService` / `MinistryPdfService` (already built in `CommonModule` for the on-demand `MinistryModule` export endpoints) as the payload generator the cron job calls | The scheduled job is a thin wrapper: cron fires → call the existing export service methods → email the result as an attachment. No new generation library, no duplicate PDF/CSV code path |
+| `class-validator` / `class-transformer` | ^0.14.1 / ^0.5.1 (already pinned) | DTOs for the new dispute-submission/resolution endpoints (`RaiseSettlementDisputeDto`, `ResolveSettlementDisputeDto`) and for validating the new tiered `PlatformConfig.value` JSON shape before an admin write persists it | Matches the codebase's existing DTO-at-every-boundary convention; catches a malformed tier-array JSON blob at config-write time instead of at settlement time, where it would silently corrupt a real payout |
+| `@railway/cli` | 5.27.0 | Scripted blue-green cutover: create/verify a canary service, poll `/healthz`, flip the monolith's `*_SERVICE_URL` variable, remove the retired instance | Add as a root devDependency **only if** the team wants a repeatable CI/ops script rather than clicking through the Railway dashboard per cutover. Railway's GraphQL Public API (plain `fetch` — Node 20 has it natively, no client library needed) is the alternative if this logic should live inside a NestJS ops command instead of a shell script |
 
 ### Development Tools
 
 | Tool | Purpose | Notes |
 |------|---------|-------|
-| `packages/proto/generate.sh` (existing) | Regenerate `.ts` stubs from `.proto` | Extend with 7 new `.proto` files for transport, delivery, tour-packages, tour-guides, news, waitlist, reviews — no script changes needed, `ts-proto`'s glob (`./packages/proto/*.proto`) already picks up new files automatically. |
-| `grpcurl` (CLI, not npm) | Manual gRPC smoke-testing against a running `connectMicroservice()` port | Install via `choco install grpcurl` (Windows) or download binary; not a project dependency — dev-machine tool only, for verifying `@GrpcMethod` handlers respond correctly before wiring a `ClientGrpc` consumer. |
+| Per-service `railway.toml` (`healthcheckPath`, `healthcheckTimeout`, `RAILWAY_DEPLOYMENT_OVERLAP_SECONDS`) | Turns on Railway's native automatic zero-downtime swap for each extracted service | Copy the root `backend/railway.toml`'s `[deploy] healthcheckPath = "/api/v1/health"` pattern into every `backend/apps/<service>/railway.toml` — currently only the monolith has this; `notifications-service/railway.toml` has neither `healthcheckPath` nor an HTTP listener to point it at. Set `RAILWAY_DEPLOYMENT_OVERLAP_SECONDS` generously (30-60s) so in-flight long-lived gRPC/HTTP2 streams drain before the old deployment is killed |
+| Railway GraphQL Public API (`https://backboard.railway.app/graphql/v2`) | Programmatic service create/deploy/variable-set/remove for a scripted blue-green or config-driven canary cutover | No SDK needed — Node 20's built-in `fetch`. Use this (or `@railway/cli`) to script the "two named services + env-var swap" pattern below, since Railway itself won't orchestrate a multi-service coordinated swap |
+| k6 / Artillery (already used per PROJECT.md Phase 6 load-test scripts) | Load-test a canary instance before promoting it to 100% traffic | Reuse existing scripts against the canary service's private-network address before flipping the routing weight/flag to full traffic |
 
 ## Installation
 
 ```bash
-# gRPC — bump existing installs to align exactly with @nestjs/core 11.1.20
-npm install @nestjs/microservices@^11.1.20 @grpc/grpc-js@^1.14.4 --workspace backend
+# Optional gRPC-native health protocol (per new extracted service, backend workspace)
+npm install grpc-js-health-check --workspace=backend
 
-# Resilience
-npm install cockatiel@^4.0.0 --workspace backend
-
-# Ministry export
-npm install @json2csv/node@^7.0.6 --workspace backend
-
-# Dev dependency bump for proto codegen
-npm install -D ts-proto@^2.12.0 --workspace backend
+# Optional: scripted Railway cutover tooling (root devDependency)
+npm install -D @railway/cli
 ```
 
-WhatsApp OTP requires **no new npm package** — it is an additional request shape (`channel: "whatsapp_otp"`) on the already-integrated Termii REST API, called via the already-installed `axios`. Settlement generalization requires **no new npm package** — it is a service-layer refactor of `TourSettlementService`'s existing Prisma `$transaction` + `SELECT FOR UPDATE` pattern.
-
-## Gap: real gRPC microservice extraction
-
-### What "already exists but unwired" means concretely
-`packages/proto/*.proto` (8 files: auth, wallet, events, marketplace, notifications, stays, admin, ai) and their `generated/*.ts` counterparts define the *contract*. Nothing in `backend/src` implements a `@GrpcMethod()` handler against them, and `backend/src/main.ts` calls only `NestFactory.create()` — a single HTTP app. Zero `ClientGrpc`/`ClientGrpcProxy` consumers exist either.
-
-### Recommended wiring pattern (hybrid app, in-process first)
-NestJS's documented pattern for this exact situation — REST stays the external surface, gRPC becomes internal transport — is `app.connectMicroservice()` with `inheritAppConfig: true` so the gRPC microservice picks up the same global pipes/interceptors/filters as the HTTP app:
-
-```typescript
-// main.ts
-const app = await NestFactory.create(AppModule, { rawBody: true });
-app.connectMicroservice<MicroserviceOptions>(
-  {
-    transport: Transport.GRPC,
-    options: {
-      package: 'wallet',
-      protoPath: join(__dirname, '../../packages/proto/wallet.proto'),
-      url: '0.0.0.0:50051',
-    },
-  },
-  { inheritAppConfig: true },
-);
-await app.startAllMicroservices();
-await app.listen(process.env.PORT ?? 3001);
-```
-
-This lets each module add a `@GrpcMethod('WalletService', 'DebitWallet')` handler beside its existing REST controller **inside the same process** first — cheap way to validate the 8 existing proto contracts (and stub the 7 missing ones for transport/delivery/tour-packages/tour-guides/news/waitlist/reviews) without a deploy topology change. Physical extraction to separate Railway services is the second step, per-module, once each contract is proven in-process.
-
-### Railway topology change
-Today: one Railway service (`backend`), one Docker container, one `NestFactory.create()`. For real extraction: multiple Railway services *within the same Railway project*, one per extracted module, each with its own root directory/watch path (Railway's monorepo support builds only the service whose watch path changed). Services communicate over Railway's private network — every service gets a `<service>.railway.internal` DNS name, and Railway confirms **all private-network traffic is already encrypted via WireGuard** at the platform level. This is a load-bearing fact for the mTLS decision below.
-
-### Inter-service auth: skip mTLS certs, use a shared-secret gRPC interceptor
-Because Railway's private network is already WireGuard-encrypted end-to-end, per-call mTLS certificate rotation is redundant transport-layer work for v2.0 — it adds cert-issuance/rotation operational burden (a CA, cert renewal, no existing secrets-rotation tooling in this stack) without a corresponding threat this milestone needs to close (traffic isn't traversing the public internet). Recommend instead: a NestJS gRPC `CanActivate` guard (pattern: [`nestjs-guard-grpc`](https://github.com/mabuonomo/nestjs-guard-grpc), or a ~20-line custom guard) that validates a shared-secret bearer token in gRPC `Metadata` on every internal call, sourced from a `GRPC_INTERNAL_SECRET` env var (same pattern as existing `PAYSTACK_WEBHOOK_SECRET` HMAC verification). Document real mTLS as a backlog item **only if** a future requirement needs gRPC calls to cross Railway project/environment boundaries where the private network doesn't reach.
-
-### What NOT to do here
-Do not add a service mesh (Istio/Linkerd), API gateway product (Kong/Ambassador), or service-discovery library (Consul/etcd) — Railway's private network + internal DNS already provides service discovery, and a single `backend` service can keep acting as the public REST-to-gRPC gateway (BFF pattern) for the foreseeable future given the platform's scale (7M addressable, not 7M concurrent).
-
-## Resilience: Cockatiel vs Opossum
-
-| Criterion | Cockatiel 4.0.0 | Opossum 10.0.0 |
-|---|---|---|
-| Scope | Retry + circuit breaker + timeout + bulkhead + fallback, all composable via `wrap()` | Circuit breaker only |
-| To cover this milestone's need (retry + breaker + timeout across 5 vendors) | One dependency, one policy pipeline per vendor | Would need `opossum` + a separate retry lib (`p-retry` or `async-retry`) + a separate timeout wrapper — 3 dependencies, manual composition |
-| TypeScript | TypeScript-first, zero runtime dependencies | JS-native with `@types/opossum`, functional but retrofitted types |
-| Maintenance | Actively maintained | Maintained by the Node.js Foundation's nodeshift team, v9+ requires Node ≥20 (compatible) |
-| Fit with NestJS interceptor pattern | Policies are plain functions — trivially wrapped in a NestJS provider factory (`createPaystackPolicy()`, `createTermiiPolicy()`, etc.) registered in the existing `CommonModule` | Same, but requires assembling breaker + retry + timeout as three separate wired objects per vendor |
-
-**Recommendation: Cockatiel.** Given the requirement is explicitly "circuit breaker / retry / timeout / fallback" across five distinct vendor integrations (Paystack, Termii, Anthropic, R2/S3, FCM), Cockatiel's single composable policy (`wrap(retry(...), circuitBreaker(...), timeout(...))`) per vendor is materially less glue code than assembling Opossum plus two more single-purpose libraries. Emit Cockatiel's `onFailure`/`onBreak`/`onReset` events into the existing `Logger` + OpenTelemetry span attributes (both already wired) — no new observability library needed.
-
-Implementation location: new `backend/src/common/resilience/` with one policy-factory function per vendor, injected into the existing `PaystackService`, `TermiiService` (or its WhatsApp variant), `AiService` (Anthropic), `S3Service`, and the FCM push service — this fits the existing `@Global() CommonModule` pattern (`backend/src/common/common.module.ts`) without restructuring module boundaries.
-
-## WhatsApp OTP: Termii vs Meta direct — explicit call
-
-**Recommendation: Termii's `Send WhatsApp Token` API (`channel: "whatsapp_otp"` on the existing `POST /api/sms/send` endpoint). Do not integrate Meta's WhatsApp Business Cloud API directly for v2.0.**
-
-| Factor | Termii WhatsApp Token API | Meta WhatsApp Business Cloud API (direct) |
-|---|---|---|
-| New vendor relationship | None — reuses the already-integrated `TERMII_API_KEY`, same base URL family as the existing SMS OTP integration | New: requires a Meta Business Account, WhatsApp Business Account (WABA) setup, phone number registration, and business verification — a multi-week approval process, non-trivial for a government-affiliated entity |
-| Template approval | Handled by Termii as the Business Solution Provider; endpoint documented as "not enabled by default — contact support to activate" (a support ticket, not a compliance review) | Every OTP message must go through Meta's template pre-approval queue (24–48h+ review cycle per template, per language) before it can be sent |
-| New SDK/dependency | None — extends existing axios-based Termii integration | Official `WhatsApp/WhatsApp-Nodejs-SDK` (Meta-hosted on GitHub) — a new dependency, new client wiring, new webhook endpoint for delivery-status callbacks |
-| Cost | Termii WhatsApp OTP list price ≈ $0.0566/message (USD reference rate found; exact NGN billing not published — verify directly with Termii before scoping budget) | Since July 2025, Meta bills per delivered authentication template message by destination country; Nigeria falls under Meta's "Authentication-international" tier for WABAs not registered in-market, which carries a materially higher per-message rate than domestic authentication pricing (observed ~20x+ multiplier in other markets, e.g. India domestic $0.0014 vs international $0.0304) — likely more expensive than Termii's flat rate once the international surcharge applies |
-| Operational fit | OTP channel selection (SMS/Email/WhatsApp) becomes a `channel` parameter on one existing service, matching the existing `TermiiService` shape | Requires a parallel `WhatsAppService`, a parallel webhook ingestion path for delivery receipts, and ongoing template-content compliance ownership |
-| Risk | Single point of failure if Termii's own Meta BSP relationship has an outage — mitigated because WhatsApp is one of three user-selectable channels (SMS/Email remain available) | More control over branding/template content, but that control isn't a stated requirement for this milestone |
-
-Verify before implementation: confirm Termii's WhatsApp Token endpoint is activated for the ISEYAA account (support ticket, per their docs) and pull exact NGN pricing from Termii's account dashboard — the public pricing page did not surface Nigeria-specific WhatsApp OTP rates during this research pass (flagged MEDIUM confidence on cost only, not on the architectural recommendation).
-
-## Government dashboard export
-
-**Recommendation: CSV via `@json2csv/node`, PDF via the existing `pdfkit` pattern. Do not add a spreadsheet library (ExcelJS/xlsx) or scope an OData/Power BI feed for v2.0.**
-
-- CSV covers the "spreadsheet-consumable feed" requirement without a new dependency category: CSV opens natively in Excel and is importable directly into Power BI via "Get Data → Text/CSV" — no XLSX-specific formatting (merged cells, formulas, multi-sheet workbooks) was named as a requirement, so `exceljs`/`xlsx` would be scope creep. If a future milestone needs multi-sheet workbooks or cell formatting, revisit with `exceljs` (`^4.4.0`) then — not now.
-- Avoid the legacy `json2csv` package (still published, latest is `6.0.0-alpha.2`, effectively unmaintained under that name) — the project was split into scoped packages (`@json2csv/node`, `@json2csv/plainjs`, etc.), current stable `7.0.6`. `@json2csv/node` specifically provides a Node `Transform`/async-iterable interface, which matters for streaming a large Ministry export directly to the HTTP response instead of materializing the whole CSV string in memory.
-- PDF: reuse `pdfkit` and mirror `ItineraryPdfService`'s existing structure (render to Buffer, no headless browser, upload via `S3Service` or stream directly to `@Res()`) for a `MinistryDashboardPdfService`. Do not introduce `puppeteer` or `pdf-lib` — the same container-size and complexity rationale already documented in that file applies unchanged.
-- A true OData feed or scheduled Power BI connector is out of scope for v2.0: it implies an additional auth surface (service-principal or API-key-scoped read endpoint with its own rate limiting) and an ongoing schema-stability contract with an external BI tool — bigger commitment than "read-only dashboard with CSV/PDF export" calls for. Flag as a backlog candidate only if the Ministry explicitly requests live BI connectivity beyond periodic export.
-
-## Generalized multi-recipient settlement split
-
-**No new library.** `backend/src/modules/tour-bookings/tour-settlement.service.ts` (`TourSettlementService`) is the pattern to generalize, not reinvent:
-
-- One Prisma `$transaction` per payment event, `SELECT FOR UPDATE` (via `tx.$executeRaw`) on every wallet row touched, in vendor-then-platform order.
-- Split entries resolved from a stored `settlementSplit: {vendorType, vendorId, percentage}[]` array (currently on `TourBooking.snapshot`), each type resolved to a `userId` → `walletId` via a `switch` (`GUIDE`→`TourGuide.userId`, `HOST`→`Property.hostId`, `ORGANISER`→`Event.organizerId`, `ATTRACTION`→a `PlatformConfig`-driven standing wallet with a `logger.warn` fallback-to-platform-commission if unset).
-- Platform/commission share is computed as the *remainder* (`chargeAmount - sum(resolved vendor shares)`), which absorbs rounding drift — with a defensive `> ₦0.02` drift assertion that throws rather than silently misallocating funds.
-- Idempotency via `<reference>-V-<idx>` / `<reference>-PLAT` transaction rows checked before the transaction runs (replay-safe).
-- Failure path calls the existing `RefundService.refund()` and flips status to `REFUNDED` outside the failed transaction.
-
-**Generalization for the three-way vendor/Ministry/platform split**: add a `MINISTRY` (or reuse the existing `ATTRACTION`-style `PlatformConfig`-driven standing wallet) `vendorType` case, resolved the same way `ATTRACTION` already resolves — via a well-known `PlatformConfig` key (e.g. `settlement.ministry_wallet_user_id`), analogous to `tour.government_wallet_user_id`. Extract the `SplitEntry`/`ResolvedSplit` resolution logic and the `$transaction` fan-out loop out of `TourSettlementService` into a shared `backend/src/common/services/settlement-engine.service.ts` that any module's `@OnEvent('payment.*')` handler can call with its own split config, replacing the hardcoded two-way percentages currently in Transport (85/15) and Delivery (80/20). Each module keeps its own `@OnEvent()` listener (per the existing `WebhooksService` → feature-service dispatch pattern in `CLAUDE.md`); only the fan-out/locking/idempotency core moves to the shared engine.
-
-**What NOT to do**: do not build a new payment-splitting library or adopt a third-party "marketplace payments" SDK (e.g., Stripe Connect-style patterns) — Paystack/Flutterwave have no native split-payment primitive that fits the wallet-ledger model this project already uses, and the in-house engine is already proven correct under concurrent load (wallet invariant tests exist: `tour-bookings/__tests__/wallet-invariant.e2e-spec.ts`).
+No other installs are required. Extraction, scheduling, and dispute/adjustment work is schema + code-pattern work layered on already-pinned packages — do not add a queue, a message broker, a feature-flag SaaS, or a second money-precision library for this milestone (see "What NOT to Use").
 
 ## Alternatives Considered
 
 | Recommended | Alternative | When to Use Alternative |
-|-------------|-------------|--------------------------|
-| Cockatiel | Opossum + p-retry + a timeout wrapper | If the team specifically wants Node.js Foundation governance on the circuit-breaker piece and is fine assembling retry/timeout separately — more moving parts for the same outcome here. |
-| Termii WhatsApp Token API | Meta WhatsApp Business Cloud API direct | If the Ministry later requires WhatsApp-specific rich templates (buttons, carousels, media-heavy notifications) beyond simple OTP codes — that's beyond what Termii's token endpoint offers and would justify the Meta Business verification effort. |
-| `@json2csv/node` | `fast-csv` (`^5.0.7`) | If the export needs full control over row-by-row streaming transforms (e.g., joining multiple async data sources per row) rather than field-mapped JSON objects — `fast-csv`'s lower-level stream API is more flexible but requires more boilerplate for the straightforward "map Prisma aggregate rows to named columns" case here. |
-| Hybrid in-process `connectMicroservice()` first, physical split second | Extract straight to separate Railway services per module immediately | If the team is confident in the 8 existing (and 7 new) proto contracts and wants to skip the in-process validation step — riskier given zero `@GrpcMethod` handlers exist today to validate against. |
-| Shared-secret gRPC metadata guard | Full mTLS with a private CA | If gRPC traffic will ever cross Railway project/environment boundaries (multi-region, multi-tenant deploys) where the WireGuard-encrypted private network doesn't reach — not a stated requirement for v2.0. |
+|-------------|-------------|-------------------------|
+| Postgres transactional outbox (`OutboxEvent` table + `@nestjs/schedule` poller + `cockatiel` retry) for the Delivery wallet-adjacent extraction | `KafkaService` (already in repo, dormant) | Only if the team provisions a real Kafka broker (Confluent Cloud free tier, Aiven, Redpanda serverless — **not** Upstash Kafka, discontinued 11 March 2025) for reasons beyond this one extraction, e.g. genuine multi-consumer fan-out. For a single Delivery→wallet delivery-confirmation path, a polled outbox table needs no new infra and matches the free-first cost target |
+| Config-driven canary routing (extend the existing `platformConfig` boolean-flag cutover pattern proven in SETTLE-09 into a weighted/percentage flag consumed by the monolith's `ClientGrpc` factory) | Dedicated feature-flag service (Unleash self-hosted, LaunchDarkly) | Only if rollout decisions need to be made by non-engineers through a UI, or need audience targeting beyond simple percentage/hash-based splits across many features at once — disproportionate for gating ~10 gRPC service cutovers |
+| `SettlementService` extended with a peer `adjust()`/`reverse()` method (same `$transaction` + `SELECT FOR UPDATE` + reference-prefix idempotency architecture, new reference namespace) | A new dedicated ledger/accounting library (e.g. `medici`) | Only if ISEYAA needed full double-entry bookkeeping across an arbitrary chart of accounts — the existing `Transaction`/`Wallet` model with reference-suffix idempotency already functions as a working single-entry ledger; a second ledger abstraction for just disputes would fragment the audit trail `AuditLog` already covers |
+| `@nestjs/schedule` cron for MIN-08 | BullMQ + `@nestjs/bullmq` (11.0.4) against a dedicated Upstash Redis DB | Only if Ministry export delivery grows into high-fan-out (many recipients, each needing independent retry/backoff/dead-letter visibility) — at that point BullMQ's job-level retry and observability earn their cost. Not justified for one recurring job |
 
 ## What NOT to Use
 
 | Avoid | Why | Use Instead |
-|-------|-----|--------------|
-| Legacy `json2csv` (unscoped package, stuck at `6.0.0-alpha.2`) | Effectively superseded/unmaintained under that name; the maintainers moved to scoped `@json2csv/*` packages years ago | `@json2csv/node` |
-| `exceljs`/`xlsx` for v2.0 export | Not a stated requirement (no multi-sheet/formula/formatting need mentioned); adds a second export-format dependency for a "nice to have" | CSV via `@json2csv/node` (opens fine in Excel/Power BI) |
-| `puppeteer` for Ministry PDF export | ~150MB headless Chrome bundle — already explicitly forbidden for the itinerary PDF service for container-size reasons; same constraint applies here | Existing `pdfkit` |
-| Meta WhatsApp Business Cloud API (direct) for v2.0 | Multi-week Business verification + WABA setup + per-template Meta review cycle; likely more expensive on Nigeria's "authentication-international" pricing tier; duplicates the vendor-integration effort already done for Termii | Termii's `Send WhatsApp Token` API (`channel: "whatsapp_otp"`) |
-| Full mTLS/private-CA rollout for internal gRPC in v2.0 | Railway's private network is already WireGuard-encrypted; a CA + cert rotation pipeline is operational overhead this milestone doesn't need to justify | Shared-secret gRPC `Metadata` guard, same pattern as existing `PAYSTACK_WEBHOOK_SECRET` HMAC verification |
-| Opossum alone (without a companion retry/timeout lib) | Circuit-breaker-only scope doesn't cover the stated "retry / timeout / fallback" requirement without bolting on 2 more dependencies | Cockatiel (single composable dependency) |
-| Native `grpc` package (deprecated) or `grpc-tools`/raw `protoc` codegen | `grpc` package has been deprecated since 2021 in favor of `@grpc/grpc-js`; raw `protoc` codegen doesn't produce NestJS-shaped interfaces | `@grpc/grpc-js` + existing `ts-proto` (`nestJs=true`) toolchain |
-| Service mesh (Istio/Linkerd) or API gateway product (Kong) | Massive operational overweight for the current scale and Railway's managed-platform model | Railway private networking + internal DNS + one `backend` service as REST-to-gRPC gateway (BFF) |
+|-------|-----|-------------|
+| Istio / Envoy / Linkerd (service mesh) for canary routing | Railway is a PaaS container platform, not Kubernetes — there's no pod to sidecar-inject into, and self-hosting a mesh control plane for ~10 gRPC services blows the ~$11/mo cost target by orders of magnitude | Config-driven weighted routing in the monolith's `ClientGrpc` factory (see Alternatives above) |
+| LaunchDarkly / Unleash SaaS for the canary flag | New paid/self-hosted infra for a capability the codebase already has proven in-house (SETTLE-09's `*.settlement_engine_enabled` `platformConfig` flags) | Extend the existing `platformConfig` flag pattern to carry a percentage/weight, not just a boolean |
+| BullMQ + a dedicated Redis queue for MIN-08 | BullMQ requires `maxmemory-policy: noeviction` on its Redis instance (hard requirement, verified against BullMQ's own "going to production" docs and a maintained GitHub issue) — conflicts with the existing shared Upstash Redis' `allkeys-lru` cache policy, would need a second Upstash database, and Upstash's own docs warn BullMQ polls continuously even when idle, incurring extra pay-as-you-go command cost for a job that only needs to fire weekly/monthly | `@nestjs/schedule` `@Cron()` in-process, same mechanism as the existing Stays escrow-release cron |
+| Upstash QStash for scheduled exports | QStash is an HTTP-callback scheduler purpose-built for serverless/edge functions that don't stay warm between invocations — ISEYAA's backend is a long-running Railway container that never needs waking up. Adopting it adds a new SaaS dependency, a new publicly-reachable signed webhook endpoint (`@upstash/qstash`'s `Receiver` signature verification becomes new attack surface), and new cost to solve a cold-start problem this stack doesn't have | `@nestjs/schedule` `@Cron()` |
+| Provisioning `KAFKA_BROKER_URL` against Upstash Kafka | Upstash fully discontinued Kafka 11 March 2025 (deprecation window started Sept 2024) — not a currently-viable free-first option | Postgres outbox table (below) for the Delivery extraction; leave `KafkaService` dormant unless a real broker (Confluent Cloud, Aiven, Redpanda serverless) is separately justified for other reasons |
+| Debezium / CDC-based outbox relay | Requires a Kafka Connect cluster to tail the Postgres WAL — heavy operational surface for relaying one event type (delivery-completion) at low volume | A polled `OutboxEvent` table via `@nestjs/schedule` (poll every 1-2s, mark `PROCESSED`/`FAILED`, `cockatiel`-wrapped retry on the outbound gRPC call) |
+| Temporal.io or another saga/workflow orchestration engine | The wallet-adjacent extraction only needs "commit the local `SELECT FOR UPDATE` wallet write, then reliably deliver one gRPC call at-least-once with retry" — not multi-step long-running workflow orchestration | Outbox table + `cockatiel` retry (already pinned) is sufficient for this single hop |
+| `decimal.js` / `big.js` for dispute/adjustment amounts | `SettlementService` already does all money math in JS `Number` with kobo-rounding (`Math.round(x*100)/100`) and a documented ±₦0.02 drift tolerance. Introducing arbitrary-precision decimals for just the new dispute/adjustment rows creates two divergent money-math systems writing to the same `Transaction` table | Reuse the existing `Number` + rounding convention verbatim in the new `adjust()`/`reverse()` method |
+| Mutating or deleting existing `Transaction`/`Wallet` rows to "fix" a disputed settlement | Breaks the idempotency precheck (`Transaction.reference` prefix `startsWith` match) other `SettlementService.settle()` callers rely on, and destroys the audit trail `AuditLog` is meant to preserve | Always append a new, distinctly-referenced compensating entry (see Stack Patterns below); never edit settlement history |
 
 ## Stack Patterns by Variant
 
-**If a vendor call needs a graceful degraded response (not just fail-fast):**
-- Use Cockatiel's `fallback()` policy composed with `circuitBreaker()`
-- Because a bare circuit breaker only fails fast — it doesn't define *what* the caller gets back. E.g., FCM push failures should fall back to "notification recorded, push skipped" rather than surfacing a 500 to the booking flow.
+**If extracting a read-mostly module (news, waitlist, reviews):**
+- Follow the `notifications-service` pattern almost verbatim, but bootstrap as a **hybrid app** (HTTP `/healthz` + gRPC), not gRPC-only — these three modules have no wallet writes, so no outbox is needed
+- Wire `railway.toml` with `healthcheckPath = "/healthz"` from day one — the gap `notifications-service` currently has
 
-**If extracting a module that already has heavy vendor-call surface (Transport, Delivery — live GPS + matching):**
-- Extract these first once the hybrid in-process pattern is validated
-- Because they're explicitly the modules named in the milestone as needing "one vendor outage degrades a feature instead of crashing dependent modules" — they're both the highest-value and highest-risk targets for the resilience work, so validating gRPC extraction on them first surfaces integration issues before touching lower-traffic modules (news, waitlist, reviews).
+**If extracting Delivery (wallet-adjacent):**
+- Add an `OutboxEvent` Prisma model (`id`, `eventType`, `payload Json`, `status ENUM(PENDING|PROCESSING|PROCESSED|FAILED)`, `attempts`, `createdAt`, `processedAt`) and write to it **inside the same `$transaction`** as the `SELECT FOR UPDATE` wallet mutation — e.g. via `SettlementInput.onSettled` in `SettlementService.settle()` — so the DB commit is atomic with the wallet write, and the cross-process gRPC call becomes an independent, retryable, at-least-once side effect driven by a `@nestjs/schedule` poller wrapped in `cockatiel`
+- This is the piece v2.0 explicitly called "out of scope" for wallet-adjacent modules. GRPC-07 makes it in-scope, so it must land *before* Delivery's gRPC cutover flips live — mirroring how SETTLE-09's shadow-verify gate preceded the Transport/Delivery settlement cutover
 
-**If the Ministry later asks for scheduled/recurring exports (not just on-demand):**
-- Add `@nestjs/schedule` `@Cron()` jobs (already installed, used elsewhere for escrow release) that generate and email/S3-upload the CSV/PDF on a schedule
-- Because no new dependency is needed — `@nestjs/schedule` ^6.1.3 is already in `backend/package.json` and already used for cron-driven business logic (stays escrow `@Cron`).
+**If doing the Railway blue-green swap for a single already-healthy service:**
+- Just add `healthcheckPath`/`healthcheckTimeout`/`RAILWAY_DEPLOYMENT_OVERLAP_SECONDS` — Railway's automatic per-service swap (new deployment healthy → traffic moves → old deployment retired after the overlap window) already gives you this for free, no extra tooling
+
+**If doing a true percentage-based canary across two coexisting versions:**
+- Deploy the canary as a **second, distinctly-named Railway service** in the same project/environment (e.g. `delivery-service-canary` alongside `delivery-service`)
+- Route from the monolith's `ClientGrpc` factory using a `platformConfig`-driven weight (reusing the SETTLE-09 flag pattern) — deterministic hash-based selection (e.g. `hash(orderId) % 100 < canaryWeight`) keeps a given in-flight order pinned to one instance for its whole lifecycle instead of round-robining mid-flow
+- Promote by raising the weight to 100, then deleting the canary service; roll back by dropping the weight to 0 — both are `platformConfig` writes, no redeploy required, matching the "platform fee source always from DB, never hardcoded" constraint
+
+**For the dispute/adjustment workflow:**
+- Add `SettlementDispute` (status, module, originalReference, raisedByUserId, reason, evidence `Json?`, resolvedByUserId, resolution, resolvedAt) as the case record
+- Resolve a dispute by calling a **new** `SettlementService.adjust()` method — same `$transaction` + `SELECT FOR UPDATE` + idempotency architecture as `settle()`, but supporting both directions. Credit corrections can reuse `settle()`'s existing CREDIT-only path; debit corrections need a separate guarded path since `settle()` currently throws on negative recipient amounts by design (WR-02) — this is intentional CREDIT-only semantics, not a bug, so don't loosen `settle()` itself
+- Reference scheme: `ADJ-${disputeId}` as the new settlement root — never reuse the original `${reference}` namespace, since that string is owned by the original settlement's idempotency precheck (`startsWith` match). Platform/system wallet still absorbs drift, same tolerance
+- Every adjustment writes an `AuditLog` row (`action: 'SETTLEMENT_ADJUSTMENT'`, `oldValue`/`newValue` = the transaction deltas) — reuses the existing model, no new audit infra
+
+**For configurable per-module Ministry split tiers:**
+- Keep `PlatformConfig` as the source of truth (constraint: platform fee source always from DB, never hardcoded) but change the **shape** of the JSON `value` for split-related keys from a flat number (e.g. Delivery's current `govtLevyPct = 5`) to a tier array: `{"tiers":[{"upToNgn": 5000, "ministryPct": 5, "platformPct": 15}, {"upToNgn": null, "ministryPct": 7, "platformPct": 13}]}`
+- Validate that shape with a `class-validator` DTO on the admin write path (`AdminModule`'s config-update endpoint) so a malformed tier list fails fast at config-write time, not at settlement time
+- The existing `Number(cfg.value)` reads in `delivery.service.ts`/`transport.service.ts` become a small tier-resolution helper (`resolveTierPct(tiers, orderAmountNgn)`) — no schema migration needed since `PlatformConfig.value` is already `Json`
 
 ## Version Compatibility
 
 | Package A | Compatible With | Notes |
-|-----------|------------------|-------|
-| `@nestjs/microservices@11.1.20` | `@nestjs/core@11.1.20`, `@nestjs/common@11.1.20` | NestJS convention: keep every `@nestjs/*` package on the identical version number as `@nestjs/core` to avoid decorator-metadata mismatches between packages. |
-| `@grpc/grpc-js@1.14.4` | `@grpc/proto-loader@0.8.1`, `ts-proto@2.12.0` (`outputServices=grpc-js`) | Already the pairing used by `packages/proto/generate.sh` — no changes to codegen flags needed. |
-| `cockatiel@4.0.0` | Node.js ≥16 (project is on Node 20 LTS) | Zero runtime dependencies — no transitive version conflicts to track. |
-| `@json2csv/node@7.0.6` | Node.js ≥14 (project is on Node 20 LTS) | Streaming API works with both plain arrays and async iterables — compatible with Prisma's `findMany` result arrays or a cursor-based paginated fetch for very large exports. |
-| `pdfkit@0.19.1` | Already installed, no version change | Confirmed working pattern in `itinerary-pdf.service.ts` — reuse as-is. |
+|-----------|-----------------|-------|
+| `@nestjs/microservices@11.1.19` | `@nestjs/core@11.1.20`, `@grpc/grpc-js@1.14.3`, `@grpc/proto-loader@0.8.1` | Already proven together in `notifications-service`. The hybrid-app addition (`connectMicroservice()`) runs on the same `INestApplication` instance — no version changes required |
+| `grpc-js-health-check@1.2.2` | `@grpc/grpc-js@1.14.x` | Peer-compatible; registers against the same grpc-js server instance `@nestjs/microservices`' gRPC transport already creates |
+| `@nestjs/terminus@11.1.1` | `@nestjs/common@11.1.20`, `@nestjs/core@11.1.20` | Already pinned and running in the monolith's `/api/v1/health` — identical major version across the monolith and every new service app, no drift risk |
+| `@nestjs/schedule@6.1.3` | Current single-instance Railway deployment topology | `@Cron()` handlers are **not distributed-lock-safe**. Fine at today's single-replica scale for both the outbox poller and the Ministry export job. If the monolith or an extracted service is ever horizontally scaled to >1 replica, add a Redis `SET NX` lock (using the already-present `ioredis` client) around the cron body before that happens — not before |
+| Upstash Redis (existing, `allkeys-lru`) | BullMQ (`noeviction` requirement) | Explicitly NOT recommended for MIN-08 (see What NOT to Use) — flagged here so a future researcher doesn't re-propose it without re-reading this constraint |
+| `@iseyaa/proto` (`packages/proto`, `ts-proto@2.11.8`, `grpc-tools@1.13.0`) | All 15 `.proto` contracts already exist (auth, wallet, events, marketplace, notifications, stays, admin, ai, transport, delivery, tour-packages, tour-guides, news, waitlist, reviews) | No proto-authoring work needed for GRPC-07/08 — `generate.sh`'s glob (`./packages/proto/*.proto`) already picks up every module. Only the `apps/<service>` NestJS scaffold + wiring is new work |
 
 ## Sources
 
-- `backend/package.json` (read directly) — ground truth for installed versions; contradicts stale `CLAUDE.md`/`PROJECT.md` claim of "NestJS 10.3.x" (actual: 11.1.20)
-- `packages/proto/generate.sh`, `packages/proto/*.proto`, `packages/proto/generated/*.ts` (read directly) — confirms ts-proto codegen toolchain already in place, unwired
-- Grep of `backend/src` for `GrpcMethod|ClientGrpc|connectMicroservice|Transport.GRPC` (zero matches) — confirms zero gRPC runtime wiring exists, corroborating PROJECT.md's audit finding
-- `backend/src/modules/tour-bookings/tour-settlement.service.ts` (read directly) — the settlement pattern to generalize
-- `backend/src/common/services/itinerary-pdf.service.ts` (read directly) — the PDF pattern to reuse; documents its own puppeteer/pdf-lib rejection rationale
-- `backend/src/common/services/paystack.service.ts` (grepped) — confirms no existing retry/circuit-breaker logic (bare 10s axios timeout only), validating this is genuinely net-new work
-- `backend/src/kafka/kafka.service.ts` (grepped) — confirms Kafka already present as optional async event bus, not to be duplicated
-- npm registry (`npm view`, live queries 2026-07-15) — current versions for `@nestjs/microservices`, `@grpc/grpc-js`, `@grpc/proto-loader`, `cockatiel`, `opossum`, `ts-proto`, `json2csv`, `@json2csv/node`, `@json2csv/plainjs`, `fast-csv`, `exceljs` — HIGH confidence, primary source
-- [NestJS gRPC microservices docs](https://docs.nestjs.com/microservices/grpc) — hybrid app / `connectMicroservice` / `inheritAppConfig` pattern — HIGH confidence, official docs
-- [Railway — How Private Networking Works](https://docs.railway.com/networking/private-networking/how-it-works) — WireGuard encryption + internal DNS confirmation — HIGH confidence, official docs
-- [Railway — Deploying a Monorepo](https://docs.railway.com/guides/monorepo) — per-service watch paths, multi-service-per-project pattern — HIGH confidence, official docs
-- [cockatiel GitHub](https://github.com/connor4312/cockatiel) / [opossum GitHub](https://github.com/nodeshift/opossum) — feature scope comparison — HIGH confidence, official repos
-- [nestjs-guard-grpc](https://github.com/mabuonomo/nestjs-guard-grpc) — example gRPC metadata auth guard pattern for NestJS — MEDIUM confidence, community project not official NestJS
-- [Termii Developers — Send WhatsApp Token](https://developer.termii.com/send-whatsapp-token) — endpoint shape, activation-on-request caveat — MEDIUM confidence, official docs but thin on pricing detail
-- [Termii Developers — WhatsApp Template API](https://developers.termii.com/templates) — confirms Termii operates as a WhatsApp BSP with its own template channel — MEDIUM confidence
-- [WhatsApp/WhatsApp-Nodejs-SDK GitHub](https://github.com/WhatsApp/WhatsApp-Nodejs-SDK) — official Meta Cloud API Node SDK, evaluated and not recommended for v2.0 — HIGH confidence on capability, decision is a project-fit call
-- WebSearch: Meta WhatsApp Business Platform pricing 2026 (Chatarmin, Blueticks, Authgear blog posts) — authentication-international pricing tier confirmation — MEDIUM confidence (multiple secondary sources agree, no single official Meta pricing page fetched directly)
-- WebSearch: Termii WhatsApp OTP pricing — MEDIUM/LOW confidence, only a third-party aggregator (VerifyWay) surfaced a $0.0566/msg figure; **flagged for direct verification with Termii before budgeting**
+- `docs.nestjs.com/faq/hybrid-application` and `docs.nestjs.com/microservices/grpc` — hybrid application + gRPC transport pattern, confirmed current via 2026-dated third-party guides referencing the same API (HIGH confidence)
+- Railway docs: `docs.railway.com/deployments/healthchecks`, `docs.railway.com/deployments/deployment-actions`, `docs.railway.com/overview/production-readiness-checklist` — healthcheck is HTTP-only, no native cross-service blue-green/canary, rollback/redeploy/cancel/remove actions documented (HIGH confidence, fetched directly)
+- Railway Station (community, staff-participated): `station.railway.com/questions/how-to-blue-green-deploy-d83c8864` — confirms Railway's automatic swap is per-service only, no cross-service coordination; workaround patterns (nginx routing, unified containers) discussed but not endorsed (MEDIUM-HIGH confidence)
+- Railway Station: `station.railway.com/feedback/add-support-for-tcp-or-grpc-healthchecks-c6768f58` and a related "how to support both grpc and http for a railway service" thread — confirms no TCP/gRPC healthcheck support as of this research date; private-network same-environment gRPC has no protocol restriction (HIGH confidence)
+- `upstash.com/docs/redis/integrations/bullmq`, `docs.bullmq.io/guide/going-to-production`, GitHub `taskforcesh/bullmq#2737` — BullMQ `noeviction` hard requirement and Upstash pay-as-you-go continuous-polling cost caveat (HIGH confidence, official docs + maintained issue)
+- `upstash.com/blog/workflow-kafka`, `upstash.com/docs/kafka/connect/deprecation` — Upstash Kafka discontinued 11 March 2025 (HIGH confidence, official announcement)
+- `upstash.com/docs/qstash/features/schedules`, `github.com/upstash/qstash-js` — QStash HTTP-callback/cron design, serverless-first positioning (MEDIUM-HIGH confidence)
+- npm registry (`npm view <pkg> version`, checked live 2026-07-19) — `bullmq@5.80.9`, `@upstash/qstash@2.11.2`, `grpc-js-health-check@1.2.2`, `@grpc/grpc-js@1.14.4`, `@nestjs/bullmq@11.0.4`, `@railway/cli@5.27.0` (HIGH confidence, live registry read)
+- Direct codebase inspection: `backend/package.json`, `backend/src/common/services/settlement.service.ts` (full read — idempotency, locking order, drift tolerance, CREDIT-only guard), `backend/src/kafka/kafka.service.ts` + all 9 call sites (grepped), `backend/src/health/health.controller.ts`, `backend/apps/notifications-service/{main.ts,railway.toml}`, `backend/railway.toml`, `docker-compose.yml`, `backend/prisma/schema.prisma` (Wallet, Transaction, PlatformConfig, AuditLog, ShadowSettlementComparison models), `packages/proto/*.proto` + `generate.sh` + `package.json` (all 15 modules already have contracts), `backend/src/modules/delivery/delivery.service.ts` (current flat-percentage split reads), `backend/src/modules/ministry/ministry.controller.ts` + `common/services/{csv-export,ministry-pdf}.service.ts` (existing on-demand export to extend), `backend/src/common/services/sendgrid.service.ts` (no attachment support yet), `.env.example` (Kafka undocumented/dormant) — every recommendation grounded in what actually exists today, not assumed
 
 ---
-*Stack research for: gRPC extraction, WhatsApp OTP, government dashboard export, multi-recipient settlement — ISEYAA v2.0*
-*Researched: 2026-07-15*
+*Stack research for: live gRPC extraction, Railway blue-green/canary, scheduled Ministry exports, settlement dispute/adjustment + tiered splits — ISEYAA v2.1*
+*Researched: 2026-07-19*
