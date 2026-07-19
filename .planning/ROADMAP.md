@@ -34,7 +34,7 @@ Sprint 1 is shipped. This roadmap covers the six remaining sprints: infrastructu
  (completed 2026-07-18)
 - [x] **Phase 16: Connection Pooling Infrastructure** - Every Prisma client on a pooled connection string, combined-topology load test under Neon's connection ceiling
  (completed 2026-07-18)
-- [ ] **Phase 17: gRPC Proof-of-Pattern Extraction (notifications-service)** - `notifications-service` runs as a genuinely separate deployable process, called via `ClientGrpc`, proving the extraction pattern with zero REST behavior change
+- [x] **Phase 17: gRPC Proof-of-Pattern Extraction (notifications-service)** - `notifications-service` runs as a genuinely separate deployable process, called via `ClientGrpc`, proving the extraction pattern with zero REST behavior change (completed 2026-07-19)
 
 ## Phase Details
 
@@ -632,7 +632,7 @@ Plans:
 - [x] 17-04-PLAN.md -- Cutover: committed caller-graph audit (GRPC-04) + rewire NotificationsController + TourNotificationsService onto the gRPC facade (GRPC-03, GRPC-05 grep gate)
 
 **Wave 4** *(blocked on all preceding waves)*
-- [ ] 17-06-PLAN.md -- Human verification checkpoint: Railway service creation/linking + REST response-shape parity + full build/test confirmation
+- [x] 17-06-PLAN.md -- Human verification checkpoint: Railway service creation/linking + REST response-shape parity + full build/test confirmation
 
 **Cross-cutting constraints:**
 - Straight one-shot cutover (D-09) -- no feature flag, no dual in-process/gRPC path
@@ -664,4 +664,4 @@ Phases 11, 12 (Settlement Foundation), and 15 (WhatsApp OTP) are independent of 
 | 14. Ministry Dashboard | 10/10 | Complete   | 2026-07-18 |
 | 15. Multi-Channel OTP | 6/6 | Complete    | 2026-07-18 |
 | 16. Connection Pooling Infrastructure | 4/4 | Complete    | 2026-07-18 |
-| 17. gRPC Proof-of-Pattern Extraction (notifications-service) | 5/6 | In Progress|  |
+| 17. gRPC Proof-of-Pattern Extraction (notifications-service) | 6/6 | Complete   | 2026-07-19 |
