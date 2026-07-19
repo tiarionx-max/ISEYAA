@@ -266,7 +266,7 @@ export class EventsService implements OnModuleInit {
         module: 'events',
         reference: payload.reference,
         gateway: 'PAYSTACK',
-        amountKobo: ticketPrice * 100,
+        amountKobo: Math.round(ticketPrice * 100), // WR-03: avoid IEEE-754 float drift crossing into SettlementService
         recipients: [
           {
             tag: 'ORGANISER',

@@ -285,7 +285,7 @@ export class MarketplaceService implements OnModuleInit {
         module: 'marketplace',
         reference: payload.reference,
         gateway: 'PAYSTACK',
-        amountKobo: Number(order.totalAmount) * 100,
+        amountKobo: Math.round(Number(order.totalAmount) * 100), // WR-03: avoid IEEE-754 float drift crossing into SettlementService
         recipients: [
           {
             tag: 'VENDOR',

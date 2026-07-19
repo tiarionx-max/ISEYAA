@@ -185,7 +185,7 @@ export class StudioService implements OnModuleInit {
         module: 'studio',
         reference: payload.reference,
         gateway: 'PAYSTACK',
-        amountKobo: total * 100,
+        amountKobo: Math.round(total * 100), // WR-03: avoid IEEE-754 float drift crossing into SettlementService
         recipients: [
           {
             tag: 'MINISTRY',
