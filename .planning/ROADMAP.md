@@ -621,9 +621,9 @@ Plans:
 **Plans**: 6 plans
 Plans:
 **Wave 1** *(no dependencies -- runs immediately, parallel)*
-- [ ] 17-01-PLAN.md -- Blocking prerequisites: @iseyaa/proto Docker dependency fix (monolith + notifications-service Dockerfiles), gRPC-aware isTransientError() classification, SendPushRequest.data proto field + server passthrough
-- [ ] 17-02-PLAN.md -- Fold INT-01: wire ResilienceModule into the 7 remaining backend/apps/*-service scaffolds
-- [ ] 17-05-PLAN.md -- Deployment topology: docker-compose.yml notifications-service block + .env.example NOTIFICATIONS_SERVICE_URL documentation
+- [x] 17-01-PLAN.md -- Blocking prerequisites: @iseyaa/proto Docker dependency fix (monolith + notifications-service Dockerfiles), gRPC-aware isTransientError() classification, SendPushRequest.data proto field + server passthrough
+- [x] 17-02-PLAN.md -- Fold INT-01: wire ResilienceModule into the 7 remaining backend/apps/*-service scaffolds
+- [x] 17-05-PLAN.md -- Deployment topology: docker-compose.yml notifications-service block + .env.example NOTIFICATIONS_SERVICE_URL documentation
 
 **Wave 2** *(blocked on Wave 1 -- 17-03 depends on 17-01)*
 - [ ] 17-03-PLAN.md -- NotificationsClientModule + NotificationsClientService gRPC facade (D-01/D-02/D-03/D-05/D-06) + spec
@@ -664,4 +664,4 @@ Phases 11, 12 (Settlement Foundation), and 15 (WhatsApp OTP) are independent of 
 | 14. Ministry Dashboard | 10/10 | Complete   | 2026-07-18 |
 | 15. Multi-Channel OTP | 6/6 | Complete    | 2026-07-18 |
 | 16. Connection Pooling Infrastructure | 4/4 | Complete    | 2026-07-18 |
-| 17. gRPC Proof-of-Pattern Extraction (notifications-service) | 0/6 | Not started | - |
+| 17. gRPC Proof-of-Pattern Extraction (notifications-service) | 3/6 | In Progress|  |
