@@ -109,3 +109,13 @@ None - no external service configuration required. The plan explicitly scopes ou
 ---
 *Phase: 18-settlement-split-centralization*
 *Completed: 2026-07-19*
+
+## Self-Check: PASSED
+
+- FOUND: backend/src/modules/admin/dto/update-split-tier.dto.ts
+- FOUND: backend/src/modules/admin/admin.service.ts
+- FOUND: backend/src/modules/admin/admin.controller.ts
+- FOUND: .planning/phases/18-settlement-split-centralization/18-04-SUMMARY.md
+- FOUND commit: 2dc819a (Task 1)
+- FOUND commit: dcb844f (Task 2)
+- FOUND commit: 16eb269 (SUMMARY.md)
