@@ -6,7 +6,7 @@ COPY package*.json ./
 COPY backend/package*.json ./backend/
 COPY shared/ ./shared/
 COPY packages/proto/ ./packages/proto/
-RUN npm ci --workspace=backend --include=workspace=shared
+RUN npm ci --workspace=backend --workspace=packages/proto
 COPY backend/ ./backend/
 RUN cd backend && npx prisma generate
 RUN cd backend && npx nest build notifications-service

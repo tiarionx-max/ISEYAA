@@ -17,7 +17,7 @@ COPY shared/ ./shared/
 COPY packages/ ./packages/
 
 # Install production deps for backend workspace
-RUN npm ci --workspace=backend --include=workspace=shared
+RUN npm ci --workspace=backend --workspace=packages/proto
 
 # Install musl-specific sharp binary for Alpine (lock file has the glibc build from Windows)
 RUN npm install --os=linux --libc=musl --cpu=x64 sharp
