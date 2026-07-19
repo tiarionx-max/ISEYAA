@@ -106,6 +106,7 @@ const mockImage = { validateEventImage: jest.fn(), resizeEventCover: jest.fn() }
 const mockSettlement = {
   settle: jest.fn().mockResolvedValue({ status: 'SETTLED', platformAmountNgn: 0, recipientCredits: [] }),
   resolveMinistryWallet: jest.fn().mockResolvedValue({ id: 'WAL-MINISTRY' }),
+  resolveSplit: jest.fn().mockResolvedValue({ earnerPct: 0.85, ministryPct: 0.05, platformPct: 0.1 }),
 };
 const mockVisitorLog = { record: jest.fn().mockResolvedValue(undefined) };
 
@@ -114,6 +115,12 @@ describe('EventsService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    // Reset mockSettlement's implementations after clearAllMocks (clearAllMocks does
+    // not remove a custom .mockImplementation set by an earlier test — mirrors
+    // transport.service.spec.ts's beforeEach reset).
+    mockSettlement.settle.mockResolvedValue({ status: 'SETTLED', platformAmountNgn: 0, recipientCredits: [] });
+    mockSettlement.resolveMinistryWallet.mockResolvedValue({ id: 'WAL-MINISTRY' });
+    mockSettlement.resolveSplit.mockResolvedValue({ earnerPct: 0.85, ministryPct: 0.05, platformPct: 0.1 });
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         EventsService,
@@ -351,17 +358,14 @@ describe('EventsService', () => {
       expect(mockSettlement.settle).not.toHaveBeenCalled();
     });
 
-    it('splits organiser/Ministry amounts using configured PlatformConfig percentages and sends email', async () => {
+    it('splits organiser/Ministry amounts using resolveSplit percentages and sends email', async () => {
       mockPrisma.ticket.findUnique.mockResolvedValue(mockTicket);
-      mockPrisma.platformConfig.findUnique.mockImplementation(({ where }: any) => {
-        if (where.key === 'events.platform_fee_pct') return Promise.resolve({ value: 0.1 });
-        if (where.key === 'events.govt_levy_pct') return Promise.resolve({ value: 0.05 });
-        return Promise.resolve(null);
-      });
+      mockSettlement.resolveSplit.mockResolvedValueOnce({ earnerPct: 0.85, ministryPct: 0.05, platformPct: 0.1 });
       mockSendgrid.sendTicketConfirmation.mockResolvedValue(undefined);
 
       await service.handleTicketPayment({ reference: PAYSTACK_REF });
 
+      expect(mockSettlement.resolveSplit).toHaveBeenCalledWith('events', mockTicketType.price);
       expect(mockQr.generatePng).toHaveBeenCalledWith(QR_HASH);
       expect(mockS3.upload).toHaveBeenCalledWith(
         `qr-codes/${TICKET_ID}.png`,
@@ -381,20 +385,38 @@ describe('EventsService', () => {
       );
     });
 
-    it('falls back to documented defaults (0.10/0.05) when PlatformConfig keys are unset', async () => {
-      mockPrisma.ticket.findUnique.mockResolvedValue(mockTicket);
-      mockPrisma.platformConfig.findUnique.mockResolvedValue(null);
+    // SETTLE-11c regression coverage — 18-02-PLAN.md Task 3: resolveSplit's 0-1
+    // fractions are used directly with NO unit conversion (unlike Transport/Delivery,
+    // which multiply by 100 — D-03).
+    it('computes organiserAmountNgn=850 via resolveSplit for ticketPrice=1000 with no unit conversion (fraction-shaped, D-03)', async () => {
+      mockPrisma.ticket.findUnique.mockResolvedValue({
+        ...mockTicket,
+        ticketType: { ...mockTicket.ticketType, price: 1000 },
+      });
+      mockSettlement.resolveSplit.mockResolvedValueOnce({ earnerPct: 0.85, ministryPct: 0.05, platformPct: 0.1 });
 
       await service.handleTicketPayment({ reference: PAYSTACK_REF });
 
+      expect(mockSettlement.resolveSplit).toHaveBeenCalledWith('events', 1000);
       expect(mockSettlement.settle).toHaveBeenCalledTimes(1);
       const settleArgs = mockSettlement.settle.mock.calls[0][0];
       expect(settleArgs.recipients).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ tag: 'ORGANISER', amountNgn: mockTicketType.price * (1 - 0.1 - 0.05) }),
-          expect.objectContaining({ tag: 'MINISTRY', amountNgn: mockTicketType.price * 0.05 }),
+          expect.objectContaining({ tag: 'ORGANISER', amountNgn: 850 }),
+          expect.objectContaining({ tag: 'MINISTRY', amountNgn: 50 }),
         ]),
       );
+    });
+
+    it('no longer reads events.platform_fee_pct/events.govt_levy_pct from PlatformConfig', async () => {
+      mockPrisma.ticket.findUnique.mockResolvedValue(mockTicket);
+
+      await service.handleTicketPayment({ reference: PAYSTACK_REF });
+
+      const calledKeys = mockPrisma.platformConfig.findUnique.mock.calls.map((c: any) => c[0].where.key);
+      expect(calledKeys).not.toContain('events.platform_fee_pct');
+      expect(calledKeys).not.toContain('events.govt_levy_pct');
+      expect(mockSettlement.resolveSplit).toHaveBeenCalledWith('events', mockTicketType.price);
     });
 
     it('does not call settlementService.settle on a non-PENDING ticket', async () => {
