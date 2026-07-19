@@ -145,3 +145,14 @@ None — no external service configuration required.
 ---
 *Phase: 17-grpc-proof-of-pattern-extraction-notifications-service*
 *Completed: 2026-07-19*
+
+## Self-Check: PASSED
+
+- FOUND: SUMMARY.md at `.planning/phases/17-grpc-proof-of-pattern-extraction-notifications-service/17-01-SUMMARY.md`
+- FOUND: commit `e7bbc05` (Task 1)
+- FOUND: commit `94ffe59` (Task 2)
+- FOUND: commit `ec0a019` (Task 3)
+- FOUND: commit `4a6acab` (docs: SUMMARY.md)
+- FOUND: `"@iseyaa/proto"` in `backend/package.json`
+- FOUND: `map<string, string> data = 4;` in `packages/proto/notifications.proto`
+- FOUND: `GrpcStatus.UNAVAILABLE` in `backend/src/resilience/resilience.service.ts`
