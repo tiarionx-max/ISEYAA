@@ -111,3 +111,7 @@ None — this plan introduces no new network endpoints, auth paths, file access 
 ---
 *Phase: 18-settlement-split-centralization*
 *Completed: 2026-07-19*
+
+## Self-Check: PASSED
+
+All 6 modified source/test files and the SUMMARY.md itself verified present on disk; all 4 commit hashes (`8925f05`, `4391bd0`, `b2be4d2`, `d645215`) verified present in `git log --oneline --all`.
