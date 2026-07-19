@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { TourNotificationsService } from '../tour-notifications.service';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { NotificationsService } from '../../notifications/notifications.service';
+import { NotificationsClientService } from '../../notifications-client/notifications-client.service';
 import { SendgridService } from '../../../common/services/sendgrid.service';
 import { ItineraryPdfService } from '../../../common/services/itinerary-pdf.service';
 
@@ -63,7 +63,7 @@ async function makeService(): Promise<TourNotificationsService> {
     providers: [
       TourNotificationsService,
       { provide: PrismaService, useValue: mockPrisma },
-      { provide: NotificationsService, useValue: mockNotifications },
+      { provide: NotificationsClientService, useValue: mockNotifications },
       { provide: SendgridService, useValue: mockSendgrid },
       { provide: ItineraryPdfService, useValue: mockPdf },
       { provide: ConfigService, useValue: mockConfig },

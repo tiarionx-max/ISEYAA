@@ -7,7 +7,7 @@ import { TourBookingsController } from './tour-bookings.controller';
 import { TourAdminController } from './tour-admin.controller';
 import { TourPackagesModule } from '../tour-packages/tour-packages.module';
 import { TourGuidesModule } from '../tour-guides/tour-guides.module';
-import { NotificationsModule } from '../notifications/notifications.module';
+import { NotificationsClientModule } from '../notifications-client/notifications-client.module';
 
 /**
  * 09-05 / 09-06 / 09-07 — Tour Bookings module.
@@ -25,12 +25,13 @@ import { NotificationsModule } from '../notifications/notifications.module';
  *
  * 09-07 adds TourNotificationsService — TOUR-05 itinerary delivery on
  * `tour_booking.confirmed` (immediate email + PDF) plus three @Cron jobs
- * (T-24h, T-2h, T+1h). NotificationsModule is NOT @Global so it is imported
- * here for the FCM push wrapper. ItineraryPdfService + SendgridService come
- * from the @Global CommonModule and need no explicit import.
+ * (T-24h, T-2h, T+1h). NotificationsClientModule is NOT @Global so it is
+ * imported here for the gRPC-backed push facade (17-04 cutover — was
+ * NotificationsModule pre-cutover). ItineraryPdfService + SendgridService
+ * come from the @Global CommonModule and need no explicit import.
  */
 @Module({
-  imports: [TourPackagesModule, TourGuidesModule, NotificationsModule],
+  imports: [TourPackagesModule, TourGuidesModule, NotificationsClientModule],
   controllers: [TourBookingsController, TourAdminController],
   providers: [
     TourBookingService,

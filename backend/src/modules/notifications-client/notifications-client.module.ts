@@ -3,6 +3,7 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { join } from 'path';
 import { NotificationsClientService } from './notifications-client.service';
+import { NotificationsController } from '../notifications/notifications.controller';
 
 // D-02: dedicated gRPC client token for the notifications-service facade — mirrors
 // CommonModule's shared-infra export pattern. Consumers inject NotificationsClientService,
@@ -15,8 +16,12 @@ export const NOTIFICATIONS_PACKAGE = 'NOTIFICATIONS_PACKAGE';
  * target URL is env-var-driven via NOTIFICATIONS_SERVICE_URL — reusing the pre-existing
  * .env.example placeholder (added Phase 10, unused until now) rather than introducing a
  * new NOTIFICATIONS_GRPC_URL name (RESEARCH.md Open Question 1, resolved in CONTEXT.md
- * D-04 addendum). NOT yet consumed by any controller/service — that cutover happens in
- * Plan 17-04.
+ * D-04 addendum).
+ *
+ * 17-04 (D-01): now registers NotificationsController directly — the monolith's REST
+ * endpoints under /notifications/* are served by this gRPC facade. The controller's file
+ * stays physically located at backend/src/modules/notifications/notifications.controller.ts
+ * (minimal-diff); only its module registration and injected dependency changed.
  */
 @Module({
   imports: [
@@ -39,6 +44,7 @@ export const NOTIFICATIONS_PACKAGE = 'NOTIFICATIONS_PACKAGE';
       },
     ]),
   ],
+  controllers: [NotificationsController],
   providers: [NotificationsClientService],
   exports: [NotificationsClientService],
 })
