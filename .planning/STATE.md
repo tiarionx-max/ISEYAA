@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Extraction Backlog Clearance & Settlement Flexibility
 status: planning
-last_updated: "2026-07-19T13:32:02.679Z"
+last_updated: "2026-07-19T14:10:00.000Z"
 last_activity: 2026-07-19
 progress:
-  total_phases: 0
+  total_phases: 5
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -17,35 +17,35 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-07-15)
+See: .planning/PROJECT.md (updated 2026-07-19)
 
 **Core value:** A tourist in Abeokuta can discover an attraction, book a guesthouse, buy an event ticket, and request a ride — all paid through one wallet — and the government analyst sees the revenue in real time.
-**Current focus:** Phase 17 — grpc-proof-of-pattern-extraction-notifications-service
+**Current focus:** Phase 18 — Settlement Split Centralization
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-07-19 — Milestone v2.1 started
+Phase: 18 of 22 (Settlement Split Centralization)
+Plan: — of TBD in current phase
+Status: Ready to plan
+Last activity: 2026-07-19 — ROADMAP.md created for v2.1 (Phases 18-22), REQUIREMENTS.md traceability updated, 18/18 requirements mapped
+
+Progress: [░░░░░░░░░░] 0%
 
 ## Current Status
 
-- Phases 1-9 (v1.0): substantially shipped — see PROJECT.md Validated section for full detail; 8 human-verification checkpoints (02-06, 03-08, 04-08, 05-07, 06-06, 07-05, 08-10, 09-13) remain unfiled and are deferred debt, not blocking v2.0
-- Phase 10: Documentation Correction + gRPC Build Fix — NOT STARTED (DOC-01, GRPC-01, GRPC-02)
-- Phase 11: Resilience Wrapping — NOT STARTED (RESIL-01, RESIL-02)
-- Phase 12: Settlement Engine Foundation — NOT STARTED (SETTLE-01, 02, 05, 06, 07, 08)
-- Phase 13: Settlement Cutover — Transport & Delivery — NOT STARTED (SETTLE-03, 04, 09; depends on Phase 12)
-- Phase 14: Ministry Dashboard — COMPLETE (MIN-01 through MIN-07 satisfied; human UAT approved 2026-07-18)
-- Phase 15: Multi-Channel OTP — NOT STARTED (OTP-01 through OTP-04)
-- Phase 16: Connection Pooling Infrastructure — NOT STARTED (POOL-01, POOL-02; depends on Phase 10)
-- Phase 17: gRPC Proof-of-Pattern Extraction (notifications-service) — GAPS FOUND (6/6 plans executed 2026-07-19; verification failed criterion 3 — gRPC SendPush silently reports success:true on real send failures; gap closure plan needed before phase can close; see 17-VERIFICATION.md)
+- Phases 1-9 (v1.0): substantially shipped — see PROJECT.md Validated section; 8 human-verification checkpoints remain unfiled deferred debt, not blocking v2.1
+- Phases 10-17 (v2.0): COMPLETE — shipped 2026-07-19, see PROJECT.md Validated section and `milestones/v2.0-ROADMAP.md`
+- Phase 18: Settlement Split Centralization — NOT STARTED (SETTLE-11a, SETTLE-11b, SETTLE-11c, SETTLE-11d)
+- Phase 19: Settlement Dispute & Adjustment Workflow — NOT STARTED (SETTLE-10a, SETTLE-10b, SETTLE-10c, SETTLE-10d, SETTLE-10e; depends on Phase 18)
+- Phase 20: gRPC Blue-Green Healthcheck Retrofit — NOT STARTED (GRPC-06a, GRPC-06b, GRPC-06c)
+- Phase 21: Low-Risk gRPC Extraction — News/Waitlist/Reviews + Scoped Delivery OTP — NOT STARTED (GRPC-07, GRPC-08; depends on Phase 20)
+- Phase 22: Scheduled Ministry Exports & LGA Heatmap — NOT STARTED (MIN-08a, MIN-08b, MIN-08c, MIN-09; depends on Phase 20)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 24 (v2.0 not yet started)
+- Total plans completed: 54 (v2.0 closed; v2.1 not yet started)
 - Average duration: -
 - Total execution time: -
 
@@ -54,48 +54,40 @@ Last activity: 2026-07-19 — Milestone v2.1 started
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 10 | 3 | - | - |
+| 11 | 11 | - | - |
+| 12 | 9 | - | - |
 | 13 | 4 | - | - |
+| 14 | 10 | - | - |
 | 15 | 6 | - | - |
 | 16 | 4 | - | - |
 | 17 | 7 | - | - |
 
 *Updated after each plan completion*
-| Phase 10 P01 | 3min | 2 tasks | 1 files |
-| Phase 10 P02 | 7min | 3 tasks | 18 files |
-| Phase 10 P03 | 10min | 3 tasks | 26 files |
 
 ## Accumulated Context
 
 ### Decisions
 
-Key decisions logged in PROJECT.md. Decisions affecting current v2.0 work:
+Key decisions logged in PROJECT.md. Decisions affecting current v2.1 work:
 
-- **Real gRPC microservice split, notifications-service as first live extraction target** (not Transport) — lowest blast radius, no wallet coupling, proves the pattern before repeating it
-- **Wallet, Transport, Delivery, Events, Stays, Marketplace, Auth, Tour modules stay in-process this milestone** — their `SELECT FOR UPDATE` wallet transactions can't safely span a gRPC boundary without an out-of-scope outbox/saga redesign (GRPC-05)
-- **Settlement generalization sequenced ahead of gRPC extraction** — determines the in-process constraint above before extraction order is locked in
-- **Transport/Delivery cutover onto the new settlement engine is its own gated phase (13)**, separate from building the engine (12), with mandatory shadow-mode verification — never a big-bang swap of live payouts
-- **cockatiel** chosen for resilience (retry+circuit-breaker+timeout+fallback in one dependency) over Opossum
-- **Termii WhatsApp Token API reuse** preferred over direct Meta Cloud API integration — pending a support-ticket spike to confirm activation status before Phase 15 is planned in detail
-- [Phase 10]: PROJECT.md required zero edits for DOC-01 audit — All four candidate lines already stated the corrected proto-only gRPC reality (zero live @GrpcMethod/ClientGrpc wiring, monolithic NestFactory.create()); only ROADMAP.md's Phase 2 success criterion 2 and 02-07-PLAN.md entry needed correction
-- [Phase 10]: Widened rootDir at the per-service tsconfig.app.json level only (not shared backend/tsconfig.json) to keep the monolith's dist/main.js output path unchanged for the live Railway start:prod command — Avoids a breaking change to production deployment while fixing the TS6059 build failure across all 8 gRPC service scaffolds
-- [Phase 10]: Resolved ts-proto plugin path to the .cmd shim on Windows (MINGW/MSYS/Cygwin) since protoc.exe cannot execute the POSIX shell-script bin shim via direct Win32 CreateProcess — Plan's literal command line fails on Windows dev machines with 'not a valid Win32 application'; POSIX branch left unchanged for Linux/Mac CI
-- [Quick 260716-lbl]: TypeScript's incremental `tsBuildInfoFile` now lives inside `backend/dist/` (was defaulting to the project root) so nest-cli's `deleteOutDir: true` wipes it together with `dist/` on every restart — previously a stale cache outside `dist/` made tsc skip re-emitting into an empty `dist/`, crashing every second cold start with `Cannot find module dist/main`
-- [Quick 260716-lbl]: `ConfigModule.forRoot()` in `backend/src/app.module.ts` now sets `envFilePath` to the repo-root `.env` (npm workspace cwd is `backend/`, which has no `.env` of its own) — local `npm run dev:backend` was silently failing the required-env-var check unless vars were manually exported; Docker Compose's `env_file: .env` path is unaffected since injected `process.env` vars always take precedence over file-loaded ones
+- **5-phase structure adopted from research SUMMARY.md**: Settlement Split Centralization (18) → Settlement Dispute & Adjustment (19) → gRPC Blue-Green Healthcheck Retrofit (20) → Low-Risk gRPC Extraction: news/waitlist/reviews + scoped Delivery OTP (21) → Scheduled Ministry Exports & LGA Heatmap (22)
+- **Financial correctness sequenced before deploy infrastructure**: Phase 19's dispute/adjustment resolver has a hard data dependency on Phase 18's centralized `resolveSplit()` as the source of truth for "what split should have applied"
+- **Healthcheck retrofit sequenced before any new gRPC extraction**: cutting live traffic to a new `ClientGrpc` service without a working health endpoint defeats blue-green — Phase 20 is a hard prerequisite for Phase 21, not a preference
+- **GRPC-07 scoped down to `VerifyDeliveryOtp` only**: `RequestDelivery`/`AcceptDelivery`/`CompleteDelivery` and `DeliveryGateway` stay in-process this milestone — they're wallet-adjacent and/or Socket.IO-coupled, and extracting them needs a durable match-timeout + Socket.IO Redis adapter redesign explicitly out of scope (research pitfall 1)
+- **No wallet-touching service is extracted this milestone**: any newly-extracted service that needs `SettlementService` embeds its own copy against the same Postgres rather than calling a separately-extracted wallet-service over gRPC (reaffirms GRPC-05 decision from v2.0)
+- **Phase 22 has no technical dependency on Phases 18/19/21**, only on Phase 20's distributed-lock cron pattern for its own new scheduled export job — can run as a parallel track once Phase 20 lands
 
 ### Pending Todos
 
-- **Docker build fix before Phase 17 (live extraction):** `docker build` fails for all 8 `apps/*-service` images with `TS2307: Cannot find module '@iseyaa/proto'` — `backend/package.json` never declares `@iseyaa/proto`, so the image's scoped `npm ci --workspace=backend --include=workspace=shared` never links it (works locally only via the unscoped repo-root `npm install`). Pre-existing, universal defect surfaced by Phase 10 verification; out of Phase 10's `nest build` scope. Fix: declare `@iseyaa/proto` as a `backend` dependency and widen the Docker `npm ci` workspace scope. See `.planning/phases/10-documentation-correction-grpc-build-fix/10-VERIFICATION.md`.
-- **INT-01 — Wire ResilienceModule into gRPC service scaffolds:** `ResilienceModule` is never imported by any of the 8 `backend/apps/*-service` scaffolds — latent today, will block Phase 17's first live extraction. See `.planning/todos/pending/2026-07-17-wire-resiliencemodule-into-grpc-service-scaffolds.md`.
-- **INT-02 — Add compile step to packages/proto:** `@iseyaa/proto` has no build script; `nest build` passes via lenient tsc resolution but `require('@iseyaa/proto')` fails at real Node.js runtime. Blocks Phase 16 and Phase 17. See `.planning/todos/pending/2026-07-17-add-compile-step-to-packages-proto.md`.
+- **Docker build fix before further live extraction:** `docker build` fails for all 8 `apps/*-service` images with `TS2307: Cannot find module '@iseyaa/proto'` — `backend/package.json` never declares `@iseyaa/proto`, so the image's scoped `npm ci` never links it. Relevant again for Phase 20/21's new service scaffolds. See `.planning/phases/10-documentation-correction-grpc-build-fix/10-VERIFICATION.md`.
 
 ### Blockers/Concerns
 
-- v1.0's 8 outstanding human-verification checkpoints remain deferred (see PROJECT.md Context) — do not run any milestone-archival step against `.planning/phases/02-09` without re-confirming with the user first
-- **Research gaps requiring a vendor/product spike before detailed planning:**
-  - Phase 15 (Multi-Channel OTP): Termii WhatsApp Token API activation status is unconfirmed — needs a direct support-ticket spike before scoping in detail
-  - Phase 12 (Settlement Engine Foundation): Marketplace/Events/Studio's real current settlement mechanism (if any exists outside the dead-lettered webhook path) needs a targeted code audit before implementation planning
-  - Phase 14 (Ministry Dashboard): `VisitorLog.purpose` taxonomy (categories the Ministry actually wants) is undefined — needs a stakeholder conversation during Phase 14 planning
-  - Ministry wallet identity (same entity as `tour.government_wallet_user_id` vs. a distinct standing wallet) needs explicit stakeholder confirmation before Phase 12's schema/config work begins
+- v1.0's 8 outstanding human-verification checkpoints remain deferred — do not run any milestone-archival step against `.planning/phases/02-09` without re-confirming with the user first
+- **Research gaps requiring explicit design/product decisions during phase planning (not resolvable from code alone):**
+  - Phase 19 (SETTLE-10 dispute/adjustment): the exact dispute-workflow schema and insufficient-balance clawback policy (block-and-flag vs. tracked negative vs. platform-wallet absorption) is a compliance/product decision — needs explicit design-doc sign-off before implementation, flagged MEDIUM confidence by research
+  - Phase 21 (GRPC-07/08 extraction): the "remaining core modules" second half of GRPC-07 needs a fresh wallet/gateway coupling audit per module before claiming any of Events/Stays/Marketplace/Studio is a clean extraction candidate — all four call `SettlementService.settle()` directly; candidates for the slot are read-mostly services (admin-service/ai-service scaffolds), not confirmed
+  - Phase 22 (MIN-09 heatmap): point-density grid vs. true LGA-boundary choropleth needs an explicit stakeholder conversation before implementation estimate is finalized — no LGA boundary GeoJSON exists in the schema today
 - Live Paystack secret key (`sk_live_...`) present in `backend/.env` / root `.env` — recommend rotating to test-mode keys for local/CI use (carried over from v1.0, still unresolved)
 
 ### Quick Tasks Completed
@@ -106,33 +98,25 @@ Key decisions logged in PROJECT.md. Decisions affecting current v2.0 work:
 
 ## Deferred Items
 
-Items acknowledged and carried forward from previous milestone close:
+Items acknowledged and carried forward from previous milestone close. GRPC-06/07/08, MIN-08/09, and SETTLE-10/11 (previously listed here as "Deferred to v2") are no longer deferred — they are now active v2.1 scope, see Phases 18-22 above.
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| v1.0 checkpoints | 8 unfiled human-verification checkpoints (02-06, 03-08, 04-08, 05-07, 06-06, 07-05, 08-10, 09-13) | Deferred, not blocking v2.0 | 2026-07-15 |
-| gRPC scope | Blue-green/canary deploys per extracted service (GRPC-06) | Deferred to v2 | 2026-07-15 |
-| gRPC scope | Live extraction of Delivery + remaining modules beyond notifications-service (GRPC-07) | Deferred to v2 | 2026-07-15 |
-| gRPC scope | Live extraction of news/waitlist/reviews (GRPC-08) | Deferred to v2 | 2026-07-15 |
-| Ministry scope | Scheduled/recurring export delivery (MIN-08) | Deferred to v2 | 2026-07-15 |
-| Ministry scope | Seasonal/LGA heatmap visualization (MIN-09) | Deferred to v2 | 2026-07-15 |
-| Settlement scope | Dispute/adjustment workflow (SETTLE-10) | Deferred to v2 | 2026-07-15 |
-| Settlement scope | Configurable per-module Ministry split tiers (SETTLE-11) | Deferred to v2 | 2026-07-15 |
-| RESIL-02 | Live Grafana/Sentry dashboard confirmation of a real vendor outage — code-level wiring/sanitization independently verified, only the live-pipeline human check remains open | Deferred, not blocking v2.0 close | 2026-07-19 |
+| v1.0 checkpoints | 8 unfiled human-verification checkpoints (02-06, 03-08, 04-08, 05-07, 06-06, 07-05, 08-10, 09-13) | Deferred, not blocking v2.1 | 2026-07-15 |
+| RESIL-02 | Live Grafana/Sentry dashboard confirmation of a real vendor outage — code-level wiring/sanitization independently verified, only the live-pipeline human check remains open | Deferred, not blocking v2.1 | 2026-07-19 |
 | v1.0 checkpoint | Phase 05 (AI Concierge + KYC) human-verification checkpoint (05-07) still unfiled — `05-VERIFICATION.md` status `human_needed` | Deferred, pre-existing v1.0 debt | 2026-07-19 |
-| v2.0 hygiene | Phase 11 `11-VERIFICATION.md` record still reads stale `gaps_found`; its sole gap (secret-leak in `onBreak()` logging) is independently confirmed fixed in source (commit `b0fcb3c`) and closed in same-day `11-SECURITY.md` — record itself needs a re-run for hygiene, not a live defect | Deferred, not blocking v2.0 close | 2026-07-19 |
-| Phase 15 human UAT | Live WhatsApp OTP delivery via approved Meta WABA template — blocked on stakeholder Meta Business Manager template approval, not code | Deferred, not blocking v2.0 close | 2026-07-19 |
-| Phase 15 human UAT | On-device visual/UX check of 3 new mobile screens (phone.tsx picker, otp.tsx fallback banner, otp-channel-settings.tsx) | Deferred, not blocking v2.0 close | 2026-07-19 |
-| Quick tasks | 3 pre-v2.0 quick tasks (260713-bx6, 260713-daq, 260716-lbl) have SUMMARY.md filed but flagged "missing" status by the audit tool — bookkeeping only, work is complete | Deferred, not blocking v2.0 close | 2026-07-19 |
-| Tooling todos | 2 pending todo files (add-compile-step-to-packages-proto, wire-resiliencemodule-into-grpc-service-scaffolds) — both describe INT-01/INT-02, already resolved by Phase 16/17 per their own SUMMARY/VERIFICATION records; todo files themselves not marked complete | Deferred, not blocking v2.0 close | 2026-07-19 |
+| v2.0 hygiene | Phase 11 `11-VERIFICATION.md` record still reads stale `gaps_found`; its sole gap (secret-leak in `onBreak()` logging) is independently confirmed fixed in source (commit `b0fcb3c`) and closed in same-day `11-SECURITY.md` — record itself needs a re-run for hygiene, not a live defect | Deferred, not blocking v2.1 | 2026-07-19 |
+| Phase 15 human UAT | Live WhatsApp OTP delivery via approved Meta WABA template — blocked on stakeholder Meta Business Manager template approval, not code | Deferred, not blocking v2.1 | 2026-07-19 |
+| Phase 15 human UAT | On-device visual/UX check of 3 new mobile screens (phone.tsx picker, otp.tsx fallback banner, otp-channel-settings.tsx) | Deferred, not blocking v2.1 | 2026-07-19 |
+| Quick tasks | 3 pre-v2.0 quick tasks (260713-bx6, 260713-daq, 260716-lbl) have SUMMARY.md filed but flagged "missing" status by the audit tool — bookkeeping only, work is complete | Deferred, not blocking v2.1 | 2026-07-19 |
+| Tooling todos | 2 pending todo files (add-compile-step-to-packages-proto, wire-resiliencemodule-into-grpc-service-scaffolds) — both describe INT-01/INT-02, already resolved by Phase 16/17 per their own SUMMARY/VERIFICATION records; todo files themselves not marked complete | Deferred, not blocking v2.1 | 2026-07-19 |
 
 ## Session Continuity
 
-Last session: 2026-07-19T00:02:02.716Z
-Stopped at: Phase 17 context gathered
-Resume file: .planning/phases/17-grpc-proof-of-pattern-extraction-notifications-service/17-CONTEXT.md
-</content>
+Last session: 2026-07-19T14:10:00.000Z
+Stopped at: v2.1 ROADMAP.md created (Phases 18-22), STATE.md updated, REQUIREMENTS.md traceability updated (18/18 requirements mapped)
+Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Run `/gsd-plan-phase 18` to begin planning Settlement Split Centralization

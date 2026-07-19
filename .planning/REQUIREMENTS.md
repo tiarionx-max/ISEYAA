@@ -75,30 +75,30 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| GRPC-06a | TBD | Pending |
-| GRPC-06b | TBD | Pending |
-| GRPC-06c | TBD | Pending |
-| GRPC-07 | TBD | Pending |
-| GRPC-08 | TBD | Pending |
-| SETTLE-11a | TBD | Pending |
-| SETTLE-11b | TBD | Pending |
-| SETTLE-11c | TBD | Pending |
-| SETTLE-11d | TBD | Pending |
-| SETTLE-10a | TBD | Pending |
-| SETTLE-10b | TBD | Pending |
-| SETTLE-10c | TBD | Pending |
-| SETTLE-10d | TBD | Pending |
-| SETTLE-10e | TBD | Pending |
-| MIN-08a | TBD | Pending |
-| MIN-08b | TBD | Pending |
-| MIN-08c | TBD | Pending |
-| MIN-09 | TBD | Pending |
+| GRPC-06a | Phase 20 | Pending |
+| GRPC-06b | Phase 20 | Pending |
+| GRPC-06c | Phase 20 | Pending |
+| GRPC-07 | Phase 21 | Pending |
+| GRPC-08 | Phase 21 | Pending |
+| SETTLE-11a | Phase 18 | Pending |
+| SETTLE-11b | Phase 18 | Pending |
+| SETTLE-11c | Phase 18 | Pending |
+| SETTLE-11d | Phase 18 | Pending |
+| SETTLE-10a | Phase 19 | Pending |
+| SETTLE-10b | Phase 19 | Pending |
+| SETTLE-10c | Phase 19 | Pending |
+| SETTLE-10d | Phase 19 | Pending |
+| SETTLE-10e | Phase 19 | Pending |
+| MIN-08a | Phase 22 | Pending |
+| MIN-08b | Phase 22 | Pending |
+| MIN-08c | Phase 22 | Pending |
+| MIN-09 | Phase 22 | Pending |
 
 **Coverage:**
 - v1 requirements: 18 total
-- Mapped to phases: 0
-- Unmapped: 18 ⚠️ (roadmap creation pending)
+- Mapped to phases: 18
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-07-19*
-*Last updated: 2026-07-19 after initial v2.1 definition*
+*Last updated: 2026-07-19 after v2.1 ROADMAP.md creation (Phases 18-22)*

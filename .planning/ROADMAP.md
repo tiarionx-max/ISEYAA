@@ -6,12 +6,15 @@ Sprint 1 is shipped. This roadmap covers the six remaining sprints: infrastructu
 
 **v2.0 (Phases 10-17)** converts the monolith into a real, independently-deployable gRPC service (proven via `notifications-service`), wraps every external vendor call in circuit-breaker/retry/fallback resilience, generalizes the settlement engine to a three-way vendor/Ministry/platform split (fixing two pre-existing revenue bugs along the way), adds a read-only Ministry dashboard with CSV/PDF export, and lets users choose WhatsApp/Email/SMS for OTP verification — while correcting the documentation record that previously overstated Phase 2's gRPC extraction as complete.
 
+**v2.1 (Phases 18-22)** clears the extraction backlog v2.0 deliberately deferred: centralizes settlement split configuration into one validated resolver before adding a dispute/adjustment workflow on top of it, retrofits health-check-gated blue-green deploys onto the gRPC extraction pattern before extracting four more low-risk services (news/waitlist/reviews + scoped Delivery OTP), and ships recurring Ministry export delivery plus an LGA/season visitor heatmap as an independent parallel track.
+
 ## Milestones
 
 - [x] **Sprint 1 (Phase 1)** — Auth, Users, LGAs, Tourism, Events, Stays, Marketplace, Wallet, Admin, Webhooks, AI (basic), Web, Mobile — SHIPPED 2026-05-11
 - [ ] **Sprint 2–7 (Phases 2–7)** — Infrastructure → Transport → Delivery → AI/KYC → QA → Launch
 - [x] **Phase 8-9** — Mobile Redesign, Tour Packages & Tour Guides
 - [x] **v2.0 (Phases 10–17)** — Microservices, Multi-Channel Auth & Government Partnership — SHIPPED 2026-07-19 (full detail: `milestones/v2.0-ROADMAP.md`)
+- [ ] **v2.1 (Phases 18–22)** — Extraction Backlog Clearance & Settlement Flexibility — IN PROGRESS (started 2026-07-19)
 
 ## Phases
 
@@ -34,7 +37,12 @@ Sprint 1 is shipped. This roadmap covers the six remaining sprints: infrastructu
  (completed 2026-07-18)
 - [x] **Phase 16: Connection Pooling Infrastructure** - Every Prisma client on a pooled connection string, combined-topology load test under Neon's connection ceiling
  (completed 2026-07-18)
-- [x] **Phase 17: gRPC Proof-of-Pattern Extraction (notifications-service)** - `notifications-service` runs as a genuinely separate deployable process, called via `ClientGrpc`, proving the extraction pattern with zero REST behavior change (6 plans complete 2026-07-19; gap closure pending -- verification found gRPC SendPush silently reports success:true on real send failures, a client-visible regression -- see 17-VERIFICATION.md)
+- [x] **Phase 17: gRPC Proof-of-Pattern Extraction (notifications-service)** - `notifications-service` runs as a genuinely separate deployable process, called via `ClientGrpc`, proving the extraction pattern with zero REST behavior change (6 plans complete 2026-07-19; gap closure pending -- verification found gRPC SendPush silently reports success:true on real send failures; gap closure plan needed before phase can close; see 17-VERIFICATION.md)
+- [ ] **Phase 18: Settlement Split Centralization** - Every settlement call site resolves its split percentage from one validated, effective-dated `SettlementSplitTier` resolver instead of 6 duplicated inline `PlatformConfig` reads
+- [ ] **Phase 19: Settlement Dispute & Adjustment Workflow** - Admins can raise, review, and resolve disputes against completed settlements via a new append-only `adjust()` primitive, fully audited
+- [ ] **Phase 20: gRPC Blue-Green Healthcheck Retrofit** - Every extracted gRPC service exposes a real health endpoint gating Railway rollout, every `@Cron` job is distributed-lock-guarded, and a real blue-green cutover is proven end-to-end
+- [ ] **Phase 21: Low-Risk gRPC Extraction — News/Waitlist/Reviews + Scoped Delivery OTP** - News, waitlist, reviews, and Delivery's OTP verification run as independently-deployed gRPC services with zero client-visible behavior change
+- [ ] **Phase 22: Scheduled Ministry Exports & LGA Heatmap** - The Ministry receives a recurring email export digest automatically and can see an LGA × season visitor heatmap on the dashboard
 
 ## Phase Details
 
@@ -400,11 +408,72 @@ Plans:
 
 </details>
 
+## v2.1 — Extraction Backlog Clearance & Settlement Flexibility (Phases 18-22)
+
+**Milestone Goal:** Extend v2.0's proven patterns — more services onto real gRPC, safer deploys for them, automated Ministry exports, and settlement disputes/flexible splits.
+
+### Phase 18: Settlement Split Centralization
+**Goal**: Every settlement call site resolves its split percentage from one validated, effective-dated source instead of duplicated inline reads
+**Depends on**: Nothing (first phase of v2.1; builds on v2.0 Phase 12/13's `SettlementService`)
+**Requirements**: SETTLE-11a, SETTLE-11b, SETTLE-11c, SETTLE-11d
+**Success Criteria** (what must be TRUE):
+  1. An operator can view and update per-module split percentages via the new `SettlementSplitTier` config table without a code deploy, and the change takes effect for settlements from that point forward
+  2. A settlement completed under an old percentage retains that percentage on its historical record even after the config later changes (effective-dated, not retroactively recalculated)
+  3. All 6 existing settlement call sites (Transport, Delivery, Marketplace, Events, Stays, Studio) resolve their split exclusively via `SettlementService.resolveSplit()` — no module computes a split percentage inline anymore
+  4. Malformed or NaN-corrupted split configuration is rejected by `SettlementService.settle()` before it can reach a wallet mutation, rather than silently producing a garbage credit/debit
+**Plans**: TBD
+
+### Phase 19: Settlement Dispute & Adjustment Workflow
+**Goal**: Admins can dispute a completed settlement and have it corrected through an auditable, non-destructive adjustment
+**Depends on**: Phase 18 (`resolveSplit()` is the dispute resolver's source of truth for what split should have applied)
+**Requirements**: SETTLE-10a, SETTLE-10b, SETTLE-10c, SETTLE-10d, SETTLE-10e
+**Success Criteria** (what must be TRUE):
+  1. A `SUPER_ADMIN` (or authorized admin) can raise a dispute against a completed settlement transaction, capturing a reason and the disputed amount
+  2. A dispute visibly moves through `OPEN` → `IN_REVIEW` → `RESOLVED`/`DISMISSED`, with a reviewer recorded at the point it enters review
+  3. Resolving a dispute produces a new append-only adjustment transaction via `SettlementService.adjust()` (its own idempotency namespace, its own `SELECT FOR UPDATE` lock order) — the original historical `Transaction` rows are never mutated
+  4. An adjustment that would drive a recipient's wallet balance negative is blocked (not applied) and flagged for manual ops resolution instead of silently posting
+  5. Every dispute action — raise, review, resolve, dismiss — appears in `AuditLog` with who, when, why, and amount
+**Plans**: TBD
+
+### Phase 20: gRPC Blue-Green Healthcheck Retrofit
+**Goal**: Extracted gRPC services can be deployed and cut over safely, health-gated, with zero risk of a cron job double-firing during a dual-liveness window
+**Depends on**: Nothing technically, but sequenced before Phase 21 so no new service takes live traffic without health-gated rollout
+**Requirements**: GRPC-06a, GRPC-06b, GRPC-06c
+**Success Criteria** (what must be TRUE):
+  1. `notifications-service` (and every service extracted in Phase 21) exposes a `grpc.health.v1.Health` endpoint wired to Railway's `healthcheckPath`, and a failing health check blocks rollout
+  2. Every existing `@Cron` job (escrow release, heartbeat cleanup, tour reminders) is provably guarded by a `RedisService.setNx()` distributed lock — running two replicas simultaneously does not double-fire any job
+  3. An operator can execute a shadow-verify dual-run + manual pointer-flip blue-green cutover on a real extracted service end-to-end, with a documented rollback path available during the bake window
+**Plans**: TBD
+
+### Phase 21: Low-Risk gRPC Extraction — News/Waitlist/Reviews + Scoped Delivery OTP
+**Goal**: News, waitlist, reviews, and Delivery's OTP verification run as independently-deployed gRPC services with zero client-visible behavior change
+**Depends on**: Phase 20 (no new service goes live without the health-check-gated rollout it provides)
+**Requirements**: GRPC-07, GRPC-08
+**Success Criteria** (what must be TRUE):
+  1. News, waitlist, and reviews each run as their own Railway process, called exclusively via `ClientGrpc`, with zero REST response-shape change observed by web/mobile clients
+  2. Delivery's `VerifyDeliveryOtp` RPC is served by a live, independently-deployed gRPC service, while `RequestDelivery`, `AcceptDelivery`, `CompleteDelivery`, and `DeliveryGateway` remain in-process — OTP verification behavior is unchanged end-to-end
+  3. Every service extracted in this phase passes Phase 20's health-check-gated rollout (real `/healthz`, real Railway `healthcheckPath`) before being considered live
+**Plans**: TBD
+
+### Phase 22: Scheduled Ministry Exports & LGA Heatmap
+**Goal**: The Ministry receives recurring export digests automatically and can see visitor patterns across LGA and season on the dashboard
+**Depends on**: Phase 20 (reuses the distributed-lock cron pattern for its own new scheduled export job)
+**Requirements**: MIN-08a, MIN-08b, MIN-08c, MIN-09
+**Success Criteria** (what must be TRUE):
+  1. A configurable, recurring Ministry export digest (CSV + branded PDF attachment) is generated and delivered by email with no manual trigger, on a cadence set via database configuration
+  2. An operator can change the export recipient list and delivery cadence via the database with no redeploy required
+  3. Every scheduled delivery attempt (success or failure) is logged, and a transient SendGrid outage does not silently drop a report (send wrapped in the existing `cockatiel` resilience layer)
+  4. The Ministry dashboard shows an LGA × month/season visitor heatmap built on existing `MinistryService` query shapes and the existing `recharts` dependency, with no new mapping dependency introduced
+**Plans**: TBD
+**UI hint**: yes
+
 ## Progress
 
-**Execution Order:** 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14 → 15 → 16 → 17
+**Execution Order:** 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20 → 21 → 22
 
 Phases 11, 12 (Settlement Foundation), and 15 (WhatsApp OTP) are independent of the Phase 10 documentation/build-fix track and of each other — safe to execute in parallel. Phase 13 (Settlement Cutover) requires Phase 12. Phase 14 (Ministry Dashboard) requires Phase 12 for its revenue-share metric. Phase 16 (Connection Pooling) requires Phase 10's fixed build. Phase 17 (gRPC Extraction) is the final gate, requiring Phases 10, 13, and 16 all complete.
+
+For v2.1: Phase 19 requires Phase 18 (needs the centralized split resolver as the dispute-adjustment source of truth). Phase 21 requires Phase 20 (no new gRPC service takes live traffic without health-gated rollout). Phase 22 requires Phase 20 (reuses the distributed-lock cron pattern for its new scheduled job). Phase 22 has no dependency on Phases 18/19/21 beyond that and can run as a parallel track once Phase 20 lands.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -425,3 +494,8 @@ Phases 11, 12 (Settlement Foundation), and 15 (WhatsApp OTP) are independent of 
 | 15. Multi-Channel OTP | 6/6 | Complete    | 2026-07-18 |
 | 16. Connection Pooling Infrastructure | 4/4 | Complete    | 2026-07-18 |
 | 17. gRPC Proof-of-Pattern Extraction (notifications-service) | 7/7 | Complete    | 2026-07-19 |
+| 18. Settlement Split Centralization | 0/TBD | Not started | - |
+| 19. Settlement Dispute & Adjustment Workflow | 0/TBD | Not started | - |
+| 20. gRPC Blue-Green Healthcheck Retrofit | 0/TBD | Not started | - |
+| 21. Low-Risk gRPC Extraction — News/Waitlist/Reviews + Scoped Delivery OTP | 0/TBD | Not started | - |
+| 22. Scheduled Ministry Exports & LGA Heatmap | 0/TBD | Not started | - |
