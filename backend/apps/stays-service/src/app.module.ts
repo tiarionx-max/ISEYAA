@@ -3,10 +3,11 @@ import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from '../../../src/prisma/prisma.module';
 import { RedisModule } from '../../../src/redis/redis.module';
 import { CommonModule } from '../../../src/common/common.module';
+import { ResilienceModule } from '../../../src/resilience/resilience.module';
 import { StaysGrpcController } from './stays-grpc.controller';
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), PrismaModule, RedisModule, CommonModule],
+  imports: [ConfigModule.forRoot({ isGlobal: true }), PrismaModule, RedisModule, CommonModule, ResilienceModule],
   controllers: [StaysGrpcController],
 })
 export class AppModule {}

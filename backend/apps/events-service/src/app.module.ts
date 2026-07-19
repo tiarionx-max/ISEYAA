@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from '../../../src/prisma/prisma.module';
 import { RedisModule } from '../../../src/redis/redis.module';
 import { CommonModule } from '../../../src/common/common.module';
+import { ResilienceModule } from '../../../src/resilience/resilience.module';
 import { EventsGrpcController } from './events-grpc.controller';
 
 @Module({
@@ -11,6 +12,7 @@ import { EventsGrpcController } from './events-grpc.controller';
     PrismaModule,
     RedisModule,
     CommonModule,
+    ResilienceModule,
   ],
   controllers: [EventsGrpcController],
 })

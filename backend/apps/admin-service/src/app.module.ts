@@ -4,10 +4,11 @@ import { PrismaModule } from '../../../src/prisma/prisma.module';
 import { RedisModule } from '../../../src/redis/redis.module';
 import { CommonModule } from '../../../src/common/common.module';
 import { AdminModule } from '../../../src/modules/admin/admin.module';
+import { ResilienceModule } from '../../../src/resilience/resilience.module';
 import { AdminGrpcController } from './admin-grpc.controller';
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), PrismaModule, RedisModule, CommonModule, AdminModule],
+  imports: [ConfigModule.forRoot({ isGlobal: true }), PrismaModule, RedisModule, CommonModule, AdminModule, ResilienceModule],
   controllers: [AdminGrpcController],
 })
 export class AppModule {}
