@@ -17,7 +17,8 @@ export type Vendor =
   | 's3'
   | 'fcm'
   | 'metaWhatsapp'
-  | 'sendgrid';
+  | 'sendgrid'
+  | 'notificationsGrpc';
 
 export interface VendorThresholds {
   timeoutMs: number;
@@ -41,4 +42,8 @@ export const RESILIENCE_DEFAULTS: Record<Vendor, VendorThresholds> = {
   fcm: { timeoutMs: 5_000, retryCount: 1, failureThreshold: 8, halfOpenAfterMs: 20_000 },
   metaWhatsapp: { timeoutMs: 8_000, retryCount: 1, failureThreshold: 5, halfOpenAfterMs: 30_000 },
   sendgrid: { timeoutMs: 8_000, retryCount: 1, failureThreshold: 5, halfOpenAfterMs: 30_000 },
+  // Mirrors `fcm`'s shape: a same-region Railway-internal gRPC hop, best-effort/
+  // non-financial, expected to be at least as fast as the FCM HTTP round-trip fcm
+  // already wraps. Tunable later via PlatformConfig without a code change.
+  notificationsGrpc: { timeoutMs: 5_000, retryCount: 1, failureThreshold: 8, halfOpenAfterMs: 20_000 },
 };

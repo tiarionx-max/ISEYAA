@@ -11,6 +11,7 @@ import {
   CircuitBreakerPolicy,
   IPolicy,
 } from 'cockatiel';
+import { status as GrpcStatus } from '@grpc/grpc-js';
 import { trace, SpanStatusCode } from '@opentelemetry/api';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../prisma/prisma.service';
@@ -215,6 +216,22 @@ function isTransientError(err: unknown): boolean {
 
   // cockatiel's per-attempt timeout cancellation — must retry (preserves CR-01 fix).
   if ((err as any)?.isTaskCancelledError === true) return true;
+
+  // gRPC numeric status codes (@grpc/grpc-js `status` enum) — MUST be checked before the
+  // string-code branch below, since a numeric gRPC code would otherwise silently fall
+  // through every existing branch to the final `return false`. Only UNAVAILABLE (14),
+  // DEADLINE_EXCEEDED (4), and RESOURCE_EXHAUSTED (8) indicate a transient vendor-outage
+  // signal; INTERNAL/UNKNOWN/INVALID_ARGUMENT indicate the server processed the request
+  // and hit a deterministic bug/bad-input, matching the existing exclusion rationale
+  // already applied to axios 4xx responses.
+  const grpcCode = (err as any)?.code;
+  if (typeof grpcCode === 'number') {
+    return (
+      grpcCode === GrpcStatus.UNAVAILABLE ||
+      grpcCode === GrpcStatus.DEADLINE_EXCEEDED ||
+      grpcCode === GrpcStatus.RESOURCE_EXHAUSTED
+    );
+  }
 
   // Recognized network-level error codes (ECONNREFUSED, ETIMEDOUT, DNS failures,
   // fetch/undici abort (ABORT_ERR), axios's own cancellation code (ERR_CANCELED) ...).

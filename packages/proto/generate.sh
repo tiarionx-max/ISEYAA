@@ -41,7 +41,7 @@ node -e '
 const fs = require("fs"), path = require("path");
 const dir = "./packages/proto/generated";
 const mods = fs.readdirSync(dir)
-  .filter((f) => f.endsWith(".ts") && f !== "index.ts")
+  .filter((f) => f.endsWith(".ts") && !f.endsWith(".d.ts") && f !== "index.ts")
   .map((f) => f.replace(/\.ts$/, ""))
   .sort();
 const header =
