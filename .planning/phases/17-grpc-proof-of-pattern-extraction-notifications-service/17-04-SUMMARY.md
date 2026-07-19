@@ -144,3 +144,17 @@ None — no external service configuration required. `NOTIFICATIONS_SERVICE_URL`
 ---
 *Phase: 17-grpc-proof-of-pattern-extraction-notifications-service*
 *Completed: 2026-07-19*
+
+## Self-Check: PASSED
+
+All created/modified files verified present on disk:
+- FOUND: .planning/phases/17-grpc-proof-of-pattern-extraction-notifications-service/17-CALLER-GRAPH-AUDIT.md
+- FOUND: .planning/phases/17-grpc-proof-of-pattern-extraction-notifications-service/17-04-SUMMARY.md
+- FOUND: backend/src/modules/notifications/notifications.controller.ts
+- FOUND: backend/src/modules/tour-bookings/tour-notifications.service.ts
+
+All commit hashes verified present in git log:
+- FOUND: dab61bc (docs: caller-graph audit)
+- FOUND: 8e70aab (feat: NotificationsController cutover)
+- FOUND: 47043c3 (feat: TourNotificationsService cutover)
+- FOUND: 88f2537 (docs: SUMMARY.md)
