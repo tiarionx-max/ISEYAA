@@ -121,6 +121,7 @@ const mockPrisma = {
 const mockSettlement = {
   settle: jest.fn().mockResolvedValue({ status: 'SETTLED', platformAmountNgn: 0, recipientCredits: [] }),
   resolveMinistryWallet: jest.fn().mockResolvedValue({ id: 'WAL-MINISTRY' }),
+  resolveSplit: jest.fn().mockResolvedValue({ earnerPct: 0.8, ministryPct: 0.05, platformPct: 0.15 }),
 };
 
 const mockRedis = {
@@ -178,6 +179,12 @@ describe('DeliveryService', () => {
       if (typeof fn === 'function') return fn(mockTx);
       return fn;
     });
+    // Reset mockSettlement's implementations after clearAllMocks (clearAllMocks does
+    // not remove a custom .mockImplementation set by an earlier test — mirrors
+    // transport.service.spec.ts's beforeEach reset).
+    mockSettlement.settle.mockResolvedValue({ status: 'SETTLED', platformAmountNgn: 0, recipientCredits: [] });
+    mockSettlement.resolveMinistryWallet.mockResolvedValue({ id: 'WAL-MINISTRY' });
+    mockSettlement.resolveSplit.mockResolvedValue({ earnerPct: 0.8, ministryPct: 0.05, platformPct: 0.15 });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -571,6 +578,61 @@ describe('DeliveryService', () => {
         where: { id: ORDER_ID, status: { notIn: ['DELIVERED', 'CANCELLED', 'EXPIRED'] } },
         data: { status: 'IN_TRANSIT' },
       });
+    });
+
+    // SETTLE-11b regression coverage — 18-02-PLAN.md Task 2
+    it('computes riderEarnings=800 via resolveSplit for fee=1000 (byte-identical to pre-migration govtLevyPct=5/platformFeePct=15 MULTIPLY-FIRST formula)', async () => {
+      const base64Photo = Buffer.from('fake-jpeg-data').toString('base64');
+      mockPrisma.deliveryOrder.findUnique.mockResolvedValue({
+        ...mockOrder,
+        status: 'IN_TRANSIT',
+        otpVerifiedAt: new Date(),
+        fee: 1000,
+      });
+      mockPrisma.deliveryRider.findFirst.mockResolvedValue(mockRider);
+      mockPrisma.wallet.findFirst.mockResolvedValue({ id: WALLET_ID, userId: USER_ID });
+      mockPrisma.platformConfig.findUnique.mockImplementation((args: any) => {
+        const key = args.where.key;
+        if (key === 'delivery.settlement_engine_enabled') return Promise.resolve(mockPlatformConfig(key, true));
+        return Promise.resolve(null);
+      });
+      mockSettlement.resolveSplit.mockResolvedValueOnce({ earnerPct: 0.8, ministryPct: 0.05, platformPct: 0.15 });
+
+      await service.completeDelivery(ORDER_ID, USER_ID, { proofPhotoBase64: base64Photo } as any);
+
+      expect(mockSettlement.resolveSplit).toHaveBeenCalledWith('delivery', 1000);
+      expect(mockSettlement.settle).toHaveBeenCalledWith(
+        expect.objectContaining({
+          recipients: expect.arrayContaining([
+            expect.objectContaining({ tag: 'RIDER', amountNgn: 800 }),
+            expect.objectContaining({ tag: 'MINISTRY', amountNgn: 50 }),
+          ]),
+        }),
+      );
+    });
+
+    it('no longer reads delivery.govt_levy_pct/delivery.platform_fee_pct from PlatformConfig in the cutover branch', async () => {
+      const base64Photo = Buffer.from('fake-jpeg-data').toString('base64');
+      mockPrisma.deliveryOrder.findUnique.mockResolvedValue({
+        ...mockOrder,
+        status: 'IN_TRANSIT',
+        otpVerifiedAt: new Date(),
+        fee: 800,
+      });
+      mockPrisma.deliveryRider.findFirst.mockResolvedValue(mockRider);
+      mockPrisma.wallet.findFirst.mockResolvedValue({ id: WALLET_ID, userId: USER_ID });
+      mockPrisma.platformConfig.findUnique.mockImplementation((args: any) => {
+        const key = args.where.key;
+        if (key === 'delivery.settlement_engine_enabled') return Promise.resolve(mockPlatformConfig(key, true));
+        return Promise.resolve(null);
+      });
+
+      await service.completeDelivery(ORDER_ID, USER_ID, { proofPhotoBase64: base64Photo } as any);
+
+      const calledKeys = mockPrisma.platformConfig.findUnique.mock.calls.map((c: any) => c[0].where.key);
+      expect(calledKeys).not.toContain('delivery.govt_levy_pct');
+      expect(calledKeys).not.toContain('delivery.platform_fee_pct');
+      expect(mockSettlement.resolveSplit).toHaveBeenCalledWith('delivery', 800);
     });
   });
 

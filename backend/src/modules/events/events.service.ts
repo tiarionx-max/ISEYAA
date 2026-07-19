@@ -241,13 +241,15 @@ export class EventsService implements OnModuleInit {
       const s3Key = `qr-codes/${ticket.id}.png`;
       const qrImageUrl = await this.s3.upload(s3Key, qrBuffer, 'image/png');
 
-      // Fee/levy percentages always sourced from PlatformConfig — never hardcode
-      // (CLAUDE.md constraint); in-code fallback only applies when the key is unset.
-      const feeCfg = await this.prisma.platformConfig.findUnique({ where: { key: 'events.platform_fee_pct' } });
-      const platformFeePct = feeCfg ? Number(feeCfg.value) : 0.1;
-      const levyCfg = await this.prisma.platformConfig.findUnique({ where: { key: 'events.govt_levy_pct' } });
-      const govtLevyPct = levyCfg ? Number(levyCfg.value) : 0.05;
+      // SETTLE-11b: centralized resolver replaces the 2× inline PlatformConfig
+      // reads that used to live here (CLAUDE.md constraint: fee/levy percentages
+      // always sourced from a live config source, never hardcoded). resolveSplit()
+      // already returns 0-1 fractions (D-03) — no unit conversion needed, unlike
+      // Transport/Delivery.
       const ticketPrice = Number(ticket.ticketType.price);
+      const { ministryPct, platformPct } = await this.settlementService.resolveSplit('events', ticketPrice);
+      const govtLevyPct = ministryPct;
+      const platformFeePct = platformPct ?? 0;
       const govtLevyNgn = +(ticketPrice * govtLevyPct).toFixed(2);
       const platformFeeNgn = +(ticketPrice * platformFeePct).toFixed(2);
       const organiserAmountNgn = +(ticketPrice - platformFeeNgn - govtLevyNgn).toFixed(2);

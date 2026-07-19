@@ -126,6 +126,7 @@ const mockPrisma = {
 const mockSettlement = {
   settle: jest.fn().mockResolvedValue({ status: 'SETTLED', platformAmountNgn: 0, recipientCredits: [] }),
   resolveMinistryWallet: jest.fn().mockResolvedValue({ id: 'WAL-MINISTRY' }),
+  resolveSplit: jest.fn().mockResolvedValue({ earnerPct: 0.85, ministryPct: 0.05, platformPct: 0.1 }),
 };
 
 const mockRedis = {
@@ -167,6 +168,7 @@ describe('TransportService', () => {
     // does not remove a custom .mockImplementation set by an earlier test).
     mockSettlement.settle.mockResolvedValue({ status: 'SETTLED', platformAmountNgn: 0, recipientCredits: [] });
     mockSettlement.resolveMinistryWallet.mockResolvedValue({ id: 'WAL-MINISTRY' });
+    mockSettlement.resolveSplit.mockResolvedValue({ earnerPct: 0.85, ministryPct: 0.05, platformPct: 0.1 });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -814,6 +816,59 @@ describe('TransportService', () => {
           data: { status: 'IN_PROGRESS' },
         }),
       );
+    });
+
+    // SETTLE-11b regression coverage — 18-02-PLAN.md Task 1
+    it('computes driverEarnings=850/totalCommission=150 via resolveSplit for fare=1000 (byte-identical to pre-migration govtLevyPct=5/platformFeePct=10 subtract-first formula)', async () => {
+      mockPrisma.trip.findFirst.mockResolvedValue({ ...mockTrip, status: 'IN_PROGRESS', fare: 1000 });
+      mockPrisma.driver.findFirst.mockResolvedValue(mockDriver);
+      mockPrisma.wallet.findFirst.mockResolvedValue({ id: WALLET_ID, userId: USER_ID, balance: 0 });
+      mockPrisma.platformConfig.findUnique.mockImplementation((args: any) => {
+        const key = args.where.key;
+        if (key === 'transport.settlement_engine_enabled') return mockPlatformConfig(key, true);
+        return null;
+      });
+      mockSettlement.resolveSplit.mockResolvedValueOnce({ earnerPct: 0.85, ministryPct: 0.05, platformPct: 0.1 });
+      mockSettlement.settle.mockImplementation(async (input: any) => {
+        const tx = { trip: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) }, tripEvent: { create: jest.fn() } };
+        await input.onSettled?.(tx);
+        return { status: 'SETTLED', platformAmountNgn: 0, recipientCredits: [] };
+      });
+
+      await service.completeTrip(TRIP_ID, USER_ID);
+
+      expect(mockSettlement.resolveSplit).toHaveBeenCalledWith('transport', 1000);
+      expect(mockSettlement.settle).toHaveBeenCalledWith(
+        expect.objectContaining({
+          recipients: expect.arrayContaining([
+            expect.objectContaining({ tag: 'DRIVER', amountNgn: 850 }),
+            expect.objectContaining({ tag: 'MINISTRY', amountNgn: 50 }),
+          ]),
+        }),
+      );
+    });
+
+    it('no longer reads transport.govt_levy_pct/transport.platform_fee_pct from PlatformConfig in the cutover branch', async () => {
+      mockPrisma.trip.findFirst.mockResolvedValue({ ...mockTrip, status: 'IN_PROGRESS' });
+      mockPrisma.driver.findFirst.mockResolvedValue(mockDriver);
+      mockPrisma.wallet.findFirst.mockResolvedValue({ id: WALLET_ID, userId: USER_ID, balance: 0 });
+      mockPrisma.platformConfig.findUnique.mockImplementation((args: any) => {
+        const key = args.where.key;
+        if (key === 'transport.settlement_engine_enabled') return mockPlatformConfig(key, true);
+        return null;
+      });
+      mockSettlement.settle.mockImplementation(async (input: any) => {
+        const tx = { trip: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) }, tripEvent: { create: jest.fn() } };
+        await input.onSettled?.(tx);
+        return { status: 'SETTLED', platformAmountNgn: 0, recipientCredits: [] };
+      });
+
+      await service.completeTrip(TRIP_ID, USER_ID);
+
+      const calledKeys = mockPrisma.platformConfig.findUnique.mock.calls.map((c: any) => c[0].where.key);
+      expect(calledKeys).not.toContain('transport.govt_levy_pct');
+      expect(calledKeys).not.toContain('transport.platform_fee_pct');
+      expect(mockSettlement.resolveSplit).toHaveBeenCalledWith('transport', 1500);
     });
   });
 
