@@ -120,3 +120,17 @@ None - no external service configuration required. `NOTIFICATIONS_SERVICE_URL` w
 ---
 *Phase: 17-grpc-proof-of-pattern-extraction-notifications-service*
 *Completed: 2026-07-19*
+
+## Self-Check: PASSED
+
+All created files verified present on disk:
+- FOUND: backend/src/modules/notifications-client/notifications-client.module.ts
+- FOUND: backend/src/modules/notifications-client/notifications-client.service.ts
+- FOUND: backend/src/modules/notifications-client/__tests__/notifications-client.service.spec.ts
+- FOUND: .planning/phases/17-grpc-proof-of-pattern-extraction-notifications-service/17-03-SUMMARY.md
+
+All commit hashes verified present in git log:
+- FOUND: 74e7aef (feat: NotificationsClientModule)
+- FOUND: 278bb4a (test: RED spec)
+- FOUND: 8e0abb0 (feat: NotificationsClientService GREEN)
+- FOUND: d0e03f0 (docs: SUMMARY.md)
