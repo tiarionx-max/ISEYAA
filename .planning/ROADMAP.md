@@ -502,7 +502,7 @@ For v2.1: Phase 19 requires Phase 18 (needs the centralized split resolver as th
 | 15. Multi-Channel OTP | 6/6 | Complete    | 2026-07-18 |
 | 16. Connection Pooling Infrastructure | 4/4 | Complete    | 2026-07-18 |
 | 17. gRPC Proof-of-Pattern Extraction (notifications-service) | 7/7 | Complete    | 2026-07-19 |
-| 18. Settlement Split Centralization | 4/4 | Complete   | 2026-07-19 |
+| 18. Settlement Split Centralization | 4/4 | Complete    | 2026-07-19 |
 | 19. Settlement Dispute & Adjustment Workflow | 0/TBD | Not started | - |
 | 20. gRPC Blue-Green Healthcheck Retrofit | 0/TBD | Not started | - |
 | 21. Low-Risk gRPC Extraction — News/Waitlist/Reviews + Scoped Delivery OTP | 0/TBD | Not started | - |
