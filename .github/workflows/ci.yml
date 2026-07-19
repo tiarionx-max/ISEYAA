@@ -85,6 +85,10 @@ jobs:
         working-directory: backend
         run: npm test -- --forceExit --passWithNoTests
 
+      - name: E2E tests (settlement split tier audit trail)
+        working-directory: backend
+        run: npm run test:e2e:settlement-splits -- --forceExit --passWithNoTests
+
       - name: Build
         working-directory: backend
         run: npm run build
