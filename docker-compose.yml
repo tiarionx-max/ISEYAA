@@ -44,6 +44,7 @@ services:
     environment:
       DATABASE_URL: postgresql://iseyaa:iseyaa_dev_password@postgres:5432/iseyaa_dev
       REDIS_URL: redis://redis:6379
+      NOTIFICATIONS_SERVICE_URL: notifications-service:5008
     ports:
       - '3001:3001'
     volumes:
@@ -54,6 +55,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      notifications-service:
+        condition: service_started
 
   web:
     build:
@@ -72,6 +75,24 @@ services:
       - web_next:/app/.next
     depends_on:
       - backend
+
+  notifications-service:
+    build:
+      context: .
+      dockerfile: backend/apps/notifications-service/Dockerfile
+    container_name: iseyaa_notifications_service
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://iseyaa:iseyaa_dev_password@postgres:5432/iseyaa_dev
+      REDIS_URL: redis://redis:6379
+    ports:
+      - '5008:5008'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
 volumes:
   postgres_data:
