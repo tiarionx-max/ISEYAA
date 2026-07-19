@@ -421,7 +421,15 @@ Plans:
   2. A settlement completed under an old percentage retains that percentage on its historical record even after the config later changes (effective-dated, not retroactively recalculated)
   3. All 6 existing settlement call sites (Transport, Delivery, Marketplace, Events, Stays, Studio) resolve their split exclusively via `SettlementService.resolveSplit()` — no module computes a split percentage inline anymore
   4. Malformed or NaN-corrupted split configuration is rejected by `SettlementService.settle()` before it can reach a wallet mutation, rather than silently producing a garbage credit/debit
-**Plans**: TBD
+**Plans**: 4 plans
+Plans:
+**Wave 1**
+- [ ] 18-01-PLAN.md — SettlementSplitTier Prisma model + migration, SettlementService.resolveSplit() resolver + settle() Number.isFinite() NaN guard, one-off backfill script from live PlatformConfig
+
+**Wave 2** *(blocked on Wave 1)*
+- [ ] 18-02-PLAN.md — Migrate Transport + Delivery + Events call sites onto resolveSplit()
+- [ ] 18-03-PLAN.md — Migrate Marketplace + Stays + Studio call sites onto resolveSplit() (D-02 vendor override, D-05 Stays snapshot timing, D-01 Studio null platformPct all preserved)
+- [ ] 18-04-PLAN.md — Admin CRUD endpoints for SettlementSplitTier (SUPER_ADMIN-only, insert-new-row/deactivate-old per D-05)
 
 ### Phase 19: Settlement Dispute & Adjustment Workflow
 **Goal**: Admins can dispute a completed settlement and have it corrected through an auditable, non-destructive adjustment
@@ -494,7 +502,7 @@ For v2.1: Phase 19 requires Phase 18 (needs the centralized split resolver as th
 | 15. Multi-Channel OTP | 6/6 | Complete    | 2026-07-18 |
 | 16. Connection Pooling Infrastructure | 4/4 | Complete    | 2026-07-18 |
 | 17. gRPC Proof-of-Pattern Extraction (notifications-service) | 7/7 | Complete    | 2026-07-19 |
-| 18. Settlement Split Centralization | 0/TBD | Not started | - |
+| 18. Settlement Split Centralization | 0/4 | Not started | - |
 | 19. Settlement Dispute & Adjustment Workflow | 0/TBD | Not started | - |
 | 20. gRPC Blue-Green Healthcheck Retrofit | 0/TBD | Not started | - |
 | 21. Low-Risk gRPC Extraction — News/Waitlist/Reviews + Scoped Delivery OTP | 0/TBD | Not started | - |
