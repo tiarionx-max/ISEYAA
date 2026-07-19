@@ -79,6 +79,10 @@ v2.0 — Microservices, Multi-Channel Auth & Government Partnership (shipped 202
 - ✓ Connection Pooling Infrastructure — notifications-service boots cleanly (fixed the `packages/proto` compile-step gap and a `ResilienceModule` DI resolution gap), Neon pooled `-pooler` connection string pattern documented and config-tested (POOL-01), `postgres_open_connections` OTel gauge wired into the existing Grafana Cloud OTLP pipeline for both processes, combined-topology k6 scenario proves total connections stay under the confirmed Neon ceiling (POOL-02) — Phase 16 (4/4 plans, completed 2026-07-18). Verified: 15/15 must-haves, 610 backend tests passing. Operator confirmed the 104-connection baseline stands, the combined-topology load test + Grafana alert are live, and the production Railway monolith's `DATABASE_URL` has been changed to the pooled format and redeployed
 - ✓ gRPC Proof-of-Pattern Extraction — `notifications-service` runs as a genuinely separate deployable process (own Railway service + docker-compose block), called exclusively via `ClientGrpc`, with zero client-visible REST behavior change confirmed end-to-end after a gap-closure round fixed a silent `success: true` hardcode on real send failures; documented caller-graph audit gated the extraction; Wallet/Transport/Delivery/Events/Stays/Marketplace/Auth/Tour* confirmed still in-process (GRPC-03, GRPC-04, GRPC-05) — Phase 17 (7/7 plans, completed 2026-07-19). 619 backend tests passing
 
+v2.1 — Extraction Backlog Clearance & Settlement Flexibility (in progress, started 2026-07-19):
+
+- ✓ Settlement Split Centralization — new `SettlementSplitTier` model (typed Decimal columns, partial-unique-index-enforced single-active-row-per-module) replaces 6 duplicated inline `PlatformConfig` reads; `SettlementService.resolveSplit()` is the sole resolver for Transport/Delivery/Marketplace/Events/Stays/Studio; `Number.isFinite()` guard added to `settle()` rejects NaN-corrupted config before any wallet mutation; backend-only `SUPER_ADMIN`-gated CRUD with insert-new-row/deactivate-old audit trail (SETTLE-11a, SETTLE-11b, SETTLE-11c, SETTLE-11d) — Phase 18 (4/4 plans, completed 2026-07-19). Verified 7/7 must-haves; a code-review blocker (unique-constraint violation in the audit-trail update path) was found and fixed pre-verification, with a real-Postgres e2e regression test wired into CI. 644 backend tests passing
+
 ### Active
 
 v2.1 — Extraction Backlog Clearance & Settlement Flexibility (scoping started 2026-07-19):
@@ -89,7 +93,6 @@ v2.1 — Extraction Backlog Clearance & Settlement Flexibility (scoping started 
 - MIN-08: Scheduled/recurring Ministry export delivery
 - MIN-09: Seasonal/LGA heatmap visualization on Ministry dashboard
 - SETTLE-10: Settlement dispute/adjustment workflow
-- SETTLE-11: Configurable per-module Ministry split tiers
 
 ### Out of Scope
 
@@ -159,4 +162,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-19 — v2.1 milestone scoping started*
+*Last updated: 2026-07-19 — Phase 18 (Settlement Split Centralization) complete*
