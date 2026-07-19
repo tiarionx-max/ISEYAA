@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
-import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationsClientService } from '../notifications-client/notifications-client.service';
 import { SendgridService } from '../../common/services/sendgrid.service';
 import {
   ItineraryPdfService,
@@ -51,7 +51,7 @@ export class TourNotificationsService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly notifications: NotificationsService,
+    private readonly notifications: NotificationsClientService,
     private readonly sendgrid: SendgridService,
     private readonly pdf: ItineraryPdfService,
     private readonly config: ConfigService,
