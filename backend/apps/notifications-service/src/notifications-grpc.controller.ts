@@ -9,7 +9,7 @@ export class NotificationsGrpcController {
 
   @GrpcMethod('NotificationsService', 'SendPush')
   async sendPush(data: notifications.SendPushRequest): Promise<notifications.SendPushResponse> {
-    await this.notificationsService.sendPush(data.userId, data.title, data.body);
+    await this.notificationsService.sendPush(data.userId, data.title, data.body, data.data);
     return { success: true };
   }
 

@@ -16,6 +16,12 @@ export interface SendPushRequest {
   userId: string;
   title: string;
   body: string;
+  data: { [key: string]: string };
+}
+
+export interface SendPushRequest_DataEntry {
+  key: string;
+  value: string;
 }
 
 export interface SendPushResponse {
@@ -34,7 +40,7 @@ export interface RegisterTokenResponse {
 export const NOTIFICATIONS_PACKAGE_NAME = "notifications";
 
 function createBaseSendPushRequest(): SendPushRequest {
-  return { userId: "", title: "", body: "" };
+  return { userId: "", title: "", body: "", data: {} };
 }
 
 export const SendPushRequest: MessageFns<SendPushRequest> = {
@@ -48,6 +54,9 @@ export const SendPushRequest: MessageFns<SendPushRequest> = {
     if (message.body !== "") {
       writer.uint32(26).string(message.body);
     }
+    globalThis.Object.entries(message.data).forEach(([key, value]: [string, string]) => {
+      SendPushRequest_DataEntry.encode({ key: key as any, value }, writer.uint32(34).fork()).join();
+    });
     return writer;
   },
 
@@ -80,6 +89,65 @@ export const SendPushRequest: MessageFns<SendPushRequest> = {
           }
 
           message.body = reader.string();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          const entry4 = SendPushRequest_DataEntry.decode(reader, reader.uint32());
+          if (entry4.value !== undefined) {
+            message.data[entry4.key] = entry4.value;
+          }
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+};
+
+function createBaseSendPushRequest_DataEntry(): SendPushRequest_DataEntry {
+  return { key: "", value: "" };
+}
+
+export const SendPushRequest_DataEntry: MessageFns<SendPushRequest_DataEntry> = {
+  encode(message: SendPushRequest_DataEntry, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.key !== "") {
+      writer.uint32(10).string(message.key);
+    }
+    if (message.value !== "") {
+      writer.uint32(18).string(message.value);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SendPushRequest_DataEntry {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseSendPushRequest_DataEntry();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.key = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.value = reader.string();
           continue;
         }
       }

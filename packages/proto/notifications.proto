@@ -10,6 +10,7 @@ message SendPushRequest {
   string user_id = 1;
   string title = 2;
   string body = 3;
+  map<string, string> data = 4;
 }
 
 message SendPushResponse {
