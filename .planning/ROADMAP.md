@@ -626,7 +626,7 @@ Plans:
 - [x] 17-05-PLAN.md -- Deployment topology: docker-compose.yml notifications-service block + .env.example NOTIFICATIONS_SERVICE_URL documentation
 
 **Wave 2** *(blocked on Wave 1 -- 17-03 depends on 17-01)*
-- [ ] 17-03-PLAN.md -- NotificationsClientModule + NotificationsClientService gRPC facade (D-01/D-02/D-03/D-05/D-06) + spec
+- [x] 17-03-PLAN.md -- NotificationsClientModule + NotificationsClientService gRPC facade (D-01/D-02/D-03/D-05/D-06) + spec
 
 **Wave 3** *(blocked on Wave 2)*
 - [ ] 17-04-PLAN.md -- Cutover: committed caller-graph audit (GRPC-04) + rewire NotificationsController + TourNotificationsService onto the gRPC facade (GRPC-03, GRPC-05 grep gate)
@@ -664,4 +664,4 @@ Phases 11, 12 (Settlement Foundation), and 15 (WhatsApp OTP) are independent of 
 | 14. Ministry Dashboard | 10/10 | Complete   | 2026-07-18 |
 | 15. Multi-Channel OTP | 6/6 | Complete    | 2026-07-18 |
 | 16. Connection Pooling Infrastructure | 4/4 | Complete    | 2026-07-18 |
-| 17. gRPC Proof-of-Pattern Extraction (notifications-service) | 3/6 | In Progress|  |
+| 17. gRPC Proof-of-Pattern Extraction (notifications-service) | 4/6 | In Progress|  |
