@@ -186,13 +186,9 @@ export class MarketplaceService implements OnModuleInit {
     const vendor = products[0].vendor;
     if (vendor.status !== 'ACTIVE') throw new BadRequestException('Vendor is not active');
 
-    // Fetch fee config from platform_config — NEVER hardcode. Key follows the
-    // `module.key_name` convention used by every other module in this phase
-    // (events.platform_fee_pct, studio.platform_fee_pct, ...) — WR-07.
-    const feeConfig = await this.prisma.platformConfig.findUnique({
-      where: { key: 'marketplace.platform_fee_pct' },
-    });
-    const platformFeePct = feeConfig ? Number(feeConfig.value) : 0.10;
+    // D-02: the per-vendor `Vendor.govtLevyPct` override is NOT absorbed into the
+    // centralized resolver — it continues to be read directly from the Vendor row;
+    // only the module-level platform fee routes through resolveSplit().
     const govtLevyPct = Number(vendor.govtLevyPct);
 
     const orderItems = dto.items.map((item, idx) => {
@@ -206,6 +202,9 @@ export class MarketplaceService implements OnModuleInit {
     });
 
     const total = orderItems.reduce((sum, i) => sum + i.subtotal, 0);
+    // Centralized split resolution (SETTLE-11b) — module-level platform fee only.
+    const { platformPct } = await this.settlementService.resolveSplit('marketplace', total);
+    const platformFeePct = platformPct ?? 0;
     const platformFee = +(total * platformFeePct).toFixed(2);
     const govtLevy = +(total * govtLevyPct).toFixed(2);
     const vendorPayout = +(total - platformFee - govtLevy).toFixed(2);
