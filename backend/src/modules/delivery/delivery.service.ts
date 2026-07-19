@@ -587,14 +587,14 @@ export class DeliveryService {
       //    SettlementService.settle() (Phase 12). Preserve Delivery's own
       //    MULTIPLY-FIRST rounding order exactly (Pitfall 1 — do not switch to
       //    Transport's subtract-first order).
-      const levyCfg = await this.prisma.platformConfig.findUnique({
-        where: { key: 'delivery.govt_levy_pct' },
-      });
-      const platformFeeCfg = await this.prisma.platformConfig.findUnique({
-        where: { key: 'delivery.platform_fee_pct' },
-      });
-      const govtLevyPct = levyCfg ? Number(levyCfg.value) : 5;
-      const platformFeePct = platformFeeCfg ? Number(platformFeeCfg.value) : 15;
+      // SETTLE-11b: centralized resolver replaces the 2× inline PlatformConfig
+      // reads that used to live here. resolveSplit() returns 0-1 fractions
+      // (D-03) — convert back to whole-number percent for the existing
+      // multiply-first arithmetic below, which is left byte-for-byte unchanged
+      // (Pitfall 1 — do not switch to Transport's subtract-first order).
+      const { ministryPct, platformPct } = await this.settlementService.resolveSplit('delivery', fee);
+      const govtLevyPct = ministryPct * 100;
+      const platformFeePct = (platformPct ?? 0) * 100;
       const totalCommissionPct = govtLevyPct + platformFeePct; // = 20, matches today's feePct
 
       riderEarnings = Math.round(fee * (1 - totalCommissionPct / 100) * 100) / 100;
