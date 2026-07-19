@@ -23,9 +23,18 @@ A tourist in Abeokuta can discover an attraction, book a guesthouse, buy an even
 
 **Key context:** Surfaced from a stakeholder call. `ROADMAP.md` Phase 2 previously marked gRPC extraction `[x]` complete for 8 services, but a code audit confirmed zero `@GrpcMethod`/`ClientGrpc` usage anywhere — the platform was actually a single-process monolith. Phase 10 corrected that documentation claim before any new work was bolted on top.
 
-## Next Milestone Goals
+## Current Milestone: v2.1 Extraction Backlog Clearance & Settlement Flexibility
 
-Not yet defined — run `/gsd-new-milestone` to scope v2.1 or v3.0. Candidates surfaced during v2.0 (see Requirements → Active below): live extraction of Delivery/remaining modules, blue-green/canary deploys per extracted service, scheduled Ministry export delivery, dispute/adjustment workflow for settlements.
+**Goal:** Extend v2.0's proven patterns — more services onto real gRPC, safer deploys for them, automated Ministry exports, and settlement disputes/flexible splits.
+
+**Target features:**
+- Live gRPC extraction: Delivery + remaining core modules (GRPC-07)
+- Live gRPC extraction: news/waitlist/reviews (GRPC-08)
+- Blue-green/canary deploys per extracted gRPC service (GRPC-06)
+- Scheduled/recurring Ministry export delivery (MIN-08)
+- Seasonal/LGA heatmap visualization on Ministry dashboard (MIN-09)
+- Settlement dispute/adjustment workflow (SETTLE-10)
+- Configurable per-module Ministry split tiers (SETTLE-11)
 
 ## Requirements
 
@@ -72,7 +81,15 @@ v2.0 — Microservices, Multi-Channel Auth & Government Partnership (shipped 202
 
 ### Active
 
-None — v2.0 shipped 2026-07-19. Run `/gsd-new-milestone` to scope the next milestone. Candidates carried forward from v2.0's deferred scope: live gRPC extraction of Delivery + remaining modules (GRPC-07), blue-green/canary deploys per extracted service (GRPC-06), live extraction of news/waitlist/reviews (GRPC-08), scheduled/recurring Ministry export delivery (MIN-08), seasonal/LGA heatmap visualization (MIN-09), settlement dispute/adjustment workflow (SETTLE-10), configurable per-module Ministry split tiers (SETTLE-11).
+v2.1 — Extraction Backlog Clearance & Settlement Flexibility (scoping started 2026-07-19):
+
+- GRPC-07: Live gRPC extraction of Delivery + remaining core modules
+- GRPC-08: Live gRPC extraction of news/waitlist/reviews
+- GRPC-06: Blue-green/canary deploys per extracted gRPC service
+- MIN-08: Scheduled/recurring Ministry export delivery
+- MIN-09: Seasonal/LGA heatmap visualization on Ministry dashboard
+- SETTLE-10: Settlement dispute/adjustment workflow
+- SETTLE-11: Configurable per-module Ministry split tiers
 
 ### Out of Scope
 
@@ -142,4 +159,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-19 after v2.0 milestone*
+*Last updated: 2026-07-19 — v2.1 milestone scoping started*
