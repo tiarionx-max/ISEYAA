@@ -629,7 +629,7 @@ Plans:
 - [x] 17-03-PLAN.md -- NotificationsClientModule + NotificationsClientService gRPC facade (D-01/D-02/D-03/D-05/D-06) + spec
 
 **Wave 3** *(blocked on Wave 2)*
-- [ ] 17-04-PLAN.md -- Cutover: committed caller-graph audit (GRPC-04) + rewire NotificationsController + TourNotificationsService onto the gRPC facade (GRPC-03, GRPC-05 grep gate)
+- [x] 17-04-PLAN.md -- Cutover: committed caller-graph audit (GRPC-04) + rewire NotificationsController + TourNotificationsService onto the gRPC facade (GRPC-03, GRPC-05 grep gate)
 
 **Wave 4** *(blocked on all preceding waves)*
 - [ ] 17-06-PLAN.md -- Human verification checkpoint: Railway service creation/linking + REST response-shape parity + full build/test confirmation
@@ -664,4 +664,4 @@ Phases 11, 12 (Settlement Foundation), and 15 (WhatsApp OTP) are independent of 
 | 14. Ministry Dashboard | 10/10 | Complete   | 2026-07-18 |
 | 15. Multi-Channel OTP | 6/6 | Complete    | 2026-07-18 |
 | 16. Connection Pooling Infrastructure | 4/4 | Complete    | 2026-07-18 |
-| 17. gRPC Proof-of-Pattern Extraction (notifications-service) | 4/6 | In Progress|  |
+| 17. gRPC Proof-of-Pattern Extraction (notifications-service) | 5/6 | In Progress|  |
