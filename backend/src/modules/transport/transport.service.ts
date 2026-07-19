@@ -553,14 +553,13 @@ export class TransportService {
 
     if (cutoverEnabled) {
       // ── SettlementService-delegated path ────────────────────────────────
-      const levyCfg = await this.prisma.platformConfig.findUnique({
-        where: { key: 'transport.govt_levy_pct' },
-      });
-      const govtLevyPct = levyCfg ? Number(levyCfg.value) : 5;
-      const platformFeeCfg = await this.prisma.platformConfig.findUnique({
-        where: { key: 'transport.platform_fee_pct' },
-      });
-      const platformFeePct = platformFeeCfg ? Number(platformFeeCfg.value) : 10;
+      // SETTLE-11b: centralized resolver replaces the 2× inline PlatformConfig
+      // reads that used to live here. resolveSplit() returns 0-1 fractions
+      // (D-03) — convert back to whole-number percent for the existing
+      // subtract-first arithmetic below, which is left byte-for-byte unchanged.
+      const { ministryPct, platformPct } = await this.settlementService.resolveSplit('transport', fare);
+      const govtLevyPct = ministryPct * 100;
+      const platformFeePct = (platformPct ?? 0) * 100;
 
       // D-01/Pitfall-1: SUBTRACT-FIRST — must match today's exact formula order.
       const totalCommissionPct = govtLevyPct + platformFeePct;
