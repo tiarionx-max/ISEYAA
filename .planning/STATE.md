@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Microservices, Multi-Channel Auth & Government Partnership
-status: milestone_complete
+status: Awaiting next milestone
 stopped_at: Phase 17 context gathered
-last_updated: "2026-07-19T12:44:02.680Z"
-last_activity: 2026-07-19 -- Phase 17 execution started
+last_updated: "2026-07-19T13:22:58.962Z"
+last_activity: 2026-07-19 — Milestone v2.0 completed and archived
 progress:
   total_phases: 8
   completed_phases: 8
   total_plans: 54
-  completed_plans: 53
+  completed_plans: 54
   percent: 100
 ---
 
@@ -25,12 +25,10 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 ## Current Position
 
-Phase: 17
-Plan: Not started
-Status: Milestone complete
-Last activity: 2026-07-19
-
-Progress: [██████████] 100% plans executed (verification: 3/4 must-haves)
+Phase: Milestone v2.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-07-19 — Milestone v2.0 completed and archived
 
 ## Current Status
 
@@ -121,6 +119,13 @@ Items acknowledged and carried forward from previous milestone close:
 | Ministry scope | Seasonal/LGA heatmap visualization (MIN-09) | Deferred to v2 | 2026-07-15 |
 | Settlement scope | Dispute/adjustment workflow (SETTLE-10) | Deferred to v2 | 2026-07-15 |
 | Settlement scope | Configurable per-module Ministry split tiers (SETTLE-11) | Deferred to v2 | 2026-07-15 |
+| RESIL-02 | Live Grafana/Sentry dashboard confirmation of a real vendor outage — code-level wiring/sanitization independently verified, only the live-pipeline human check remains open | Deferred, not blocking v2.0 close | 2026-07-19 |
+| v1.0 checkpoint | Phase 05 (AI Concierge + KYC) human-verification checkpoint (05-07) still unfiled — `05-VERIFICATION.md` status `human_needed` | Deferred, pre-existing v1.0 debt | 2026-07-19 |
+| v2.0 hygiene | Phase 11 `11-VERIFICATION.md` record still reads stale `gaps_found`; its sole gap (secret-leak in `onBreak()` logging) is independently confirmed fixed in source (commit `b0fcb3c`) and closed in same-day `11-SECURITY.md` — record itself needs a re-run for hygiene, not a live defect | Deferred, not blocking v2.0 close | 2026-07-19 |
+| Phase 15 human UAT | Live WhatsApp OTP delivery via approved Meta WABA template — blocked on stakeholder Meta Business Manager template approval, not code | Deferred, not blocking v2.0 close | 2026-07-19 |
+| Phase 15 human UAT | On-device visual/UX check of 3 new mobile screens (phone.tsx picker, otp.tsx fallback banner, otp-channel-settings.tsx) | Deferred, not blocking v2.0 close | 2026-07-19 |
+| Quick tasks | 3 pre-v2.0 quick tasks (260713-bx6, 260713-daq, 260716-lbl) have SUMMARY.md filed but flagged "missing" status by the audit tool — bookkeeping only, work is complete | Deferred, not blocking v2.0 close | 2026-07-19 |
+| Tooling todos | 2 pending todo files (add-compile-step-to-packages-proto, wire-resiliencemodule-into-grpc-service-scaffolds) — both describe INT-01/INT-02, already resolved by Phase 16/17 per their own SUMMARY/VERIFICATION records; todo files themselves not marked complete | Deferred, not blocking v2.0 close | 2026-07-19 |
 
 ## Session Continuity
 
@@ -128,3 +133,7 @@ Last session: 2026-07-19T00:02:02.716Z
 Stopped at: Phase 17 context gathered
 Resume file: .planning/phases/17-grpc-proof-of-pattern-extraction-notifications-service/17-CONTEXT.md
 </content>
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone
