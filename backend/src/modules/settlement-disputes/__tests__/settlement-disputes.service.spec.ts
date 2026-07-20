@@ -2,7 +2,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { SettlementDisputesService } from '../settlement-disputes.service';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { SettlementService } from '../../../common/services/settlement.service';
+import {
+  SettlementService,
+  InsufficientAdjustmentBalanceError,
+} from '../../../common/services/settlement.service';
 
 /**
  * 19-03 — SettlementDisputesService spec.
@@ -235,4 +238,353 @@ describe('writeAudit() silent-fallback (used by raise()/moveToReview())', () => 
       expect.objectContaining({ status: 'IN_REVIEW' }),
     );
   });
+});
+
+// ── Task 2: computeAdjustmentLines() / resolve() / dismiss() ────────────────
+// D-01 (system-computed, not reviewer-editable), D-04 (5-status machine),
+// D-05 (BLOCKED retryable), SETTLE-10c/10d/10e.
+
+const WAL_DRIVER = 'WAL-DRIVER';
+const WAL_MINISTRY = 'WAL-MINISTRY';
+
+describe('computeAdjustmentLines()', () => {
+  it('single-earner settlement: returns 2 lines when resolveSplit() differs from what was paid', async () => {
+    mockPrisma.transaction.findMany.mockResolvedValue([
+      {
+        id: 'TX-1',
+        reference: `${SETTLEMENT_REFERENCE}-DRV`,
+        amount: 8500,
+        walletId: WAL_DRIVER,
+        metadata: { recipientType: 'DRIVER' },
+      },
+      {
+        id: 'TX-2',
+        reference: `${SETTLEMENT_REFERENCE}-MINISTRY`,
+        amount: 500,
+        walletId: WAL_MINISTRY,
+        metadata: { recipientType: 'MINISTRY' },
+      },
+    ]);
+    mockSettlementService.resolveSplit.mockResolvedValue({
+      earnerPct: 0.9,
+      ministryPct: 0.06,
+      platformPct: 0.04,
+    });
+
+    const { lines, chargeAmountNgn } = await service.computeAdjustmentLines(
+      'transport',
+      SETTLEMENT_REFERENCE,
+    );
+
+    expect(chargeAmountNgn).toBe(9000);
+    expect(lines).toHaveLength(2);
+    expect(lines).toEqual(
+      expect.arrayContaining([
+        { walletId: WAL_MINISTRY, deltaNgn: 40 },
+        { walletId: WAL_DRIVER, deltaNgn: -400 },
+      ]),
+    );
+  });
+
+  it('returns an empty lines array when resolveSplit() matches what was originally applied', async () => {
+    mockPrisma.transaction.findMany.mockResolvedValue([
+      {
+        id: 'TX-1',
+        reference: `${SETTLEMENT_REFERENCE}-DRV`,
+        amount: 8500,
+        walletId: WAL_DRIVER,
+        metadata: { recipientType: 'DRIVER' },
+      },
+      {
+        id: 'TX-2',
+        reference: `${SETTLEMENT_REFERENCE}-MINISTRY`,
+        amount: 1500,
+        walletId: WAL_MINISTRY,
+        metadata: { recipientType: 'MINISTRY' },
+      },
+    ]);
+    mockSettlementService.resolveSplit.mockResolvedValue({
+      earnerPct: 0.85,
+      ministryPct: 0.15,
+      platformPct: 0,
+    });
+
+    const { lines } = await service.computeAdjustmentLines('transport', SETTLEMENT_REFERENCE);
+
+    expect(lines).toEqual([]);
+  });
+
+  it('multi-earner (Tour-style) settlement distributes the delta proportionally, last row absorbs the remainder', async () => {
+    const WAL_1 = 'WAL-EARNER-1';
+    const WAL_2 = 'WAL-EARNER-2';
+    const WAL_3 = 'WAL-EARNER-3';
+    mockPrisma.transaction.findMany.mockResolvedValue([
+      { id: 'TX-1', reference: `${SETTLEMENT_REFERENCE}-V-0`, amount: 3000, walletId: WAL_1, metadata: {} },
+      { id: 'TX-2', reference: `${SETTLEMENT_REFERENCE}-V-1`, amount: 2000, walletId: WAL_2, metadata: {} },
+      { id: 'TX-3', reference: `${SETTLEMENT_REFERENCE}-V-2`, amount: 1000, walletId: WAL_3, metadata: {} },
+    ]);
+    mockSettlementService.resolveSplit.mockResolvedValue({
+      earnerPct: 0.9,
+      ministryPct: 0,
+      platformPct: 0.1,
+    });
+
+    const { lines } = await service.computeAdjustmentLines('tour', SETTLEMENT_REFERENCE);
+
+    expect(lines).toEqual([
+      { walletId: WAL_1, deltaNgn: -300 },
+      { walletId: WAL_2, deltaNgn: -200 },
+      { walletId: WAL_3, deltaNgn: -100 },
+    ]);
+    const sum = lines.reduce((s, l) => s + l.deltaNgn, 0);
+    expect(Math.round(sum * 100) / 100).toBe(-600);
+  });
+
+  it('skips the ministry line entirely when the original settlement had no MINISTRY-tagged row', async () => {
+    mockPrisma.transaction.findMany.mockResolvedValue([
+      {
+        id: 'TX-1',
+        reference: `${SETTLEMENT_REFERENCE}-DRV`,
+        amount: 5000,
+        walletId: WAL_DRIVER,
+        metadata: { recipientType: 'DRIVER' },
+      },
+    ]);
+    mockSettlementService.resolveSplit.mockResolvedValue({
+      earnerPct: 0.8,
+      ministryPct: 0,
+      platformPct: 0.2,
+    });
+
+    const { lines } = await service.computeAdjustmentLines('delivery', SETTLEMENT_REFERENCE);
+
+    expect(lines).toEqual([{ walletId: WAL_DRIVER, deltaNgn: -1000 }]);
+  });
+
+  it('throws NotFoundException when no Transaction rows at all match the settlementReference prefix', async () => {
+    mockPrisma.transaction.findMany.mockResolvedValue([]);
+
+    await expect(
+      service.computeAdjustmentLines('transport', SETTLEMENT_REFERENCE),
+    ).rejects.toThrow(NotFoundException);
+  });
+});
+
+describe('resolve()', () => {
+  function mockHappyPathTransactionRows() {
+    mockPrisma.transaction.findMany.mockResolvedValue([
+      {
+        id: 'TX-1',
+        reference: `${SETTLEMENT_REFERENCE}-DRV`,
+        amount: 8500,
+        walletId: WAL_DRIVER,
+        metadata: { recipientType: 'DRIVER' },
+      },
+      {
+        id: 'TX-2',
+        reference: `${SETTLEMENT_REFERENCE}-MINISTRY`,
+        amount: 500,
+        walletId: WAL_MINISTRY,
+        metadata: { recipientType: 'MINISTRY' },
+      },
+    ]);
+    mockSettlementService.resolveSplit.mockResolvedValue({
+      earnerPct: 0.9,
+      ministryPct: 0.06,
+      platformPct: 0.04,
+    });
+  }
+
+  it('is callable on a BLOCKED dispute (D-05) — not a 409', async () => {
+    mockPrisma.settlementDispute.findUnique.mockResolvedValue(
+      buildDispute({ status: 'BLOCKED' }),
+    );
+    mockHappyPathTransactionRows();
+    mockSettlementService.adjust.mockResolvedValue({
+      status: 'SETTLED',
+      platformAmountNgn: 0,
+      recipientCredits: [],
+    });
+    mockPrisma.settlementDispute.update.mockResolvedValue(
+      buildDispute({ status: 'RESOLVED', adjustmentReference: `${SETTLEMENT_REFERENCE}-ADJ` }),
+    );
+
+    const result = await service.resolve(DISPUTE_ID, ACTOR_USER_ID, {});
+
+    expect(result.status).toBe('RESOLVED');
+  });
+
+  it.each(['RESOLVED', 'DISMISSED'])(
+    'throws ConflictException when the dispute is already %s (terminal)',
+    async (status) => {
+      mockPrisma.settlementDispute.findUnique.mockResolvedValue(buildDispute({ status }));
+
+      await expect(service.resolve(DISPUTE_ID, ACTOR_USER_ID, {})).rejects.toThrow(
+        ConflictException,
+      );
+      expect(mockSettlementService.adjust).not.toHaveBeenCalled();
+    },
+  );
+
+  it('happy path: applies the computed adjustment, sets RESOLVED + adjustmentReference, writes AuditLog', async () => {
+    mockPrisma.settlementDispute.findUnique.mockResolvedValue(
+      buildDispute({ status: 'IN_REVIEW' }),
+    );
+    mockHappyPathTransactionRows();
+    mockSettlementService.adjust.mockResolvedValue({
+      status: 'SETTLED',
+      platformAmountNgn: 0,
+      recipientCredits: [],
+    });
+    mockPrisma.settlementDispute.update.mockResolvedValue(
+      buildDispute({
+        status: 'RESOLVED',
+        adjustmentReference: `${SETTLEMENT_REFERENCE}-ADJ`,
+        resolution: 'Applying corrected split',
+      }),
+    );
+
+    const result = await service.resolve(DISPUTE_ID, ACTOR_USER_ID, {
+      resolution: 'Applying corrected split',
+    });
+
+    expect(mockSettlementService.adjust).toHaveBeenCalledWith(
+      expect.objectContaining({
+        originalReference: SETTLEMENT_REFERENCE,
+        module: 'transport',
+        reason: 'Applying corrected split',
+        lines: expect.arrayContaining([
+          { walletId: WAL_MINISTRY, deltaNgn: 40 },
+          { walletId: WAL_DRIVER, deltaNgn: -400 },
+        ]),
+      }),
+    );
+    expect(mockPrisma.settlementDispute.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: DISPUTE_ID },
+        data: expect.objectContaining({
+          status: 'RESOLVED',
+          adjustmentReference: `${SETTLEMENT_REFERENCE}-ADJ`,
+        }),
+      }),
+    );
+    expect(mockPrisma.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ action: 'SETTLEMENT_DISPUTE_RESOLVED' }),
+      }),
+    );
+    expect(result.status).toBe('RESOLVED');
+  });
+
+  it('no-op path: RESOLVED with adjustmentReference null when the computed lines are empty; adjust() never called', async () => {
+    mockPrisma.settlementDispute.findUnique.mockResolvedValue(
+      buildDispute({ status: 'OPEN' }),
+    );
+    mockPrisma.transaction.findMany.mockResolvedValue([
+      {
+        id: 'TX-1',
+        reference: `${SETTLEMENT_REFERENCE}-DRV`,
+        amount: 8500,
+        walletId: WAL_DRIVER,
+        metadata: { recipientType: 'DRIVER' },
+      },
+      {
+        id: 'TX-2',
+        reference: `${SETTLEMENT_REFERENCE}-MINISTRY`,
+        amount: 1500,
+        walletId: WAL_MINISTRY,
+        metadata: { recipientType: 'MINISTRY' },
+      },
+    ]);
+    mockSettlementService.resolveSplit.mockResolvedValue({
+      earnerPct: 0.85,
+      ministryPct: 0.15,
+      platformPct: 0,
+    });
+    mockPrisma.settlementDispute.update.mockResolvedValue(
+      buildDispute({ status: 'RESOLVED', adjustmentReference: null }),
+    );
+
+    const result = await service.resolve(DISPUTE_ID, ACTOR_USER_ID, {});
+
+    expect(mockSettlementService.adjust).not.toHaveBeenCalled();
+    expect(mockPrisma.settlementDispute.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'RESOLVED', adjustmentReference: null }),
+      }),
+    );
+    expect(result.status).toBe('RESOLVED');
+  });
+
+  it('BLOCKED path (SETTLE-10d): adjust() rejecting with InsufficientAdjustmentBalanceError moves the dispute to BLOCKED, not thrown to the caller', async () => {
+    mockPrisma.settlementDispute.findUnique.mockResolvedValue(
+      buildDispute({ status: 'IN_REVIEW' }),
+    );
+    mockHappyPathTransactionRows();
+    mockSettlementService.adjust.mockRejectedValue(
+      new InsufficientAdjustmentBalanceError(WAL_DRIVER, 400),
+    );
+    mockPrisma.settlementDispute.update.mockResolvedValue(
+      buildDispute({ status: 'BLOCKED' }),
+    );
+
+    const result = await expect(
+      service.resolve(DISPUTE_ID, ACTOR_USER_ID, {}),
+    ).resolves.toEqual(expect.objectContaining({ status: 'BLOCKED' }));
+
+    expect(mockPrisma.settlementDispute.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'BLOCKED' }),
+      }),
+    );
+    expect(mockPrisma.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'SETTLEMENT_DISPUTE_BLOCKED',
+          newValue: expect.objectContaining({ walletId: WAL_DRIVER, shortfallNgn: 400 }),
+        }),
+      }),
+    );
+  });
+});
+
+describe('dismiss()', () => {
+  it.each(['RESOLVED', 'DISMISSED'])(
+    'throws ConflictException when the dispute is already %s',
+    async (status) => {
+      mockPrisma.settlementDispute.findUnique.mockResolvedValue(buildDispute({ status }));
+
+      await expect(service.dismiss(DISPUTE_ID, ACTOR_USER_ID, {})).rejects.toThrow(
+        ConflictException,
+      );
+    },
+  );
+
+  it.each(['OPEN', 'IN_REVIEW', 'BLOCKED'])(
+    'transitions %s -> DISMISSED, writes AuditLog, and never touches the financial computation path',
+    async (status) => {
+      mockPrisma.settlementDispute.findUnique.mockResolvedValue(buildDispute({ status }));
+      mockPrisma.settlementDispute.update.mockResolvedValue(
+        buildDispute({ status: 'DISMISSED' }),
+      );
+
+      const result = await service.dismiss(DISPUTE_ID, ACTOR_USER_ID, {
+        resolution: 'No adjustment warranted',
+      });
+
+      expect(result.status).toBe('DISMISSED');
+      expect(mockPrisma.settlementDispute.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: 'DISMISSED' }),
+        }),
+      );
+      expect(mockPrisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ action: 'SETTLEMENT_DISPUTE_DISMISSED' }),
+        }),
+      );
+      expect(mockSettlementService.adjust).not.toHaveBeenCalled();
+      expect(mockPrisma.transaction.findMany).not.toHaveBeenCalled();
+    },
+  );
 });
