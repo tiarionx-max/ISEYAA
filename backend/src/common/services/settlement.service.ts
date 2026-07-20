@@ -66,6 +66,41 @@ export interface SettlementResult {
   recipientCredits: { tag: string; amountNgn: number; walletId: string | null }[];
 }
 
+// ── Compensating adjustment types (SETTLE-10c/10d, 19-02) ──────────────────────
+
+/**
+ * Thrown by `adjust()` when a debit line would take its wallet negative. Typed
+ * (not a plain `Error`) so callers — e.g. `SettlementDisputesService.resolve()`
+ * (19-03) — can `instanceof`-check it to distinguish "insufficient balance,
+ * caller should set BLOCKED" from any other failure mode.
+ */
+export class InsufficientAdjustmentBalanceError extends Error {
+  constructor(
+    public readonly walletId: string,
+    public readonly shortfallNgn: number,
+  ) {
+    super(
+      `Insufficient balance on wallet ${walletId} for adjustment debit — shortfall ₦${shortfallNgn}`,
+    );
+    this.name = 'InsufficientAdjustmentBalanceError';
+  }
+}
+
+export interface SettlementAdjustmentLine {
+  walletId: string;
+  /** Positive = credit, negative = debit (unlike settle(), both signs allowed). */
+  deltaNgn: number;
+}
+
+export interface SettlementAdjustmentInput {
+  /** Must already exist as a settled Transaction (matched via reference prefix). */
+  originalReference: string;
+  module: string;
+  lines: SettlementAdjustmentLine[];
+  reason: string;
+  metadata?: Record<string, unknown>;
+}
+
 // Well-known SYSTEM user that owns the platform commission wallet (v1 audit anchor,
 // moved verbatim from tour-settlement.service.ts — see architectural commitment 7 above).
 const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000001';
@@ -260,6 +295,145 @@ export class SettlementService implements OnModuleInit {
         }
       }
       await this.handleSettlementFailure(input, err as Error);
+      throw err;
+    }
+  }
+
+  // ── Compensating adjustment entry point (SETTLE-10c/10d) ────────────────────
+
+  async adjust(input: SettlementAdjustmentInput): Promise<SettlementResult> {
+    // 1. Idempotency precheck — an existing row prefixed with this adjustment's
+    //    reference scheme means this exact adjustment already ran. Mirrors
+    //    settle()'s lines 92-103, prefix substituted `${reference}-` -> `${originalReference}-ADJ-`.
+    const existingAdjustment = await this.prisma.transaction.findFirst({
+      where: { reference: { startsWith: `${input.originalReference}-ADJ-` } },
+      select: { id: true },
+    });
+    if (existingAdjustment) {
+      this.logger.log(
+        `Adjustment already applied for ${input.originalReference} (module: ${input.module}) — replay no-op`,
+      );
+      return { status: 'REPLAYED', platformAmountNgn: 0, recipientCredits: [] };
+    }
+
+    // 2. Verify the original settlement actually exists — adjust() can only ever
+    //    compensate a settlement that already happened.
+    const original = await this.prisma.transaction.findFirst({
+      where: { reference: { startsWith: `${input.originalReference}-` } },
+      select: { id: true },
+    });
+    if (!original) {
+      throw new Error(
+        `No settled Transaction found for originalReference="${input.originalReference}" (module=${input.module}) — cannot adjust a non-existent settlement`,
+      );
+    }
+
+    // 3. Validate every line's deltaNgn BEFORE entering $transaction — same
+    //    defensive-floor pattern settle() applies to recipient amounts (SETTLE-11d).
+    for (const line of input.lines) {
+      if (!Number.isFinite(line.deltaNgn)) {
+        throw new Error(
+          `Non-finite deltaNgn for wallet ${line.walletId} (module=${input.module}, originalReference=${input.originalReference}) — programming error (NaN/Infinity reached adjust())`,
+        );
+      }
+    }
+
+    // 4. Atomic $transaction — canonical-order locking + caller-directed fan-out.
+    //    Unlike settle(), adjust() never touches the platform/system wallet — every
+    //    line here is caller-supplied and caller-directed; there is no drift-absorption row.
+    try {
+      const result = await this.prisma.$transaction(async (tx) => {
+        const recipientCredits: SettlementResult['recipientCredits'] = [];
+
+        // Lock wallets in a canonical (sorted by walletId) order — NOT the
+        // caller-supplied array order — mirrors settle()'s deadlock-avoidance
+        // pattern (CR-01): two concurrent adjust() calls touching the same wallets
+        // in opposite array order must acquire locks in one global sequence.
+        const lockOrder = [...input.lines].sort((a, b) =>
+          a.walletId < b.walletId ? -1 : a.walletId > b.walletId ? 1 : 0,
+        );
+        for (const line of lockOrder) {
+          // SELECT FOR UPDATE — prevents concurrent writes to the same wallet.
+          await tx.$executeRaw`SELECT id FROM wallets WHERE id = ${line.walletId} FOR UPDATE`;
+        }
+
+        // Writes happen in the caller's ORIGINAL array order — only the locking
+        // order above needed to be canonicalized (mirrors settle()'s
+        // recipientsWithWallet vs lockOrder distinction). 1-based running index.
+        let n = 0;
+        for (const line of input.lines) {
+          n += 1;
+          const w = await tx.wallet.findUnique({ where: { id: line.walletId } });
+          if (!w) {
+            throw new Error(`Adjustment wallet vanished mid-transaction: ${line.walletId}`);
+          }
+          const before = Number(w.balance);
+          const after = before + line.deltaNgn;
+          if (line.deltaNgn < 0 && after < 0) {
+            // Propagates out of the $transaction callback — Prisma's interactive
+            // transaction only commits on successful callback return, so no partial
+            // wallet.update/transaction.create from ANY line in this batch (including
+            // earlier-processed lines) ever commits (SETTLE-10d).
+            throw new InsufficientAdjustmentBalanceError(line.walletId, Math.abs(after));
+          }
+          await tx.wallet.update({ where: { id: line.walletId }, data: { balance: after } });
+          await tx.transaction.create({
+            data: {
+              walletId: line.walletId,
+              type: line.deltaNgn >= 0 ? 'CREDIT' : 'DEBIT',
+              status: 'SUCCESS',
+              amount: Math.abs(line.deltaNgn),
+              currency: 'NGN',
+              reference: `${input.originalReference}-ADJ-${n}`,
+              gateway: 'INTERNAL',
+              gatewayRef: input.originalReference,
+              description: input.reason,
+              balanceBefore: before,
+              balanceAfter: after,
+              metadata: {
+                module: input.module,
+                ...input.metadata,
+              },
+            },
+          });
+          recipientCredits.push({
+            tag: 'ADJUSTMENT',
+            amountNgn: line.deltaNgn,
+            walletId: line.walletId,
+          });
+        }
+
+        return { platformAmountNgn: 0, recipientCredits };
+      });
+
+      return { status: 'SETTLED', ...result };
+    } catch (err) {
+      // Typed insufficient-balance error is the caller's signal to set BLOCKED —
+      // must never be swallowed or reclassified as a benign replay (SETTLE-10d).
+      // This check MUST run first, before the P2002 check below.
+      if (err instanceof InsufficientAdjustmentBalanceError) {
+        throw err;
+      }
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        // Same target/isReferenceConflict inspection settle() uses — only a real
+        // Transaction.reference unique-constraint hit is a benign duplicate-delivery
+        // replay; any other P2002 is a real programming error and must not be
+        // silently swallowed.
+        const target = err.meta?.target as string[] | string | undefined;
+        const isReferenceConflict = Array.isArray(target)
+          ? target.includes('reference')
+          : typeof target === 'string' && target.includes('reference');
+        if (isReferenceConflict) {
+          this.logger.warn(
+            `Adjustment race detected for ${input.originalReference} (module: ${input.module}) — ` +
+              `concurrent duplicate delivery lost to a unique-constraint winner; treating as benign replay`,
+          );
+          return { status: 'REPLAYED', platformAmountNgn: 0, recipientCredits: [] };
+        }
+      }
+      this.logger.error(
+        `Adjustment failed for ${input.originalReference} (module: ${input.module}): ${(err as Error).message}`,
+      );
       throw err;
     }
   }

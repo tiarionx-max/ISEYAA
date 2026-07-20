@@ -23,8 +23,8 @@ Requirements for milestone v2.1 (Extraction Backlog Clearance & Settlement Flexi
 - [x] **SETTLE-11d**: Runtime shape validation and a `Number.isFinite()` guard are added directly to `SettlementService.settle()` to reject NaN-corrupted config before it reaches a wallet mutation
 - [ ] **SETTLE-10a**: An admin or `SUPER_ADMIN` can raise a dispute against a completed settlement transaction, capturing reason and disputed amount
 - [ ] **SETTLE-10b**: Disputes move through a state machine (`OPEN` → `IN_REVIEW` → `RESOLVED`/`DISMISSED`) with a reviewer assigned at review time
-- [ ] **SETTLE-10c**: Resolving a dispute produces a new append-only adjustment transaction via a new `SettlementService.adjust()` primitive (own idempotency namespace, own `SELECT FOR UPDATE` lock order) — historical `Transaction` rows are never mutated
-- [ ] **SETTLE-10d**: An adjustment that would take a recipient's wallet balance negative is blocked (not applied) and flagged for manual ops resolution rather than allowed to post
+- [x] **SETTLE-10c**: Resolving a dispute produces a new append-only adjustment transaction via a new `SettlementService.adjust()` primitive (own idempotency namespace, own `SELECT FOR UPDATE` lock order) — historical `Transaction` rows are never mutated
+- [x] **SETTLE-10d**: An adjustment that would take a recipient's wallet balance negative is blocked (not applied) and flagged for manual ops resolution rather than allowed to post
 - [ ] **SETTLE-10e**: Every dispute action (raise, review, resolve, dismiss) is captured in `AuditLog` with who/when/why/amount
 
 ### Ministry Reporting
@@ -86,8 +86,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SETTLE-11d | Phase 18 | Complete |
 | SETTLE-10a | Phase 19 | Pending |
 | SETTLE-10b | Phase 19 | Pending |
-| SETTLE-10c | Phase 19 | Pending |
-| SETTLE-10d | Phase 19 | Pending |
+| SETTLE-10c | Phase 19 | Complete |
+| SETTLE-10d | Phase 19 | Complete |
 | SETTLE-10e | Phase 19 | Pending |
 | MIN-08a | Phase 22 | Pending |
 | MIN-08b | Phase 22 | Pending |
