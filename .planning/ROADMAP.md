@@ -513,7 +513,7 @@ Plans:
 - [x] 21-06-PLAN.md — Delivery OTP extraction part 1 (risk-ascending #4, final): delivery-otp-service gRPC app (VerifyDeliveryOtp only) + business-vs-transport exception mapping (Pitfall 5)
 
 **Wave 7** *(blocked on Wave 6)*
-- [ ] 21-07-PLAN.md — Delivery OTP extraction part 2: delivery-otp-client facade + DeliveryController partial swap (only verifyOtp changes)
+- [x] 21-07-PLAN.md — Delivery OTP extraction part 2: delivery-otp-client facade + DeliveryController partial swap (only verifyOtp changes)
 
 **Cross-cutting constraints:**
 - All 4 services ship staggered, one at a time, each with its own canary flag flip and bake period before the next starts (D-04); rollout order is risk-ascending News -> Waitlist -> Reviews -> Delivery OTP (D-05)
@@ -565,5 +565,5 @@ For v2.1: Phase 19 requires Phase 18 (needs the centralized split resolver as th
 | 18. Settlement Split Centralization | 4/4 | Complete    | 2026-07-19 |
 | 19. Settlement Dispute & Adjustment Workflow | 6/6 | Complete    | 2026-07-20 |
 | 20. gRPC Blue-Green Healthcheck Retrofit | 5/5 | Complete    | 2026-07-20 |
-| 21. Low-Risk gRPC Extraction — News/Waitlist/Reviews + Scoped Delivery OTP | 6/7 | In Progress|  |
+| 21. Low-Risk gRPC Extraction — News/Waitlist/Reviews + Scoped Delivery OTP | 7/7 | Complete   | 2026-07-20 |
 | 22. Scheduled Ministry Exports & LGA Heatmap | 0/TBD | Not started | - |
