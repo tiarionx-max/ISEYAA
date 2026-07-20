@@ -441,7 +441,7 @@ Plans:
   3. Resolving a dispute produces a new append-only adjustment transaction via `SettlementService.adjust()` (its own idempotency namespace, its own `SELECT FOR UPDATE` lock order) — the original historical `Transaction` rows are never mutated
   4. An adjustment that would drive a recipient's wallet balance negative is blocked (not applied) and flagged for manual ops resolution instead of silently posting
   5. Every dispute action — raise, review, resolve, dismiss — appears in `AuditLog` with who, when, why, and amount
-**Plans**: 4 plans
+**Plans**: 5 plans
 Plans:
 **Wave 1**
 - [x] 19-01-PLAN.md — SettlementDispute Prisma model + migration (5-status state machine incl. BLOCKED)
@@ -452,6 +452,9 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2)*
 - [x] 19-04-PLAN.md — SettlementDisputesController + module wiring + end-to-end regression
+
+**Gap closure** *(19-VERIFICATION.md + 19-REVIEW.md: CR-01/CR-02/CR-03)*
+- [ ] 19-05-PLAN.md — Fix computeAdjustmentLines() platform-wallet balancing (CR-01), DB-enforced one-active-dispute-per-settlement + module cross-check in raise() (CR-02/CR-03)
 
 ### Phase 20: gRPC Blue-Green Healthcheck Retrofit
 **Goal**: Extracted gRPC services can be deployed and cut over safely, health-gated, with zero risk of a cron job double-firing during a dual-liveness window
