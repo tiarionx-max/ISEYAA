@@ -2,8 +2,14 @@ import { Inject, Injectable, Logger, OnModuleInit, ServiceUnavailableException }
 import { ClientGrpc } from '@nestjs/microservices';
 import { firstValueFrom } from 'rxjs';
 import { notifications } from '@iseyaa/proto';
+import { PrismaService } from '../../prisma/prisma.service';
 import { ResilienceService } from '../../resilience/resilience.service';
-import { NOTIFICATIONS_PACKAGE } from './notifications-client.module';
+import { NOTIFICATIONS_PACKAGE } from './notifications-client.constants';
+
+// 20-03 (D-01/D-10): canary kill-switch PlatformConfig key. Unlike SETTLE-09's opt-IN
+// cutover flags (checked via `=== true`), this is an opt-OUT safety brake on an
+// already-live feature — absence or any value other than `false` means enabled.
+const CANARY_FLAG_KEY = 'grpc.notifications_service.canary_enabled';
 
 // D-06: matches PaystackService's exact wording convention verbatim.
 const UNAVAILABLE_MESSAGE = 'Notifications service is temporarily unavailable, please try again shortly';
@@ -20,12 +26,21 @@ export class NotificationsClientService implements OnModuleInit {
   private grpcService!: notifications.NotificationsServiceClient;
 
   constructor(
+    private readonly prisma: PrismaService,
     @Inject(NOTIFICATIONS_PACKAGE) private readonly client: ClientGrpc,
     private readonly resilience: ResilienceService,
   ) {}
 
   onModuleInit(): void {
     this.grpcService = this.client.getService<notifications.NotificationsServiceClient>('NotificationsService');
+  }
+
+  // D-01/D-10: absence, `true`, or any value other than `false` all resolve to enabled —
+  // only an explicit stored `false` disables. Opposite polarity from SETTLE-09's `=== true`
+  // opt-in pattern, deliberately: this is a kill switch on an already-live feature.
+  private async isCanaryEnabled(): Promise<boolean> {
+    const cfg = await this.prisma.platformConfig.findUnique({ where: { key: CANARY_FLAG_KEY } });
+    return cfg?.value !== false;
   }
 
   // D-03: local no-op stub — no proto RPC exists for this, no network call. There is no
@@ -37,6 +52,10 @@ export class NotificationsClientService implements OnModuleInit {
   }
 
   async registerToken(userId: string, token: string) {
+    if (!(await this.isCanaryEnabled())) {
+      this.logger.warn('registerToken: notifications-service canary flag disabled — refusing gRPC call');
+      throw new ServiceUnavailableException(UNAVAILABLE_MESSAGE);
+    }
     try {
       await this.resilience.execute('notificationsGrpc', () =>
         // `as any`: @iseyaa/proto and backend resolve structurally-identical but nominally
@@ -59,6 +78,10 @@ export class NotificationsClientService implements OnModuleInit {
   }
 
   async sendPush(userId: string, title: string, body: string, data?: Record<string, string>) {
+    if (!(await this.isCanaryEnabled())) {
+      this.logger.warn('sendPush: notifications-service canary flag disabled — refusing gRPC call');
+      throw new ServiceUnavailableException(UNAVAILABLE_MESSAGE);
+    }
     try {
       const res = await this.resilience.execute<notifications.SendPushResponse>('notificationsGrpc', () =>
         // See `as any` rationale on registerToken above — same dual-rxjs-copy artifact.

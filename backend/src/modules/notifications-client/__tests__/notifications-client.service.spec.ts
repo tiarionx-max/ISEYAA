@@ -2,8 +2,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ServiceUnavailableException } from '@nestjs/common';
 import { of, throwError } from 'rxjs';
 import { NotificationsClientService } from '../notifications-client.service';
-import { NOTIFICATIONS_PACKAGE } from '../notifications-client.module';
+import { NOTIFICATIONS_PACKAGE } from '../notifications-client.constants';
 import { ResilienceService } from '../../../resilience/resilience.service';
+import { PrismaService } from '../../../prisma/prisma.service';
 
 /**
  * 17-03 Task 2 — NotificationsClientService spec.
@@ -26,8 +27,12 @@ interface MockGrpcService {
 let mockGrpcService: MockGrpcService;
 let mockClientGrpc: { getService: jest.Mock };
 let mockResilience: { execute: jest.Mock };
+let mockPrisma: { platformConfig: { findUnique: jest.Mock } };
 
-async function makeService(): Promise<NotificationsClientService> {
+// `canaryFlagValue`: undefined => findUnique resolves null (row absent, default enabled);
+// otherwise findUnique resolves `{ value: canaryFlagValue }` (mirrors SETTLE-09's
+// delivery.service.ts mock shape for the same PlatformConfig read pattern).
+async function makeService(canaryFlagValue?: unknown): Promise<NotificationsClientService> {
   mockGrpcService = {
     sendPush: jest.fn().mockReturnValue(of({ success: true })),
     registerToken: jest.fn().mockReturnValue(of({ success: true })),
@@ -40,12 +45,20 @@ async function makeService(): Promise<NotificationsClientService> {
       fn({ signal: new AbortController().signal }),
     ),
   };
+  mockPrisma = {
+    platformConfig: {
+      findUnique: jest
+        .fn()
+        .mockResolvedValue(canaryFlagValue === undefined ? null : { value: canaryFlagValue }),
+    },
+  };
 
   const moduleRef: TestingModule = await Test.createTestingModule({
     providers: [
       NotificationsClientService,
       { provide: NOTIFICATIONS_PACKAGE, useValue: mockClientGrpc },
       { provide: ResilienceService, useValue: mockResilience },
+      { provide: PrismaService, useValue: mockPrisma },
     ],
   }).compile();
 
@@ -150,5 +163,46 @@ describe('NotificationsClientService', () => {
 
     expect(mockResilience.execute).toHaveBeenNthCalledWith(1, 'notificationsGrpc', expect.any(Function));
     expect(mockResilience.execute).toHaveBeenNthCalledWith(2, 'notificationsGrpc', expect.any(Function));
+  });
+
+  // 7. D-01/D-10 canary kill-switch: flag explicitly false -> registerToken refuses the
+  // gRPC call entirely, never touching resilience.execute or the gRPC client.
+  it('7. registerToken: when canary_enabled flag is false, throws ServiceUnavailableException without calling resilience.execute', async () => {
+    const svc = await makeService(false);
+
+    await expect(svc.registerToken(USER_ID, TOKEN)).rejects.toThrow(ServiceUnavailableException);
+    await expect(svc.registerToken(USER_ID, TOKEN)).rejects.toThrow(
+      /Notifications service is temporarily unavailable/,
+    );
+
+    expect(mockResilience.execute).not.toHaveBeenCalled();
+    expect(mockGrpcService.registerToken).not.toHaveBeenCalled();
+  });
+
+  // 8. Same kill-switch guard on sendPush.
+  it('8. sendPush: when canary_enabled flag is false, throws ServiceUnavailableException without calling resilience.execute', async () => {
+    const svc = await makeService(false);
+
+    await expect(svc.sendPush(USER_ID, 'Title', 'Body')).rejects.toThrow(ServiceUnavailableException);
+    await expect(svc.sendPush(USER_ID, 'Title', 'Body')).rejects.toThrow(
+      /Notifications service is temporarily unavailable/,
+    );
+
+    expect(mockResilience.execute).not.toHaveBeenCalled();
+    expect(mockGrpcService.sendPush).not.toHaveBeenCalled();
+  });
+
+  // 9. Regression: row absent or value !== false -> existing gRPC-calling behavior on both
+  // methods is completely unchanged.
+  it('9. registerToken and sendPush: when canary_enabled flag is absent or true, existing gRPC behavior is unchanged', async () => {
+    const svcAbsent = await makeService(undefined);
+    await expect(svcAbsent.registerToken(USER_ID, TOKEN)).resolves.toEqual({ registered: true });
+    await expect(svcAbsent.sendPush(USER_ID, 'Title', 'Body')).resolves.toEqual({ sent: true });
+    expect(mockResilience.execute).toHaveBeenCalledTimes(2);
+
+    const svcTrue = await makeService(true);
+    await expect(svcTrue.registerToken(USER_ID, TOKEN)).resolves.toEqual({ registered: true });
+    await expect(svcTrue.sendPush(USER_ID, 'Title', 'Body')).resolves.toEqual({ sent: true });
+    expect(mockResilience.execute).toHaveBeenCalledTimes(2);
   });
 });

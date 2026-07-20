@@ -4,11 +4,12 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { join } from 'path';
 import { NotificationsClientService } from './notifications-client.service';
 import { NotificationsController } from '../notifications/notifications.controller';
-
 // D-02: dedicated gRPC client token for the notifications-service facade — mirrors
 // CommonModule's shared-infra export pattern. Consumers inject NotificationsClientService,
 // never this token directly.
-export const NOTIFICATIONS_PACKAGE = 'NOTIFICATIONS_PACKAGE';
+// 20-03 (D-09): extracted to a zero-import leaf file to break a require cycle with
+// notifications-client.service.ts — do not move this declaration back here.
+import { NOTIFICATIONS_PACKAGE } from './notifications-client.constants';
 
 /**
  * 17-03 (D-02, D-04): First ClientGrpc registration in this codebase. Registers a gRPC
