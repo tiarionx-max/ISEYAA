@@ -4,5 +4,7 @@ buildContext = "."
 
 [deploy]
 watchPaths = ["backend/apps/notifications-service/**", "backend/src/modules/notifications/**", "packages/proto/**"]
+healthcheckPath = "/healthz"
+healthcheckTimeout = 60
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
