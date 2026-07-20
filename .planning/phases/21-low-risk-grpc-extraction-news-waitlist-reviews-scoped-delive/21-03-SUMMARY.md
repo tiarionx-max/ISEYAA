@@ -139,3 +139,12 @@ None for this plan's code. `grpc.waitlist_service.canary_enabled` PlatformConfig
 ---
 *Phase: 21-low-risk-grpc-extraction-news-waitlist-reviews-scoped-delive*
 *Completed: 2026-07-20*
+
+## Self-Check: PASSED
+
+All 17 files listed in key-files (created/modified) verified present on disk. All 4 commits (f5d5cf8, ca97d9b, 0a84426, 428826a) verified present in `git log --oneline --all`.
+
+Re-ran full verification during this continuation (no regressions from Tasks 1-2):
+- `cd backend && npx nest build waitlist-service` — exit 0
+- `cd backend && npx jest apps/waitlist-service src/modules/waitlist-client --silent` — 3 suites / 10 tests passed
+- `cd backend && npx tsc --noEmit -p tsconfig.json` — exit 0
