@@ -12,6 +12,7 @@ import { ImageService } from '../../../common/services/image.service';
 import { KafkaService } from '../../../kafka/kafka.service';
 import { SettlementService } from '../../../common/services/settlement.service';
 import { VisitorLogService } from '../../../common/services/visitor-log.service';
+import { RedisService } from '../../../redis/redis.service';
 
 const mockKafka = { emit: jest.fn().mockResolvedValue(undefined), consume: jest.fn().mockResolvedValue(undefined) };
 
@@ -22,6 +23,8 @@ const mockSettlement = {
 };
 
 const mockVisitorLog = { record: jest.fn().mockResolvedValue(undefined) };
+
+const mockRedis = { setNx: jest.fn().mockResolvedValue(true) };
 
 const HOST_ID = 'host-uuid-001';
 const PROP_ID = 'prop-uuid-001';
@@ -102,6 +105,7 @@ describe('StaysService', () => {
         { provide: KafkaService, useValue: mockKafka },
         { provide: SettlementService, useValue: mockSettlement },
         { provide: VisitorLogService, useValue: mockVisitorLog },
+        { provide: RedisService, useValue: mockRedis },
       ],
     }).compile();
 
@@ -495,6 +499,25 @@ describe('StaysService', () => {
       const call = mockSettlement.settle.mock.calls[0][0];
       expect(call.reference).toBe('ISY-ESC-A1B2C3D4E5F67890');
       expect(call.reference.replace('ISY-ESC-', '')).toHaveLength(16);
+    });
+
+    it('acquires cron-lock:releaseEscrow (TTL 3300) and proceeds with existing behavior when the lock is granted', async () => {
+      mockPrisma.booking.findMany.mockResolvedValue([dueBooking]);
+      mockPrisma.wallet.findUnique.mockResolvedValue(hostWallet);
+
+      await service.releaseEscrow();
+
+      expect(mockRedis.setNx).toHaveBeenCalledWith('cron-lock:releaseEscrow', '1', 3300);
+      expect(mockPrisma.booking.findMany).toHaveBeenCalled();
+    });
+
+    it('skips the tick without querying bookings when the lock is held by another replica', async () => {
+      mockRedis.setNx.mockResolvedValueOnce(false);
+
+      await service.releaseEscrow();
+
+      expect(mockRedis.setNx).toHaveBeenCalledWith('cron-lock:releaseEscrow', '1', 3300);
+      expect(mockPrisma.booking.findMany).not.toHaveBeenCalled();
     });
   });
 

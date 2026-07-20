@@ -11,6 +11,7 @@ import {
   ItineraryPdfItineraryLite,
   ItineraryPdfPackageLite,
 } from '../../common/services/itinerary-pdf.service';
+import { RedisService } from '../../redis/redis.service';
 
 /**
  * 09-07 — TourNotificationsService.
@@ -55,6 +56,7 @@ export class TourNotificationsService {
     private readonly sendgrid: SendgridService,
     private readonly pdf: ItineraryPdfService,
     private readonly config: ConfigService,
+    private readonly redis: RedisService,
   ) {}
 
   // ── Event handler: immediate PDF + email on confirmation ─────────────────
@@ -162,6 +164,12 @@ export class TourNotificationsService {
 
   @Cron(CronExpression.EVERY_HOUR)
   async pushTMinus24h(): Promise<void> {
+    const acquired = await this.redis.setNx('cron-lock:pushTMinus24h', '1', 3300);
+    if (!acquired) {
+      this.logger.debug('pushTMinus24h: lock held by another replica — skipping this tick');
+      return;
+    }
+
     const offsetHours = await this.getOffsetHours(
       TourNotificationsService.CFG_T_MINUS_24H,
       24,
@@ -242,6 +250,12 @@ export class TourNotificationsService {
 
   @Cron('*/15 * * * *')
   async pushTMinus2h(): Promise<void> {
+    const acquired = await this.redis.setNx('cron-lock:pushTMinus2h', '1', 840);
+    if (!acquired) {
+      this.logger.debug('pushTMinus2h: lock held by another replica — skipping this tick');
+      return;
+    }
+
     const offsetHours = await this.getOffsetHours(
       TourNotificationsService.CFG_T_MINUS_2H,
       2,
@@ -301,6 +315,12 @@ export class TourNotificationsService {
 
   @Cron('*/15 * * * *')
   async pushPostTourRating(): Promise<void> {
+    const acquired = await this.redis.setNx('cron-lock:pushPostTourRating', '1', 840);
+    if (!acquired) {
+      this.logger.debug('pushPostTourRating: lock held by another replica — skipping this tick');
+      return;
+    }
+
     const now = new Date();
 
     // Tour ended in the last 8h — covers any reasonable durationHours up to
