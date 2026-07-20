@@ -1,0 +1,10 @@
+[build]
+dockerfilePath = "backend/apps/waitlist-service/Dockerfile"
+buildContext = "."
+
+[deploy]
+watchPaths = ["backend/apps/waitlist-service/**", "backend/src/modules/waitlist/**", "packages/proto/**"]
+healthcheckPath = "/healthz"
+healthcheckTimeout = 60
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
