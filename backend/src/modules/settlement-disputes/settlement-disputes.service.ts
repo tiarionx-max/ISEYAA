@@ -1,9 +1,11 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   SettlementService,
@@ -67,22 +69,37 @@ export class SettlementDisputesService {
 
   /**
    * SUPER_ADMIN raises a dispute against a completed settlement (SETTLE-10a).
-   * Two guards run before any write:
+   * Guards run before any write:
    *   1. The settlement must actually exist (a Transaction row prefixed with
    *      `${settlementReference}-`).
-   *   2. No other active (non-terminal) dispute may already be open against
+   *   2. `dto.module` must match the settlement's actually-recorded
+   *      `metadata.module` (CR-03) — a wrong-module dispute would silently
+   *      drive `resolveSplit()` to an unrelated tier. A settlement row with
+   *      no recorded module at all is not rejected (backward compatibility).
+   *   3. No other active (non-terminal) dispute may already be open against
    *      it — `adjust()`'s idempotency key is per-`originalReference`, not
    *      per-dispute, so two concurrent disputes racing to resolve the same
    *      settlement could otherwise post two DIFFERENT adjustments, with the
-   *      second silently REPLAYing onto the first's numbers (T-19-07).
+   *      second silently REPLAYing onto the first's numbers (T-19-07). This
+   *      in-app pre-check is backstopped by a DB-level partial unique index
+   *      (`settlement_disputes_active_per_reference`, CR-02) — a P2002 race
+   *      loss here is translated into the same ConflictException below, so
+   *      the pre-check and the DB backstop are indistinguishable to callers.
    */
   async raise(actorUserId: string, dto: RaiseDisputeDto) {
     const original = await this.prisma.transaction.findFirst({
       where: { reference: { startsWith: `${dto.settlementReference}-` } },
-      select: { id: true },
+      select: { id: true, metadata: true },
     });
     if (!original) {
       throw new NotFoundException('No settlement found for this reference');
+    }
+
+    const recordedModule = (original.metadata as any)?.module;
+    if (recordedModule && recordedModule !== dto.module) {
+      throw new BadRequestException(
+        `module mismatch: settlement is recorded under "${recordedModule}", not "${dto.module}"`,
+      );
     }
 
     const activeExisting = await this.prisma.settlementDispute.findFirst({
@@ -96,16 +113,29 @@ export class SettlementDisputesService {
       throw new ConflictException('An active dispute already exists for this settlement');
     }
 
-    const created = await this.prisma.settlementDispute.create({
-      data: {
-        settlementReference: dto.settlementReference,
-        module: dto.module,
-        raisedByUserId: actorUserId,
-        reason: dto.reason,
-        requestedAdjustmentNgn: dto.requestedAdjustmentNgn ?? null,
-        status: 'OPEN',
-      },
-    });
+    let created;
+    try {
+      created = await this.prisma.settlementDispute.create({
+        data: {
+          settlementReference: dto.settlementReference,
+          module: dto.module,
+          raisedByUserId: actorUserId,
+          reason: dto.reason,
+          requestedAdjustmentNgn: dto.requestedAdjustmentNgn ?? null,
+          status: 'OPEN',
+        },
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        // This table's only unique constraint reachable from create() is the
+        // partial index above (the `id` primary key is a UUID, effectively
+        // collision-free) — no err.meta?.target inspection needed here (unlike
+        // settle()/adjust(), which share a table with multiple possible
+        // unique-constraint hits).
+        throw new ConflictException('An active dispute already exists for this settlement');
+      }
+      throw err;
+    }
 
     await this.writeAudit(actorUserId, 'SETTLEMENT_DISPUTE_RAISED', created.id, {
       module: dto.module,
@@ -200,6 +230,15 @@ export class SettlementDisputesService {
    * (`settlement.service.ts` lines 184-234): recipient rows carry
    * `metadata.recipientType = tag` ('DRIVER'/'VENDOR'/'MINISTRY'/etc.), the
    * platform row's reference ends in `-PLAT` and carries no `recipientType`.
+   *
+   * CR-01 fix: the diff this function returns now ALSO includes the platform
+   * wallet's own correction — computed via the same self-balancing formula
+   * `settle()` uses for its own drift-absorption row (`chargeAmountNgn` minus
+   * the corrected earner and ministry totals), never `platformPct` directly
+   * (which can legitimately be `null`). Every non-empty `lines` result sums
+   * to 0 by construction: the original settlement's rows already summed to
+   * `chargeAmountNgn`, and the corrected totals are constructed to also sum
+   * to `chargeAmountNgn`, so `sum(deltas) = sum(corrected) - sum(actual) = 0`.
    */
   async computeAdjustmentLines(
     module: string,
@@ -261,6 +300,17 @@ export class SettlementDisputesService {
       if (Math.abs(remaining) >= 0.01) {
         lines.push({ walletId: lastRow.walletId!, deltaNgn: remaining });
       }
+    }
+
+    // Platform-wallet balancing line (CR-01) — self-derives from the charge
+    // total minus both corrected totals above, mirroring settle()'s own
+    // drift-absorption formula. Works even when platformPct is null.
+    const correctPlatformTotal =
+      Math.round((chargeAmountNgn - correctEarnerTotal - correctMinistryTotal) * 100) / 100;
+    const actualPlatformTotal = platformRow ? Number(platformRow.amount) : 0;
+    const platformDelta = Math.round((correctPlatformTotal - actualPlatformTotal) * 100) / 100;
+    if (platformRow?.walletId && Math.abs(platformDelta) >= 0.01) {
+      lines.push({ walletId: platformRow.walletId, deltaNgn: platformDelta });
     }
 
     return { lines, chargeAmountNgn };

@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { SettlementDisputesService } from '../settlement-disputes.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
@@ -148,6 +149,60 @@ describe('raise()', () => {
       }),
     );
   });
+
+  it('throws ConflictException when settlementDispute.create() rejects with P2002 (CR-02 DB-level backstop)', async () => {
+    mockPrisma.transaction.findFirst.mockResolvedValue({
+      id: 'TXN-1',
+      metadata: { module: 'transport' },
+    });
+    mockPrisma.settlementDispute.findFirst.mockResolvedValue(null);
+    mockPrisma.settlementDispute.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError(
+        'Unique constraint failed on the fields: (settlementReference)',
+        { code: 'P2002', clientVersion: '5.11.0', meta: { target: ['settlementReference'] } },
+      ),
+    );
+
+    await expect(
+      service.raise(ACTOR_USER_ID, {
+        settlementReference: SETTLEMENT_REFERENCE,
+        module: 'transport',
+        reason: 'bad split',
+      }),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  it('throws BadRequestException when dto.module does not match the settlement\'s recorded module (CR-03)', async () => {
+    mockPrisma.transaction.findFirst.mockResolvedValue({
+      id: 'TXN-1',
+      metadata: { module: 'delivery' },
+    });
+
+    await expect(
+      service.raise(ACTOR_USER_ID, {
+        settlementReference: SETTLEMENT_REFERENCE,
+        module: 'transport',
+        reason: 'bad split',
+      }),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(mockPrisma.settlementDispute.findFirst).not.toHaveBeenCalled();
+    expect(mockPrisma.settlementDispute.create).not.toHaveBeenCalled();
+  });
+
+  it('does not reject when the settlement\'s metadata has no module field (legacy row)', async () => {
+    mockPrisma.transaction.findFirst.mockResolvedValue({ id: 'TXN-1', metadata: null });
+    mockPrisma.settlementDispute.findFirst.mockResolvedValue(null);
+    mockPrisma.settlementDispute.create.mockResolvedValue(buildDispute());
+
+    await expect(
+      service.raise(ACTOR_USER_ID, {
+        settlementReference: SETTLEMENT_REFERENCE,
+        module: 'transport',
+        reason: 'Driver split looks wrong',
+      }),
+    ).resolves.toEqual(expect.objectContaining({ id: DISPUTE_ID }));
+  });
 });
 
 describe('findQueue()', () => {
@@ -246,9 +301,10 @@ describe('writeAudit() silent-fallback (used by raise()/moveToReview())', () => 
 
 const WAL_DRIVER = 'WAL-DRIVER';
 const WAL_MINISTRY = 'WAL-MINISTRY';
+const WAL_PLATFORM = 'WAL-PLATFORM';
 
 describe('computeAdjustmentLines()', () => {
-  it('single-earner settlement: returns 2 lines when resolveSplit() differs from what was paid', async () => {
+  it('single-earner settlement: returns 3 lines (driver, ministry, platform) when resolveSplit() differs from what was paid', async () => {
     mockPrisma.transaction.findMany.mockResolvedValue([
       {
         id: 'TX-1',
@@ -264,6 +320,13 @@ describe('computeAdjustmentLines()', () => {
         walletId: WAL_MINISTRY,
         metadata: { recipientType: 'MINISTRY' },
       },
+      {
+        id: 'TX-3',
+        reference: `${SETTLEMENT_REFERENCE}-PLAT`,
+        amount: 0,
+        walletId: WAL_PLATFORM,
+        metadata: {},
+      },
     ]);
     mockSettlementService.resolveSplit.mockResolvedValue({
       earnerPct: 0.9,
@@ -277,13 +340,15 @@ describe('computeAdjustmentLines()', () => {
     );
 
     expect(chargeAmountNgn).toBe(9000);
-    expect(lines).toHaveLength(2);
+    expect(lines).toHaveLength(3);
     expect(lines).toEqual(
       expect.arrayContaining([
         { walletId: WAL_MINISTRY, deltaNgn: 40 },
         { walletId: WAL_DRIVER, deltaNgn: -400 },
+        { walletId: WAL_PLATFORM, deltaNgn: 360 },
       ]),
     );
+    expect(Math.round(lines.reduce((s, l) => s + l.deltaNgn, 0) * 100) / 100).toBe(0);
   });
 
   it('returns an empty lines array when resolveSplit() matches what was originally applied', async () => {
@@ -312,9 +377,10 @@ describe('computeAdjustmentLines()', () => {
     const { lines } = await service.computeAdjustmentLines('transport', SETTLEMENT_REFERENCE);
 
     expect(lines).toEqual([]);
+    expect(lines.reduce((s, l) => s + l.deltaNgn, 0)).toBe(0);
   });
 
-  it('multi-earner (Tour-style) settlement distributes the delta proportionally, last row absorbs the remainder', async () => {
+  it('multi-earner (Tour-style) settlement distributes the delta proportionally, last row absorbs the remainder, platform absorbs the rest', async () => {
     const WAL_1 = 'WAL-EARNER-1';
     const WAL_2 = 'WAL-EARNER-2';
     const WAL_3 = 'WAL-EARNER-3';
@@ -322,6 +388,7 @@ describe('computeAdjustmentLines()', () => {
       { id: 'TX-1', reference: `${SETTLEMENT_REFERENCE}-V-0`, amount: 3000, walletId: WAL_1, metadata: {} },
       { id: 'TX-2', reference: `${SETTLEMENT_REFERENCE}-V-1`, amount: 2000, walletId: WAL_2, metadata: {} },
       { id: 'TX-3', reference: `${SETTLEMENT_REFERENCE}-V-2`, amount: 1000, walletId: WAL_3, metadata: {} },
+      { id: 'TX-4', reference: `${SETTLEMENT_REFERENCE}-PLAT`, amount: 0, walletId: WAL_PLATFORM, metadata: {} },
     ]);
     mockSettlementService.resolveSplit.mockResolvedValue({
       earnerPct: 0.9,
@@ -335,9 +402,10 @@ describe('computeAdjustmentLines()', () => {
       { walletId: WAL_1, deltaNgn: -300 },
       { walletId: WAL_2, deltaNgn: -200 },
       { walletId: WAL_3, deltaNgn: -100 },
+      { walletId: WAL_PLATFORM, deltaNgn: 600 },
     ]);
     const sum = lines.reduce((s, l) => s + l.deltaNgn, 0);
-    expect(Math.round(sum * 100) / 100).toBe(-600);
+    expect(Math.round(sum * 100) / 100).toBe(0);
   });
 
   it('skips the ministry line entirely when the original settlement had no MINISTRY-tagged row', async () => {
@@ -349,6 +417,13 @@ describe('computeAdjustmentLines()', () => {
         walletId: WAL_DRIVER,
         metadata: { recipientType: 'DRIVER' },
       },
+      {
+        id: 'TX-2',
+        reference: `${SETTLEMENT_REFERENCE}-PLAT`,
+        amount: 0,
+        walletId: WAL_PLATFORM,
+        metadata: {},
+      },
     ]);
     mockSettlementService.resolveSplit.mockResolvedValue({
       earnerPct: 0.8,
@@ -358,7 +433,13 @@ describe('computeAdjustmentLines()', () => {
 
     const { lines } = await service.computeAdjustmentLines('delivery', SETTLEMENT_REFERENCE);
 
-    expect(lines).toEqual([{ walletId: WAL_DRIVER, deltaNgn: -1000 }]);
+    expect(lines).toEqual(
+      expect.arrayContaining([
+        { walletId: WAL_DRIVER, deltaNgn: -1000 },
+        { walletId: WAL_PLATFORM, deltaNgn: 1000 },
+      ]),
+    );
+    expect(Math.round(lines.reduce((s, l) => s + l.deltaNgn, 0) * 100) / 100).toBe(0);
   });
 
   it('throws NotFoundException when no Transaction rows at all match the settlementReference prefix', async () => {
@@ -386,6 +467,13 @@ describe('resolve()', () => {
         amount: 500,
         walletId: WAL_MINISTRY,
         metadata: { recipientType: 'MINISTRY' },
+      },
+      {
+        id: 'TX-3',
+        reference: `${SETTLEMENT_REFERENCE}-PLAT`,
+        amount: 0,
+        walletId: WAL_PLATFORM,
+        metadata: {},
       },
     ]);
     mockSettlementService.resolveSplit.mockResolvedValue({
@@ -456,9 +544,12 @@ describe('resolve()', () => {
         lines: expect.arrayContaining([
           { walletId: WAL_MINISTRY, deltaNgn: 40 },
           { walletId: WAL_DRIVER, deltaNgn: -400 },
+          { walletId: WAL_PLATFORM, deltaNgn: 360 },
         ]),
       }),
     );
+    const passedLines = mockSettlementService.adjust.mock.calls[0][0].lines;
+    expect(Math.round(passedLines.reduce((s: number, l: any) => s + l.deltaNgn, 0) * 100) / 100).toBe(0);
     expect(mockPrisma.settlementDispute.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: DISPUTE_ID },
