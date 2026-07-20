@@ -475,7 +475,7 @@ Plans:
 - [x] 20-04-PLAN.md — D-09 remainder: wallet-invariant.e2e-spec.ts rewrite against centralized SettlementService + test:e2e:tours wired into CI (depends_on: 20-03)
 
 **Wave 3** *(blocked on Wave 2 — needs 20-01's healthz path, 20-02's lock-guard test cases, 20-03's canary flag/service names, and 20-04's fully green test:e2e:tours suite to sweep for regressions)*
-- [ ] 20-05-PLAN.md — GRPC-06c: docs/blue-green-cutover-runbook.md + full cross-plan regression sweep (phase gate; depends_on: 20-01, 20-02, 20-03, 20-04)
+- [x] 20-05-PLAN.md — GRPC-06c: docs/blue-green-cutover-runbook.md + full cross-plan regression sweep (phase gate; depends_on: 20-01, 20-02, 20-03, 20-04)
 
 **Cross-cutting constraints:**
 - Exactly the 6 crons named in D-07 get the setNx() guard — db-metrics.service.ts's pollOpenConnections stays unlocked
@@ -535,6 +535,6 @@ For v2.1: Phase 19 requires Phase 18 (needs the centralized split resolver as th
 | 17. gRPC Proof-of-Pattern Extraction (notifications-service) | 7/7 | Complete    | 2026-07-19 |
 | 18. Settlement Split Centralization | 4/4 | Complete    | 2026-07-19 |
 | 19. Settlement Dispute & Adjustment Workflow | 6/6 | Complete    | 2026-07-20 |
-| 20. gRPC Blue-Green Healthcheck Retrofit | 4/5 | In Progress|  |
+| 20. gRPC Blue-Green Healthcheck Retrofit | 5/5 | Complete   | 2026-07-20 |
 | 21. Low-Risk gRPC Extraction — News/Waitlist/Reviews + Scoped Delivery OTP | 0/TBD | Not started | - |
 | 22. Scheduled Ministry Exports & LGA Heatmap | 0/TBD | Not started | - |
