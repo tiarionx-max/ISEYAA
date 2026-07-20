@@ -3,7 +3,7 @@ import { ClientGrpc } from '@nestjs/microservices';
 import { firstValueFrom } from 'rxjs';
 import { notifications } from '@iseyaa/proto';
 import { ResilienceService } from '../../resilience/resilience.service';
-import { NOTIFICATIONS_PACKAGE } from './notifications-client.module';
+import { NOTIFICATIONS_PACKAGE } from './notifications-client.constants';
 
 // D-06: matches PaystackService's exact wording convention verbatim.
 const UNAVAILABLE_MESSAGE = 'Notifications service is temporarily unavailable, please try again shortly';

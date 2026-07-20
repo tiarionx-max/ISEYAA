@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ServiceUnavailableException } from '@nestjs/common';
 import { of, throwError } from 'rxjs';
 import { NotificationsClientService } from '../notifications-client.service';
-import { NOTIFICATIONS_PACKAGE } from '../notifications-client.module';
+import { NOTIFICATIONS_PACKAGE } from '../notifications-client.constants';
 import { ResilienceService } from '../../../resilience/resilience.service';
 
 /**
