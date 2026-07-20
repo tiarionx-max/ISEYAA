@@ -464,7 +464,23 @@ Plans:
   1. `notifications-service` (and every service extracted in Phase 21) exposes a `grpc.health.v1.Health` endpoint wired to Railway's `healthcheckPath`, and a failing health check blocks rollout
   2. Every existing `@Cron` job (escrow release, heartbeat cleanup, tour reminders) is provably guarded by a `RedisService.setNx()` distributed lock — running two replicas simultaneously does not double-fire any job
   3. An operator can execute a shadow-verify dual-run + manual pointer-flip blue-green cutover on a real extracted service end-to-end, with a documented rollback path available during the bake window
-**Plans**: TBD
+**Plans**: 5 plans
+Plans:
+**Wave 1** *(no cross-file dependencies — parallel)*
+- [ ] 20-01-PLAN.md — GRPC-06a: notifications-service hybrid HTTP+gRPC bootstrap, grpc-health-check + /healthz sidecar, railway.toml healthcheckPath
+- [ ] 20-02-PLAN.md — GRPC-06b: setNx() distributed-lock guard on all 6 named @Cron jobs (stays/transport/delivery/tour-notifications)
+- [ ] 20-03-PLAN.md — GRPC-06c: canary kill-switch flag (grpc.notifications_service.canary_enabled) + NotificationsClientModule circular-dependency fix (D-09 core)
+- [ ] 20-04-PLAN.md — D-09 remainder: wallet-invariant.e2e-spec.ts rewrite against centralized SettlementService + test:e2e:tours wired into CI
+
+**Wave 2** *(blocked on Wave 1 — needs 20-01's healthz path + 20-03's canary flag/service names to document accurately)*
+- [ ] 20-05-PLAN.md — GRPC-06c: docs/blue-green-cutover-runbook.md + full cross-plan regression sweep (phase gate)
+
+**Cross-cutting constraints:**
+- Exactly the 6 crons named in D-07 get the setNx() guard — db-metrics.service.ts's pollOpenConnections stays unlocked
+- setNx() itself is unmodified — fail-open behavior preserved unchanged (D-08)
+- Canary flag is a kill switch (gates whether the monolith calls notifications-service at all), not a literal route-to-old-vs-new-instance flip — single-hostname Railway service has no second instance to route to (RESEARCH.md Critical Design Clarification)
+- No new tooling for rollback — markdown runbook only (D-04)
+**UI hint**: no
 
 ### Phase 21: Low-Risk gRPC Extraction — News/Waitlist/Reviews + Scoped Delivery OTP
 **Goal**: News, waitlist, reviews, and Delivery's OTP verification run as independently-deployed gRPC services with zero client-visible behavior change
@@ -517,6 +533,6 @@ For v2.1: Phase 19 requires Phase 18 (needs the centralized split resolver as th
 | 17. gRPC Proof-of-Pattern Extraction (notifications-service) | 7/7 | Complete    | 2026-07-19 |
 | 18. Settlement Split Centralization | 4/4 | Complete    | 2026-07-19 |
 | 19. Settlement Dispute & Adjustment Workflow | 6/6 | Complete    | 2026-07-20 |
-| 20. gRPC Blue-Green Healthcheck Retrofit | 0/TBD | Not started | - |
+| 20. gRPC Blue-Green Healthcheck Retrofit | 0/5 | Planned | - |
 | 21. Low-Risk gRPC Extraction — News/Waitlist/Reviews + Scoped Delivery OTP | 0/TBD | Not started | - |
 | 22. Scheduled Ministry Exports & LGA Heatmap | 0/TBD | Not started | - |
