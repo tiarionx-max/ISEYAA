@@ -83,6 +83,7 @@ v2.1 — Extraction Backlog Clearance & Settlement Flexibility (in progress, sta
 
 - ✓ Settlement Split Centralization — new `SettlementSplitTier` model (typed Decimal columns, partial-unique-index-enforced single-active-row-per-module) replaces 6 duplicated inline `PlatformConfig` reads; `SettlementService.resolveSplit()` is the sole resolver for Transport/Delivery/Marketplace/Events/Stays/Studio; `Number.isFinite()` guard added to `settle()` rejects NaN-corrupted config before any wallet mutation; backend-only `SUPER_ADMIN`-gated CRUD with insert-new-row/deactivate-old audit trail (SETTLE-11a, SETTLE-11b, SETTLE-11c, SETTLE-11d) — Phase 18 (4/4 plans, completed 2026-07-19). Verified 7/7 must-haves; a code-review blocker (unique-constraint violation in the audit-trail update path) was found and fixed pre-verification, with a real-Postgres e2e regression test wired into CI. 644 backend tests passing
 - ✓ Settlement Dispute & Adjustment Workflow — SUPER_ADMIN-only dispute lifecycle (`OPEN → IN_REVIEW → RESOLVED/DISMISSED`, `BLOCKED` retry) over a new `SettlementDispute` model; `SettlementService.adjust()` compensating-transaction primitive posts append-only, non-destructive corrections; DB-level partial-unique-index backstop + module cross-check on `raise()`; every action audited (SETTLE-10a, SETTLE-10b, SETTLE-10c, SETTLE-10d, SETTLE-10e) — Phase 19 (6/6 plans, completed 2026-07-20). Verified 5/5 must-haves after two gap-closure rounds (19-05, 19-06) fixed a recurring money-conservation bug class in `computeAdjustmentLines()`. **Human verification pending:** CR-02 migration deployment to staging/production unconfirmed; a residual (currently code-unreachable) platform-row variant of the same bug class was risk-accepted rather than gap-closed — see `19-HUMAN-UAT.md`
+- ✓ gRPC Blue-Green Healthcheck Retrofit — `notifications-service` gained a hybrid HTTP+gRPC bootstrap exposing both a real `grpc.health.v1.Health` RPC and a Railway-pollable `GET /healthz`, wired into `railway.toml`'s `healthcheckPath`; all 6 `@Cron` jobs named in D-07 guarded by `RedisService.setNx()` distributed locks against dual-liveness double-fire; `NotificationsClientService` gained a D-01 canary kill-switch flag plus a fix for its pre-existing circular-dependency bug; `wallet-invariant.e2e-spec.ts` rewritten against the `SettlementService` boundary and wired into CI; a 6-step blue-green cutover rollback runbook authored (GRPC-06a, GRPC-06b, GRPC-06c) — Phase 20 (5/5 plans, completed 2026-07-20). Verified 5/5 code-level must-haves, 700 backend tests + 22 e2e tests passing, zero circular deps. **Human verification pending:** 3 items require a live Railway deployment (healthcheck actually blocking promotion, concurrent-replica cron dedup, full live cutover + rollback) — pre-scoped as manual-only during planning, not discovered gaps — see `20-HUMAN-UAT.md`
 
 ### Active
 
@@ -90,7 +91,6 @@ v2.1 — Extraction Backlog Clearance & Settlement Flexibility (scoping started 
 
 - GRPC-07: Live gRPC extraction of Delivery + remaining core modules
 - GRPC-08: Live gRPC extraction of news/waitlist/reviews
-- GRPC-06: Blue-green/canary deploys per extracted gRPC service
 - MIN-08: Scheduled/recurring Ministry export delivery
 - MIN-09: Seasonal/LGA heatmap visualization on Ministry dashboard
 
@@ -162,4 +162,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-20 — Phase 19 (Settlement Dispute & Adjustment Workflow) complete*
+*Last updated: 2026-07-20 — Phase 20 (gRPC Blue-Green Healthcheck Retrofit) complete*
