@@ -29,7 +29,7 @@ import { AiModule } from './modules/ai/ai.module';
 import { TransportModule } from './modules/transport/transport.module';
 import { DeliveryModule } from './modules/delivery/delivery.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
-import { WaitlistModule } from './modules/waitlist/waitlist.module';
+import { WaitlistClientModule } from './modules/waitlist-client/waitlist-client.module';
 import { NewsClientModule } from './modules/news-client/news-client.module';
 import { SearchModule } from './search/search.module';
 import { HealthModule } from './health/health.module';
@@ -66,7 +66,7 @@ import { KafkaModule } from './kafka/kafka.module';
     NotificationsClientModule,
     AiModule,
     WebhooksModule,
-    WaitlistModule,
+    WaitlistClientModule,
     NewsClientModule,
     SearchModule,
     HealthModule,

@@ -4,13 +4,13 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { UserRole } from '../../common/enums/user-role.enum';
-import { WaitlistService } from './waitlist.service';
+import { WaitlistClientService } from '../waitlist-client/waitlist-client.service';
 import { JoinWaitlistDto } from './dto/join-waitlist.dto';
 
 @ApiTags('waitlist')
 @Controller('waitlist')
 export class WaitlistController {
-  constructor(private readonly waitlist: WaitlistService) {}
+  constructor(private readonly waitlist: WaitlistClientService) {}
 
   @Post()
   @HttpCode(HttpStatus.OK)
