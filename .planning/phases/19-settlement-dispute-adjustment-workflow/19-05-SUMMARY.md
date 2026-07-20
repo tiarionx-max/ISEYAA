@@ -112,6 +112,13 @@ Verification: `npx prisma migrate status` should report no pending migrations, a
 - Per the plan's own verification note, `.planning/REQUIREMENTS.md`'s `SETTLE-10a`/`SETTLE-10c`/`SETTLE-10e` checkboxes should be updated to reflect the true post-fix state during that re-verification step — not by this gap-closure plan itself, to avoid pre-emptively marking gaps closed before independent confirmation
 - No blockers for merge; the only outstanding action is the deferred migration deploy documented above
 
+## Self-Check: PASSED
+
+- FOUND: backend/prisma/migrations/20260720040000_settlement_dispute_partial_unique_active/migration.sql
+- FOUND: commit c179a89 (Task 1)
+- FOUND: commit f2dc4e0 (Task 2)
+- FOUND: commit cf6d095 (Task 3)
+
 ---
 *Phase: 19-settlement-dispute-adjustment-workflow*
 *Completed: 2026-07-20*
