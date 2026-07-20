@@ -470,15 +470,17 @@ Plans:
 - [ ] 20-01-PLAN.md — GRPC-06a: notifications-service hybrid HTTP+gRPC bootstrap, grpc-health-check + /healthz sidecar, railway.toml healthcheckPath
 - [ ] 20-02-PLAN.md — GRPC-06b: setNx() distributed-lock guard on all 6 named @Cron jobs (stays/transport/delivery/tour-notifications)
 - [ ] 20-03-PLAN.md — GRPC-06c: canary kill-switch flag (grpc.notifications_service.canary_enabled) + NotificationsClientModule circular-dependency fix (D-09 core)
-- [ ] 20-04-PLAN.md — D-09 remainder: wallet-invariant.e2e-spec.ts rewrite against centralized SettlementService + test:e2e:tours wired into CI
 
-**Wave 2** *(blocked on Wave 1 — needs 20-01's healthz path + 20-03's canary flag/service names to document accurately)*
-- [ ] 20-05-PLAN.md — GRPC-06c: docs/blue-green-cutover-runbook.md + full cross-plan regression sweep (phase gate)
+**Wave 2** *(blocked on Wave 1 — specifically on 20-03: `test:e2e:tours` bootstraps the full AppModule, which throws a circular-dependency error inside NotificationsClientModule until 20-03's `notifications-client.constants.ts` extraction lands)*
+- [ ] 20-04-PLAN.md — D-09 remainder: wallet-invariant.e2e-spec.ts rewrite against centralized SettlementService + test:e2e:tours wired into CI (depends_on: 20-03)
+
+**Wave 3** *(blocked on Wave 2 — needs 20-01's healthz path, 20-02's lock-guard test cases, 20-03's canary flag/service names, and 20-04's fully green test:e2e:tours suite to sweep for regressions)*
+- [ ] 20-05-PLAN.md — GRPC-06c: docs/blue-green-cutover-runbook.md + full cross-plan regression sweep (phase gate; depends_on: 20-01, 20-02, 20-03, 20-04)
 
 **Cross-cutting constraints:**
 - Exactly the 6 crons named in D-07 get the setNx() guard — db-metrics.service.ts's pollOpenConnections stays unlocked
 - setNx() itself is unmodified — fail-open behavior preserved unchanged (D-08)
-- Canary flag is a kill switch (gates whether the monolith calls notifications-service at all), not a literal route-to-old-vs-new-instance flip — single-hostname Railway service has no second instance to route to (RESEARCH.md Critical Design Clarification)
+- Canary flag is a kill switch (gates whether the monolith calls notifications-service at all), not a literal route-to-old-vs-new-instance flip — single-hostname Railway service has no second instance to route to (RESEARCH.md Critical Design Clarification, confirmed as the locked resolution of D-01 — see 20-CONTEXT.md D-10 addendum)
 - No new tooling for rollback — markdown runbook only (D-04)
 **UI hint**: no
 

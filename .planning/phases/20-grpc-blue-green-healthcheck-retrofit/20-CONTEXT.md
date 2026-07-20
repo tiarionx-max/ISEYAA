@@ -34,6 +34,9 @@ Every extracted gRPC service — today that means `notifications-service`, the o
 ### Folded scope — NotificationsClientModule e2e fix
 - **D-09:** The open todo "Fix NotificationsClientModule circular dependency breaking e2e:tours suite" is folded into Phase 20. Rationale: Phase 20's health-check and canary-flag work already touches `NotificationsClientModule` directly, so fixing the pre-existing `forwardRef()` circular-dependency bug here is cheap (same file, same session) and gives Phase 20's own changes real e2e coverage that doesn't exist today. Scope: add the missing `forwardRef()`, get `npm run test:e2e:tours` green locally, then wire it into `.github/workflows/ci.yml` alongside the existing `test:e2e:settlement-splits` step.
 
+### Canary flag semantics — kill switch confirmed (addendum, added during planning revision)
+- **D-10:** D-01's wording ("routing to the new vs. old instance") is confirmed to mean an availability kill switch, not a literal route-to-old-vs-new-instance flip. `notifications-service` is a single-hostname Railway service (Phase 17) with no second live instance to route to, and no in-process fallback path exists post-Phase-17 — there is only "call notifications-service" or "don't." This resolves 20-RESEARCH.md's "Critical Design Clarification" as the accepted, locked reading of D-01: when the canary flag is `false`, `NotificationsClientService` immediately throws `ServiceUnavailableException` without attempting the gRPC call (the same degrade path it already uses on a real gRPC failure); when `true` or absent, behavior is completely unchanged. This is the design 20-03-PLAN.md implements. No parallel-instance routing is built or implied by D-01 — that remains explicitly out of scope per D-01's own rejection of a full parallel-Railway-environment canary.
+
 ### Claude's Discretion
 - Exact shape of the `grpc.health.v1.Health` implementation (hand-rolled 2-message proto + `HealthController` vs. an npm `grpc-health-check`-style package) — research recommends a small reusable `packages/proto/grpc-health.proto` + shared NestJS provider rather than copy-paste per service; planner should follow this.
 - Whether Railway's `healthcheckPath` config can target a gRPC health check directly, or requires a small HTTP `/healthz` sidecar on the same NestJS hybrid app (`HttpAdapterHost` alongside `Transport.GRPC`) — research flags this as needing verification at build time; either resolution stays within this phase's scope.
@@ -121,3 +124,4 @@ No particular UI/UX references — this is a backend/infra reliability phase wit
 
 *Phase: 20-gRPC Blue-Green Healthcheck Retrofit*
 *Context gathered: 2026-07-20*
+*Revised: 2026-07-20 (added D-10 addendum confirming canary kill-switch semantics per checker feedback)*
