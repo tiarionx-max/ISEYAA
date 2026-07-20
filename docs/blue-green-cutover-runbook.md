@@ -156,3 +156,93 @@ this phase's automation.
    an operator judges the default threshold too sensitive or too loose for a specific
    cutover. No code change was made this phase to alter the default; this is purely an
    operational escape hatch already wired by the resilience layer.
+
+## Phase 21 Extractions — News, Waitlist, Reviews, Delivery OTP
+
+**D-05 risk-ascending rollout order:** the 4 services below MUST be cut over one at a
+time, in this exact order — News, then Waitlist, then Reviews, then Delivery OTP last.
+Each service's full 15-minute bake window (Step 5 below, per service) must complete
+with no regression before the next service's Step 1 begins. Do not start a second
+service's cutover while an earlier one is still baking or has an open rollback
+question. This mirrors D-04: each service ships with its own flag flip and bake
+period, never all four in one wave.
+
+Each section below follows the exact same 6-step Procedure + Bake window + Rollback
+structure as the `notifications-service` section above, substituted per service with
+its own canary flag key, gRPC port, and resilience vendor key.
+
+### News Service Cutover
+
+**Canary flag key:** `grpc.news_service.canary_enabled`
+**gRPC port:** 5009
+**Resilience vendor key:** `newsGrpc`
+
+**Procedure:**
+
+1. **Flip the canary flag OFF** — `PATCH /api/v1/admin/config/grpc.news_service.canary_enabled` with body `{ "value": false }`. The monolith immediately stops depending on `news-service`.
+2. **Railway performs its own healthcheck-gated container swap** — deploy the new `news-service` build; Railway's `healthcheckPath = /healthz` blocks promotion until the new container reports healthy.
+3. **Run synthetic verification DIRECTLY against the new container** — a raw `grpc.health.v1.Health` check against port 5009 confirming `SERVING`, plus a small number of known-safe test calls, bypassing the canary flag and circuit breaker entirely.
+4. **Flip the canary flag back ON** — same endpoint, body `{ "value": true }`. The monolith resumes real citizen traffic through `news-service`.
+5. **Actively watch the bake window** for exactly 15 minutes: (a) the Grafana Cloud gRPC error-rate panel for `news-service`, (b) `ResilienceService`'s `newsGrpc` circuit-breaker state (open = trouble). Per Pitfall 2, a quiet dashboard before Step 4 proves nothing — only observation from Step 4 forward is meaningful.
+6. **Rollback path** — if Step 5 shows trouble: traffic-level rollback first (flip `grpc.news_service.canary_enabled` back to `false` via the same endpoint); code-level rollback only if the underlying code itself needs reverting (standard Railway rollback to the previous known-good deployment).
+
+**Bake window:** fixed 15-minute, actively-watched window starting immediately after Step 4 — not open-ended or unattended. An operator keeps the Grafana Cloud dashboard open for the full window, ready to execute Step 6 the moment the gRPC error rate or the `newsGrpc` breaker indicates trouble.
+
+**Rollback:** flip `grpc.news_service.canary_enabled` to `false` immediately to pause traffic without a deploy or code change; trigger a Railway rollback separately only if the container build itself needs reverting.
+
+### Waitlist Service Cutover
+
+**Canary flag key:** `grpc.waitlist_service.canary_enabled`
+**gRPC port:** 5010
+**Resilience vendor key:** `waitlistGrpc`
+
+**Procedure:**
+
+1. **Flip the canary flag OFF** — `PATCH /api/v1/admin/config/grpc.waitlist_service.canary_enabled` with body `{ "value": false }`. The monolith immediately stops depending on `waitlist-service`.
+2. **Railway performs its own healthcheck-gated container swap** — deploy the new `waitlist-service` build; Railway's `healthcheckPath = /healthz` blocks promotion until the new container reports healthy.
+3. **Run synthetic verification DIRECTLY against the new container** — a raw `grpc.health.v1.Health` check against port 5010 confirming `SERVING`, plus a small number of known-safe test calls, bypassing the canary flag and circuit breaker entirely.
+4. **Flip the canary flag back ON** — same endpoint, body `{ "value": true }`. The monolith resumes real citizen traffic through `waitlist-service`.
+5. **Actively watch the bake window** for exactly 15 minutes: (a) the Grafana Cloud gRPC error-rate panel for `waitlist-service`, (b) `ResilienceService`'s `waitlistGrpc` circuit-breaker state (open = trouble). Per Pitfall 2, a quiet dashboard before Step 4 proves nothing — only observation from Step 4 forward is meaningful.
+6. **Rollback path** — if Step 5 shows trouble: traffic-level rollback first (flip `grpc.waitlist_service.canary_enabled` back to `false` via the same endpoint); code-level rollback only if the underlying code itself needs reverting (standard Railway rollback to the previous known-good deployment).
+
+**Bake window:** fixed 15-minute, actively-watched window starting immediately after Step 4 — not open-ended or unattended. An operator keeps the Grafana Cloud dashboard open for the full window, ready to execute Step 6 the moment the gRPC error rate or the `waitlistGrpc` breaker indicates trouble.
+
+**Rollback:** flip `grpc.waitlist_service.canary_enabled` to `false` immediately to pause traffic without a deploy or code change; trigger a Railway rollback separately only if the container build itself needs reverting.
+
+### Reviews Service Cutover
+
+**Canary flag key:** `grpc.reviews_service.canary_enabled`
+**gRPC port:** 5011
+**Resilience vendor key:** `reviewsGrpc`
+
+**Procedure:**
+
+1. **Flip the canary flag OFF** — `PATCH /api/v1/admin/config/grpc.reviews_service.canary_enabled` with body `{ "value": false }`. The monolith immediately stops depending on `reviews-service`.
+2. **Railway performs its own healthcheck-gated container swap** — deploy the new `reviews-service` build; Railway's `healthcheckPath = /healthz` blocks promotion until the new container reports healthy.
+3. **Run synthetic verification DIRECTLY against the new container** — a raw `grpc.health.v1.Health` check against port 5011 confirming `SERVING`, plus a small number of known-safe test calls, bypassing the canary flag and circuit breaker entirely.
+4. **Flip the canary flag back ON** — same endpoint, body `{ "value": true }`. The monolith resumes real citizen traffic through `reviews-service`.
+5. **Actively watch the bake window** for exactly 15 minutes: (a) the Grafana Cloud gRPC error-rate panel for `reviews-service`, (b) `ResilienceService`'s `reviewsGrpc` circuit-breaker state (open = trouble). Per Pitfall 2, a quiet dashboard before Step 4 proves nothing — only observation from Step 4 forward is meaningful.
+6. **Rollback path** — if Step 5 shows trouble: traffic-level rollback first (flip `grpc.reviews_service.canary_enabled` back to `false` via the same endpoint); code-level rollback only if the underlying code itself needs reverting (standard Railway rollback to the previous known-good deployment).
+
+**Bake window:** fixed 15-minute, actively-watched window starting immediately after Step 4 — not open-ended or unattended. An operator keeps the Grafana Cloud dashboard open for the full window, ready to execute Step 6 the moment the gRPC error rate or the `reviewsGrpc` breaker indicates trouble.
+
+**Rollback:** flip `grpc.reviews_service.canary_enabled` to `false` immediately to pause traffic without a deploy or code change; trigger a Railway rollback separately only if the container build itself needs reverting.
+
+### Delivery OTP Service Cutover
+
+**Canary flag key:** `grpc.delivery_otp_service.canary_enabled`
+**gRPC port:** 5012
+**Resilience vendor key:** `deliveryOtpGrpc`
+
+**Procedure:**
+
+1. **Flip the canary flag OFF** — `PATCH /api/v1/admin/config/grpc.delivery_otp_service.canary_enabled` with body `{ "value": false }`. The monolith immediately stops depending on `delivery-otp-service`.
+2. **Railway performs its own healthcheck-gated container swap** — deploy the new `delivery-otp-service` build; Railway's `healthcheckPath = /healthz` blocks promotion until the new container reports healthy.
+3. **Run synthetic verification DIRECTLY against the new container** — a raw `grpc.health.v1.Health` check against port 5012 confirming `SERVING`, plus a small number of known-safe test calls, bypassing the canary flag and circuit breaker entirely.
+4. **Flip the canary flag back ON** — same endpoint, body `{ "value": true }`. The monolith resumes real citizen traffic through `delivery-otp-service`.
+5. **Actively watch the bake window** for exactly 15 minutes: (a) the Grafana Cloud gRPC error-rate panel for `delivery-otp-service`, (b) `ResilienceService`'s `deliveryOtpGrpc` circuit-breaker state (open = trouble). Per Pitfall 2, a quiet dashboard before Step 4 proves nothing — only observation from Step 4 forward is meaningful.
+6. **Rollback path** — if Step 5 shows trouble: traffic-level rollback first (flip `grpc.delivery_otp_service.canary_enabled` back to `false` via the same endpoint); code-level rollback only if the underlying code itself needs reverting (standard Railway rollback to the previous known-good deployment).
+
+**Bake window:** fixed 15-minute, actively-watched window starting immediately after Step 4 — not open-ended or unattended. An operator keeps the Grafana Cloud dashboard open for the full window, ready to execute Step 6 the moment the gRPC error rate or the `deliveryOtpGrpc` breaker indicates trouble.
+
+**Rollback:** flip `grpc.delivery_otp_service.canary_enabled` to `false` immediately to pause traffic without a deploy or code change; trigger a Railway rollback separately only if the container build itself needs reverting.
