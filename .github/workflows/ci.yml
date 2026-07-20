@@ -89,6 +89,10 @@ jobs:
         working-directory: backend
         run: npm run test:e2e:settlement-splits -- --forceExit --passWithNoTests
 
+      - name: E2E tests (tour booking + wallet invariant + KYC encryption)
+        working-directory: backend
+        run: npm run test:e2e:tours -- --forceExit --passWithNoTests
+
       - name: Build
         working-directory: backend
         run: npm run build

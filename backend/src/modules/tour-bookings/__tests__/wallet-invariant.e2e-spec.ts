@@ -1,18 +1,22 @@
 /**
- * 09-12 — TOUR-10 Wallet Invariant Regression Specs
+ * 09-12 / 20-04 — TOUR-10 Wallet Invariant Regression Specs
  *
- * Proves the core settlement invariant:
- *   sum(vendor credits) + platform commission == chargeAmount (NGN)
+ * Proves the core settlement invariant at TourSettlementService's actual
+ * boundary: the `recipients` array (and `onSettled`/`onFailure` callbacks)
+ * it hands to the shared `SettlementService.settle()` — NOT a local
+ * `$transaction` (that primitive moved to `SettlementService` in Phase 12/18
+ * and is already covered by `settlement.service.spec.ts`).
  *
- * These run as unit tests with a mocked PrismaService so they execute without
- * a live database. The mocks exercise the real TourSettlementService code paths.
+ * These run as unit tests with a mocked PrismaService/SettlementService/
+ * VisitorLogService so they execute without a live database. The mocks
+ * exercise the real TourSettlementService vendor-resolution code path.
  *
  * Six invariant scenarios (named to match the TOUR-10 spec):
- *   INV-1  100% split — credits sum exactly to chargeAmount, platform = 0
- *   INV-2  Partial split — platform absorbs the unclaimed remainder
- *   INV-3  ATTRACTION fallback — unset gov wallet rolls into platform, not lost
- *   INV-4  Idempotency — second call with same reference is a no-op
- *   INV-5  Rollback on failure — wallet update error triggers refund
+ *   INV-1  100% split — recipients sum exactly to chargeAmount, nothing unclaimed
+ *   INV-2  Partial split — unclaimed remainder deliberately absent from recipients
+ *   INV-3  ATTRACTION fallback — unset gov wallet included with walletId null, rolled into attractionsRolledIn
+ *   INV-4  Delegated idempotency — TourSettlementService always calls settle() once, regardless of REPLAYED/SETTLED result
+ *   INV-5  Rollback on failure — settle()'s onFailure callback flips booking to REFUNDED
  *   INV-6  Multiple charge amounts — invariant holds for 1000, 50000, 1000000 NGN
  */
 
@@ -25,6 +29,8 @@ import {
 import { PrismaService } from '../../../prisma/prisma.service';
 import { RefundService } from '../../../common/services/refund.service';
 import { KafkaService } from '../../../kafka/kafka.service';
+import { SettlementService } from '../../../common/services/settlement.service';
+import { VisitorLogService } from '../../../common/services/visitor-log.service';
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -65,69 +71,12 @@ interface MockPrisma {
   $executeRaw:    AnyFn;
 }
 
-interface TxnCapture {
-  walletUpdates:      { id: string; balance: number }[];
-  transactionCreates: any[];
-  bookingUpdates:     any[];
-}
-
-let mockPrisma:  MockPrisma;
-let mockRefund:  { refund: AnyFn };
-let mockEvents:  { emit: AnyFn };
-let mockKafka:   { consume: AnyFn; emit: AnyFn };
-let txn:         TxnCapture;
-
-// ── Transaction wire helper ───────────────────────────────────────────────────
-
-/**
- * Wires `$transaction(async cb => cb(tx))` so every Prisma op inside the
- * settlement callback is captured into `txn`. Wallet balances are tracked
- * so successive credits within a single transaction accumulate correctly.
- */
-function wireTransaction(opts: { failOnWalletUpdate?: string } = {}) {
-  const balances: Record<string, number> = {
-    [GUIDE_WALLET_ID]:  0,
-    [HOST_WALLET_ID]:   0,
-    [GOV_WALLET_ID]:    0,
-    [SYSTEM_WALLET_ID]: 0,
-  };
-
-  mockPrisma.$transaction.mockImplementation(async (cb: any) => {
-    const tx: any = {
-      $executeRaw: jest.fn(async (strings: any) => {
-        // Tagged template comes through as TemplateStringsArray; join to a string.
-        return 1;
-      }),
-      wallet: {
-        findUnique: jest.fn(async ({ where }: any) => ({
-          id: where.id,
-          balance: balances[where.id] ?? 0,
-        })),
-        update: jest.fn(async ({ where, data }: any) => {
-          if (opts.failOnWalletUpdate && where.id === opts.failOnWalletUpdate) {
-            throw new Error('boom — vendor wallet update failed');
-          }
-          balances[where.id] = Number(data.balance);
-          txn.walletUpdates.push({ id: where.id, balance: Number(data.balance) });
-          return { id: where.id, balance: balances[where.id] };
-        }),
-      },
-      transaction: {
-        create: jest.fn(async ({ data }: any) => {
-          txn.transactionCreates.push(data);
-          return { id: 'TXN-' + txn.transactionCreates.length, ...data };
-        }),
-      },
-      tourBooking: {
-        update: jest.fn(async ({ where, data }: any) => {
-          txn.bookingUpdates.push({ where, data, source: 'tx' });
-          return { id: where.id, ...data };
-        }),
-      },
-    };
-    return cb(tx);
-  });
-}
+let mockPrisma:            MockPrisma;
+let mockRefund:            { refund: AnyFn };
+let mockEvents:            { emit: AnyFn };
+let mockKafka:             { consume: AnyFn; emit: AnyFn };
+let mockSettlementService: { settle: AnyFn; resolveMinistryWallet: AnyFn; resolveSplit: AnyFn };
+let mockVisitorLog:        { record: AnyFn };
 
 // ── Booking / payload builders ────────────────────────────────────────────────
 
@@ -179,19 +128,27 @@ async function makeService(): Promise<TourSettlementService> {
   mockRefund = { refund: jest.fn().mockResolvedValue({}) };
   mockEvents = { emit: jest.fn() };
   mockKafka  = { consume: jest.fn().mockResolvedValue(undefined), emit: jest.fn() };
+  mockSettlementService = {
+    settle: jest.fn().mockResolvedValue({ status: 'SETTLED', platformAmountNgn: 0, recipientCredits: [] }),
+    resolveMinistryWallet: jest.fn(),
+    resolveSplit: jest.fn(),
+  };
+  mockVisitorLog = { record: jest.fn().mockResolvedValue(undefined) };
 
   const moduleRef: TestingModule = await Test.createTestingModule({
     providers: [
       TourSettlementService,
-      { provide: PrismaService,  useValue: mockPrisma },
-      { provide: RefundService,  useValue: mockRefund },
-      { provide: EventEmitter2,  useValue: mockEvents },
-      { provide: KafkaService,   useValue: mockKafka },
+      { provide: PrismaService,        useValue: mockPrisma },
+      { provide: RefundService,        useValue: mockRefund },
+      { provide: EventEmitter2,        useValue: mockEvents },
+      { provide: KafkaService,         useValue: mockKafka },
+      { provide: SettlementService,    useValue: mockSettlementService },
+      { provide: VisitorLogService,    useValue: mockVisitorLog },
     ],
   }).compile();
 
   const svc = moduleRef.get(TourSettlementService);
-  await svc.onModuleInit(); // resolves systemWalletId
+  await svc.onModuleInit(); // resolves systemWalletId (kafka.consume only, no-op here)
   return svc;
 }
 
@@ -218,14 +175,13 @@ function primeVendorResolvers() {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  txn = { walletUpdates: [], transactionCreates: [], bookingUpdates: [] };
 });
 
 // ── TOUR-10 Invariant tests ───────────────────────────────────────────────────
 
 describe('TOUR-10 Wallet Invariant', () => {
-  // INV-1: 100% split — vendor credits + platform row sum to chargeAmount exactly.
-  it('INV-1: 100% split (GUIDE 70 + HOST 30) — all credits sum to chargeAmount, platform = 0', async () => {
+  // INV-1: 100% split — recipients sum exactly to chargeAmount, nothing unclaimed.
+  it('INV-1: 100% split (GUIDE 70 + HOST 30) — recipients sum to chargeAmount exactly', async () => {
     const svc = await makeService();
     primeVendorResolvers();
 
@@ -235,26 +191,38 @@ describe('TOUR-10 Wallet Invariant', () => {
         { vendorType: 'HOST',  vendorId: HOST_PROPERTY_ID, percentage: 30 },
       ]),
     );
-    mockPrisma.transaction.findFirst.mockResolvedValue(null);
     mockPrisma.platformConfig.findUnique.mockResolvedValueOnce(null);
-    wireTransaction();
 
     await svc.handleTourBookingPayment(buildPayload({}, 1_000_000)); // ₦10,000
 
-    const sum = txn.transactionCreates.reduce((s, c) => s + Number(c.amount), 0);
-    expect(sum).toBe(10_000); // invariant: credits == chargeAmount (NGN)
+    expect(mockSettlementService.settle).toHaveBeenCalledTimes(1);
+    const input = mockSettlementService.settle.mock.calls[0][0];
 
-    const plat = txn.transactionCreates.find((c) => c.reference.endsWith('-PLAT'));
-    expect(plat).toBeDefined();
-    expect(Number(plat.amount)).toBe(0); // 100% claimed → platform gets 0
+    expect(input.recipients).toHaveLength(2);
 
-    // 2 vendor rows + 1 platform row
-    expect(txn.transactionCreates.filter((c) => c.reference.includes('-V-'))).toHaveLength(2);
-    expect(txn.transactionCreates.filter((c) => c.reference.endsWith('-PLAT'))).toHaveLength(1);
+    const guideEntry = input.recipients.find((r: any) => r.tag === 'GUIDE');
+    expect(guideEntry).toMatchObject({
+      tag: 'GUIDE',
+      refSuffix: 'V-0',
+      walletId: GUIDE_WALLET_ID,
+      amountNgn: 7000,
+    });
+
+    const hostEntry = input.recipients.find((r: any) => r.tag === 'HOST');
+    expect(hostEntry).toMatchObject({
+      tag: 'HOST',
+      refSuffix: 'V-1',
+      walletId: HOST_WALLET_ID,
+      amountNgn: 3000,
+    });
+
+    const sum = input.recipients.reduce((s: number, r: any) => s + r.amountNgn, 0);
+    expect(sum).toBe(10_000); // invariant: a 100%-claimed split leaves nothing for platform to absorb
   });
 
-  // INV-2: Partial split (sum < 100) — remaining percentage goes to platform.
-  it('INV-2: partial split (GUIDE 50 + HOST 30) — platform absorbs remaining 20%', async () => {
+  // INV-2: Partial split (sum < 100) — unclaimed remainder is deliberately NOT
+  //        present in recipients (platform absorbs it inside SettlementService.settle()).
+  it('INV-2: partial split (GUIDE 50 + HOST 30) — unclaimed 20% absent from recipients', async () => {
     const svc = await makeService();
     primeVendorResolvers();
 
@@ -264,81 +232,95 @@ describe('TOUR-10 Wallet Invariant', () => {
         { vendorType: 'HOST',  vendorId: HOST_PROPERTY_ID, percentage: 30 },
       ]),
     );
-    mockPrisma.transaction.findFirst.mockResolvedValue(null);
     mockPrisma.platformConfig.findUnique.mockResolvedValueOnce(null);
-    wireTransaction();
 
     await svc.handleTourBookingPayment(buildPayload({}, 1_000_000)); // ₦10,000
 
-    const sum = txn.transactionCreates.reduce((s, c) => s + Number(c.amount), 0);
-    expect(sum).toBe(10_000); // invariant holds
+    expect(mockSettlementService.settle).toHaveBeenCalledTimes(1);
+    const input = mockSettlementService.settle.mock.calls[0][0];
 
-    const plat = txn.transactionCreates.find((c) => c.reference.endsWith('-PLAT'));
-    expect(Number(plat.amount)).toBe(2_000); // 20% of ₦10,000
+    const sum = input.recipients.reduce((s: number, r: any) => s + r.amountNgn, 0);
+    expect(sum).toBe(8_000); // 50% + 30% claimed — unclaimed ₦2,000 (20%) not in recipients
   });
 
-  // INV-3: ATTRACTION fallback — when gov wallet PlatformConfig is unset,
-  //        the attraction share rolls into platform (not dropped/lost).
-  it('INV-3: ATTRACTION with unset gov wallet — share rolls to platform, sum still exact', async () => {
+  // INV-3: ATTRACTION fallback — when gov wallet PlatformConfig is unset, the
+  //        ATTRACTION entry is still included in recipients with walletId: null
+  //        (NOT filtered out), and rolled into attractionsRolledIn metadata.
+  it('INV-3: ATTRACTION with unset gov wallet — included with walletId null, rolled into attractionsRolledIn', async () => {
     const svc = await makeService();
     primeVendorResolvers();
 
     mockPrisma.tourBooking.findUnique.mockResolvedValueOnce(
       buildBooking([
-        { vendorType: 'GUIDE',      vendorId: GUIDE_VENDOR_ID,    percentage: 60 },
+        { vendorType: 'GUIDE',      vendorId: GUIDE_VENDOR_ID,      percentage: 60 },
         { vendorType: 'ATTRACTION', vendorId: ATTRACTION_VENDOR_ID, percentage: 40 },
       ]),
     );
-    mockPrisma.transaction.findFirst.mockResolvedValue(null);
     // null value means gov wallet user id is unset
     mockPrisma.platformConfig.findUnique.mockResolvedValueOnce({ value: null });
-    wireTransaction();
 
     await svc.handleTourBookingPayment(buildPayload({}, 500_000)); // ₦5,000
 
-    const sum = txn.transactionCreates.reduce((s, c) => s + Number(c.amount), 0);
-    expect(sum).toBe(5_000); // invariant: no NGN is lost
+    expect(mockSettlementService.settle).toHaveBeenCalledTimes(1);
+    const input = mockSettlementService.settle.mock.calls[0][0];
 
-    // Only GUIDE gets a vendor row — ATTRACTION has no wallet
-    const vendorRows = txn.transactionCreates.filter((c) => c.reference.includes('-V-'));
-    expect(vendorRows).toHaveLength(1);
-    expect(Number(vendorRows[0].amount)).toBe(3_000); // 60% of ₦5,000
+    expect(input.recipients).toHaveLength(2); // GUIDE resolved + ATTRACTION included with null walletId
 
-    // Platform absorbs both its own 0% plus the ATTRACTION's 40%
-    const plat = txn.transactionCreates.find((c) => c.reference.endsWith('-PLAT'));
-    expect(Number(plat.amount)).toBe(2_000); // 40% rolled in
-    expect(plat.metadata.attractionsRolledIn).toContain(ATTRACTION_VENDOR_ID);
+    const guideEntry = input.recipients.find((r: any) => r.tag === 'GUIDE');
+    expect(guideEntry.amountNgn).toBe(3_000); // 60% of ₦5,000
+    expect(guideEntry.walletId).toBe(GUIDE_WALLET_ID);
+
+    const attractionEntry = input.recipients.find((r: any) => r.tag === 'ATTRACTION');
+    expect(attractionEntry.amountNgn).toBe(2_000); // 40% of ₦5,000
+    expect(attractionEntry.walletId).toBeNull();
+
+    expect(input.platformMetadata.attractionsRolledIn).toContain(ATTRACTION_VENDOR_ID);
   });
 
-  // INV-4: Idempotency — second settlement call with same reference is a no-op;
-  //        no additional wallet writes are performed.
-  it('INV-4: idempotency — replay with existing -V-0 row is a strict no-op', async () => {
+  // INV-4: Delegated idempotency — TourSettlementService has no local idempotency
+  //        precheck of its own; it always calls settle() once with the correctly
+  //        resolved recipients, regardless of whether settle() itself reports a
+  //        fresh SETTLED result or a REPLAYED no-op (idempotency lives entirely
+  //        inside SettlementService now).
+  it('INV-4: always delegates to settle() exactly once, even when settle() reports REPLAYED', async () => {
     const svc = await makeService();
     primeVendorResolvers();
+
+    mockSettlementService.settle.mockResolvedValueOnce({
+      status: 'REPLAYED',
+      platformAmountNgn: 0,
+      recipientCredits: [],
+    });
 
     mockPrisma.tourBooking.findUnique.mockResolvedValueOnce(
       buildBooking([
         { vendorType: 'GUIDE', vendorId: GUIDE_VENDOR_ID, percentage: 100 },
       ]),
     );
-    // Simulate an already-settled reference row
-    mockPrisma.transaction.findFirst.mockResolvedValueOnce({ id: 'TXN-ALREADY-SETTLED' });
-    wireTransaction();
+    mockPrisma.platformConfig.findUnique.mockResolvedValueOnce(null);
 
     await svc.handleTourBookingPayment(buildPayload());
 
-    // No $transaction callback should have been invoked
-    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
-    // No wallet writes
-    expect(txn.transactionCreates).toHaveLength(0);
-    expect(txn.walletUpdates).toHaveLength(0);
-    // No refund attempted
-    expect(mockRefund.refund).not.toHaveBeenCalled();
+    // TourSettlementService always delegates to SettlementService's own idempotency
+    // check rather than adding a redundant local one.
+    expect(mockSettlementService.settle).toHaveBeenCalledTimes(1);
+    const input = mockSettlementService.settle.mock.calls[0][0];
+    expect(input.recipients).toHaveLength(1);
+    expect(input.recipients[0]).toMatchObject({
+      tag: 'GUIDE',
+      refSuffix: 'V-0',
+      walletId: GUIDE_WALLET_ID,
+      amountNgn: 10_000,
+    });
   });
 
-  // INV-5: Rollback on failure — wallet update throws → RefundService is called
-  //        and the booking transitions to REFUNDED.
-  it('INV-5: wallet update failure triggers RefundService.refund and REFUNDED status', async () => {
+  // INV-5: Rollback on failure — settle()'s onFailure callback (invoked internally
+  //        by the real SettlementService on drift/transaction failure, simulated
+  //        here via the mock) flips the booking to REFUNDED via TourSettlementService's
+  //        own onFailure handler. The real RefundService.refund() call for this path
+  //        now happens inside SettlementService.settle() itself (mocked out here,
+  //        already covered by settlement.service.spec.ts).
+  it('INV-5: settle() failure triggers onFailure callback and REFUNDED status', async () => {
     const svc = await makeService();
     primeVendorResolvers();
 
@@ -347,26 +329,19 @@ describe('TOUR-10 Wallet Invariant', () => {
         { vendorType: 'GUIDE', vendorId: GUIDE_VENDOR_ID, percentage: 80 },
       ]),
     );
-    mockPrisma.transaction.findFirst.mockResolvedValue(null);
     mockPrisma.platformConfig.findUnique.mockResolvedValueOnce(null);
-    wireTransaction({ failOnWalletUpdate: GUIDE_WALLET_ID });
+
+    mockSettlementService.settle.mockImplementationOnce(async (input: any) => {
+      await input.onFailure(new Error('boom — vendor wallet update failed'));
+      throw new Error('boom — vendor wallet update failed');
+    });
 
     await expect(
       svc.handleTourBookingPayment(buildPayload({}, 2_000_000)), // ₦20,000
     ).rejects.toThrow(/boom/);
 
-    // Refund must fire exactly once with the correct buyer wallet and amount
-    expect(mockRefund.refund).toHaveBeenCalledTimes(1);
-    expect(mockRefund.refund).toHaveBeenCalledWith(
-      expect.objectContaining({
-        paystackReference: PAYSTACK_REF,
-        amountKobo: 2_000_000,
-        walletId: BUYER_WALLET_ID,
-        reason: expect.stringContaining('tour_booking_settlement_failed'),
-      }),
-    );
-
-    // Booking status must be flipped to REFUNDED (via the outer prisma, not tx)
+    // Booking status must be flipped to REFUNDED by TourSettlementService's own
+    // onFailure handler (unchanged code path — untouched by Phase 12/18).
     expect(mockPrisma.tourBooking.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: BOOKING_ID },
@@ -376,6 +351,8 @@ describe('TOUR-10 Wallet Invariant', () => {
   });
 
   // INV-6: Multiple charge amounts — invariant holds for ₦1,000, ₦50,000, ₦1,000,000.
+  //        85% claimed (GUIDE 60 + HOST 25) — unclaimed 15% deliberately absent
+  //        from recipients, same as INV-2.
   it('INV-6: invariant holds across 1000 NGN / 50000 NGN / 1000000 NGN charge amounts', async () => {
     // Test amounts in kobo (Paystack unit)
     const testCases: [number, number][] = [
@@ -384,9 +361,9 @@ describe('TOUR-10 Wallet Invariant', () => {
       [100_000_000, 1_000_000], // ₦1,000,000
     ];
 
-    for (const [amountKobo, expectedNgn] of testCases) {
+    for (let i = 0; i < testCases.length; i++) {
+      const [amountKobo, expectedNgn] = testCases[i];
       jest.clearAllMocks();
-      txn = { walletUpdates: [], transactionCreates: [], bookingUpdates: [] };
 
       const svc = await makeService();
       primeVendorResolvers();
@@ -397,17 +374,17 @@ describe('TOUR-10 Wallet Invariant', () => {
           { vendorType: 'HOST',  vendorId: HOST_PROPERTY_ID, percentage: 25 },
         ]),
       );
-      mockPrisma.transaction.findFirst.mockResolvedValue(null);
       mockPrisma.platformConfig.findUnique.mockResolvedValueOnce(null);
-      wireTransaction();
 
       await svc.handleTourBookingPayment(
         buildPayload({ reference: `${PAYSTACK_REF}-${amountKobo}` }, amountKobo),
       );
 
-      const sum = txn.transactionCreates.reduce((s, c) => s + Number(c.amount), 0);
+      expect(mockSettlementService.settle).toHaveBeenCalledTimes(1);
+      const input = mockSettlementService.settle.mock.calls[0][0];
+      const sum = input.recipients.reduce((s: number, r: any) => s + r.amountNgn, 0);
       // Assert to within ₦0.02 to accommodate float rounding (service guard is ₦0.02)
-      expect(Math.abs(sum - expectedNgn)).toBeLessThanOrEqual(0.02);
+      expect(Math.abs(sum - expectedNgn * 0.85)).toBeLessThanOrEqual(0.02);
     }
   });
 });

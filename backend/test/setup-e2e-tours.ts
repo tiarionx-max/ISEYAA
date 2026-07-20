@@ -30,7 +30,11 @@ export async function bootstrapE2EApp(): Promise<{
     imports: [AppModule],
   }).compile();
 
-  const app = moduleRef.createNestApplication();
+  // rawBody: true is required — mirrors src/main.ts's NestFactory.create() option.
+  // Without it, req.rawBody is undefined and WebhooksService.handlePaystack()'s HMAC
+  // check (which validates against the raw request bytes, not a JSON.stringify()
+  // reconstruction) always 400s with "Missing raw body" (C-11 guard).
+  const app = moduleRef.createNestApplication({ rawBody: true });
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }),
   );
