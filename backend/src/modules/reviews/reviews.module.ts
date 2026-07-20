@@ -1,17 +1,14 @@
 import { Module } from '@nestjs/common';
 import { ReviewsService } from './reviews.service';
-import { ReviewsController } from './reviews.controller';
 
 /**
  * 09-08 — Reviews module.
  *
- * One controller: ReviewsController — public + authenticated tourist endpoints.
- *
- * 21-04: ReviewsAdminController (LGA_ADMIN+ flag queue + resolve) has moved out
- * into its own ReviewsAdminModule so it is never wholesale-imported into the new
- * reviews-service gRPC process alongside this module. ReviewsController stays
- * here temporarily — Plan 21-05 removes it once ReviewsClientModule takes over,
- * keeping this plan's changes independently buildable and behavior-preserving.
+ * 21-05: ReviewsController has moved out into ReviewsClientModule (public REST endpoints now
+ * served via the reviews-service gRPC facade) — this module registers no controllers of its
+ * own. It still provides + exports ReviewsService because both ReviewsAdminModule (21-04, in
+ * -process admin flag queue) and `apps/reviews-service`'s wholesale import (the extracted
+ * gRPC process itself) require it.
  *
  * No extra `imports`: PrismaService (PrismaModule @Global), EventEmitter2
  * (EventEmitterModule.forRoot() in AppModule) and the auth/roles guards
@@ -23,7 +20,7 @@ import { ReviewsController } from './reviews.controller';
  * POST /reviews. This module does NOT re-implement upload handling.
  */
 @Module({
-  controllers: [ReviewsController],
+  controllers: [],
   providers: [ReviewsService],
   exports: [ReviewsService],
 })
