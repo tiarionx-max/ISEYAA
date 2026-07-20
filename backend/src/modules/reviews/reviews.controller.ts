@@ -19,6 +19,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { ReviewsService } from './reviews.service';
+import { ReviewsClientService } from '../reviews-client/reviews-client.service';
 import { CreateReviewDto, REVIEW_TARGET_TYPES, ReviewTargetTypeLiteral } from './dto/create-review.dto';
 import { ResolveFlagDto } from './dto/resolve-flag.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -33,11 +34,14 @@ import { UserRole } from '../../common/enums/user-role.enum';
  * Route table:
  *   POST  /reviews                                    — JwtAuthGuard
  *   GET   /reviews?targetType=&targetId=&page=&limit= — PUBLIC
+ *
+ * 21-05: routed through ReviewsClientService (reviews-service gRPC facade) instead of
+ * ReviewsService directly — registered inside ReviewsClientModule now.
  */
 @ApiTags('Reviews')
 @Controller('reviews')
 export class ReviewsController {
-  constructor(private readonly reviewsService: ReviewsService) {}
+  constructor(private readonly reviewsClient: ReviewsClientService) {}
 
   @Post()
   @UseGuards(JwtAuthGuard)
@@ -59,7 +63,7 @@ export class ReviewsController {
     @CurrentUser() user: { userId: string },
     @Body() dto: CreateReviewDto,
   ) {
-    return this.reviewsService.createReview(user.userId, dto);
+    return this.reviewsClient.createReview(user.userId, dto);
   }
 
   @Get()
@@ -79,7 +83,7 @@ export class ReviewsController {
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(24), ParseIntPipe) limit: number,
   ) {
-    return this.reviewsService.findByTarget(targetType, targetId, { page, limit });
+    return this.reviewsClient.findByTarget(targetType, targetId, { page, limit });
   }
 }
 
