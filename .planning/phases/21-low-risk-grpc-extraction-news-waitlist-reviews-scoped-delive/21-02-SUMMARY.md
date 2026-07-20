@@ -125,3 +125,7 @@ None - no external service configuration required. `NEWS_SERVICE_URL` already ex
 ---
 *Phase: 21-low-risk-grpc-extraction-news-waitlist-reviews-scoped-delive*
 *Completed: 2026-07-20*
+
+## Self-Check: PASSED
+
+All 17 files listed in key-files (created/modified) verified present on disk. All 4 commits (3deab40, fdfe8cb, a48bb80, a96c1ba) verified present in `git log --oneline --all`.
