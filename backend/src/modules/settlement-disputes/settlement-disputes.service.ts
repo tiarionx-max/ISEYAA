@@ -200,6 +200,15 @@ export class SettlementDisputesService {
    * (`settlement.service.ts` lines 184-234): recipient rows carry
    * `metadata.recipientType = tag` ('DRIVER'/'VENDOR'/'MINISTRY'/etc.), the
    * platform row's reference ends in `-PLAT` and carries no `recipientType`.
+   *
+   * CR-01 fix: the diff this function returns now ALSO includes the platform
+   * wallet's own correction — computed via the same self-balancing formula
+   * `settle()` uses for its own drift-absorption row (`chargeAmountNgn` minus
+   * the corrected earner and ministry totals), never `platformPct` directly
+   * (which can legitimately be `null`). Every non-empty `lines` result sums
+   * to 0 by construction: the original settlement's rows already summed to
+   * `chargeAmountNgn`, and the corrected totals are constructed to also sum
+   * to `chargeAmountNgn`, so `sum(deltas) = sum(corrected) - sum(actual) = 0`.
    */
   async computeAdjustmentLines(
     module: string,
@@ -261,6 +270,17 @@ export class SettlementDisputesService {
       if (Math.abs(remaining) >= 0.01) {
         lines.push({ walletId: lastRow.walletId!, deltaNgn: remaining });
       }
+    }
+
+    // Platform-wallet balancing line (CR-01) — self-derives from the charge
+    // total minus both corrected totals above, mirroring settle()'s own
+    // drift-absorption formula. Works even when platformPct is null.
+    const correctPlatformTotal =
+      Math.round((chargeAmountNgn - correctEarnerTotal - correctMinistryTotal) * 100) / 100;
+    const actualPlatformTotal = platformRow ? Number(platformRow.amount) : 0;
+    const platformDelta = Math.round((correctPlatformTotal - actualPlatformTotal) * 100) / 100;
+    if (platformRow?.walletId && Math.abs(platformDelta) >= 0.01) {
+      lines.push({ walletId: platformRow.walletId, deltaNgn: platformDelta });
     }
 
     return { lines, chargeAmountNgn };
