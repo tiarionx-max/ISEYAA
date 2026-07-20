@@ -82,6 +82,7 @@ v2.0 — Microservices, Multi-Channel Auth & Government Partnership (shipped 202
 v2.1 — Extraction Backlog Clearance & Settlement Flexibility (in progress, started 2026-07-19):
 
 - ✓ Settlement Split Centralization — new `SettlementSplitTier` model (typed Decimal columns, partial-unique-index-enforced single-active-row-per-module) replaces 6 duplicated inline `PlatformConfig` reads; `SettlementService.resolveSplit()` is the sole resolver for Transport/Delivery/Marketplace/Events/Stays/Studio; `Number.isFinite()` guard added to `settle()` rejects NaN-corrupted config before any wallet mutation; backend-only `SUPER_ADMIN`-gated CRUD with insert-new-row/deactivate-old audit trail (SETTLE-11a, SETTLE-11b, SETTLE-11c, SETTLE-11d) — Phase 18 (4/4 plans, completed 2026-07-19). Verified 7/7 must-haves; a code-review blocker (unique-constraint violation in the audit-trail update path) was found and fixed pre-verification, with a real-Postgres e2e regression test wired into CI. 644 backend tests passing
+- ✓ Settlement Dispute & Adjustment Workflow — SUPER_ADMIN-only dispute lifecycle (`OPEN → IN_REVIEW → RESOLVED/DISMISSED`, `BLOCKED` retry) over a new `SettlementDispute` model; `SettlementService.adjust()` compensating-transaction primitive posts append-only, non-destructive corrections; DB-level partial-unique-index backstop + module cross-check on `raise()`; every action audited (SETTLE-10a, SETTLE-10b, SETTLE-10c, SETTLE-10d, SETTLE-10e) — Phase 19 (6/6 plans, completed 2026-07-20). Verified 5/5 must-haves after two gap-closure rounds (19-05, 19-06) fixed a recurring money-conservation bug class in `computeAdjustmentLines()`. **Human verification pending:** CR-02 migration deployment to staging/production unconfirmed; a residual (currently code-unreachable) platform-row variant of the same bug class was risk-accepted rather than gap-closed — see `19-HUMAN-UAT.md`
 
 ### Active
 
@@ -92,7 +93,6 @@ v2.1 — Extraction Backlog Clearance & Settlement Flexibility (scoping started 
 - GRPC-06: Blue-green/canary deploys per extracted gRPC service
 - MIN-08: Scheduled/recurring Ministry export delivery
 - MIN-09: Seasonal/LGA heatmap visualization on Ministry dashboard
-- SETTLE-10: Settlement dispute/adjustment workflow
 
 ### Out of Scope
 
@@ -162,4 +162,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-19 — Phase 18 (Settlement Split Centralization) complete*
+*Last updated: 2026-07-20 — Phase 19 (Settlement Dispute & Adjustment Workflow) complete*
