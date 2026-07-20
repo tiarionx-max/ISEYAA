@@ -467,9 +467,9 @@ Plans:
 **Plans**: 5 plans
 Plans:
 **Wave 1** *(no cross-file dependencies — parallel)*
-- [ ] 20-01-PLAN.md — GRPC-06a: notifications-service hybrid HTTP+gRPC bootstrap, grpc-health-check + /healthz sidecar, railway.toml healthcheckPath
-- [ ] 20-02-PLAN.md — GRPC-06b: setNx() distributed-lock guard on all 6 named @Cron jobs (stays/transport/delivery/tour-notifications)
-- [ ] 20-03-PLAN.md — GRPC-06c: canary kill-switch flag (grpc.notifications_service.canary_enabled) + NotificationsClientModule circular-dependency fix (D-09 core)
+- [x] 20-01-PLAN.md — GRPC-06a: notifications-service hybrid HTTP+gRPC bootstrap, grpc-health-check + /healthz sidecar, railway.toml healthcheckPath
+- [x] 20-02-PLAN.md — GRPC-06b: setNx() distributed-lock guard on all 6 named @Cron jobs (stays/transport/delivery/tour-notifications)
+- [x] 20-03-PLAN.md — GRPC-06c: canary kill-switch flag (grpc.notifications_service.canary_enabled) + NotificationsClientModule circular-dependency fix (D-09 core)
 
 **Wave 2** *(blocked on Wave 1 — specifically on 20-03: `test:e2e:tours` bootstraps the full AppModule, which throws a circular-dependency error inside NotificationsClientModule until 20-03's `notifications-client.constants.ts` extraction lands)*
 - [ ] 20-04-PLAN.md — D-09 remainder: wallet-invariant.e2e-spec.ts rewrite against centralized SettlementService + test:e2e:tours wired into CI (depends_on: 20-03)
@@ -535,6 +535,6 @@ For v2.1: Phase 19 requires Phase 18 (needs the centralized split resolver as th
 | 17. gRPC Proof-of-Pattern Extraction (notifications-service) | 7/7 | Complete    | 2026-07-19 |
 | 18. Settlement Split Centralization | 4/4 | Complete    | 2026-07-19 |
 | 19. Settlement Dispute & Adjustment Workflow | 6/6 | Complete    | 2026-07-20 |
-| 20. gRPC Blue-Green Healthcheck Retrofit | 0/5 | Planned | - |
+| 20. gRPC Blue-Green Healthcheck Retrofit | 3/5 | In Progress|  |
 | 21. Low-Risk gRPC Extraction — News/Waitlist/Reviews + Scoped Delivery OTP | 0/TBD | Not started | - |
 | 22. Scheduled Ministry Exports & LGA Heatmap | 0/TBD | Not started | - |
