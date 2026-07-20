@@ -274,16 +274,26 @@ describe('Settlement disputes e2e — full lifecycle through the real service pa
     expect(resolved.adjustmentReference).toBe(`${SETTLEMENT_REFERENCE}-ADJ`);
 
     const adjRows = transactionRows.filter((r) => r.reference.includes('-ADJ-'));
-    expect(adjRows).toHaveLength(2);
+    expect(adjRows).toHaveLength(3);
 
     const ministryAdj = adjRows.find((r) => r.walletId === MINISTRY_WALLET_ID);
     const driverAdj = adjRows.find((r) => r.walletId === DRIVER_WALLET_ID);
+    const platformAdj = adjRows.find((r) => r.walletId === SYSTEM_WALLET_ID);
     expect(ministryAdj).toBeDefined();
     expect(driverAdj).toBeDefined();
+    expect(platformAdj).toBeDefined();
     expect(Number(ministryAdj!.amount)).toBe(100);
     expect(ministryAdj!.type).toBe('CREDIT');
     expect(Number(driverAdj!.amount)).toBe(1000);
     expect(driverAdj!.type).toBe('CREDIT');
+    expect(Number(platformAdj!.amount)).toBe(1100);
+    expect(platformAdj!.type).toBe('DEBIT');
+
+    const netTotal = adjRows.reduce(
+      (s, r) => s + (r.type === 'CREDIT' ? Number(r.amount) : -Number(r.amount)),
+      0,
+    );
+    expect(netTotal).toBe(0);
 
     expect(auditActions()).toEqual([
       'SETTLEMENT_DISPUTE_RAISED',
@@ -345,10 +355,22 @@ describe('Settlement disputes e2e — full lifecycle through the real service pa
     expect(resolved.adjustmentReference).toBe(`${SETTLEMENT_REFERENCE}-ADJ`);
 
     const adjRows = transactionRows.filter((r) => r.reference.includes('-ADJ-'));
-    expect(adjRows).toHaveLength(1);
-    expect(adjRows[0].walletId).toBe(DRIVER_WALLET_ID);
-    expect(Number(adjRows[0].amount)).toBe(4000);
-    expect(adjRows[0].type).toBe('DEBIT');
+    expect(adjRows).toHaveLength(2);
+
+    const driverAdj = adjRows.find((r) => r.walletId === DRIVER_WALLET_ID);
+    const platformAdj = adjRows.find((r) => r.walletId === SYSTEM_WALLET_ID);
+    expect(driverAdj).toBeDefined();
+    expect(platformAdj).toBeDefined();
+    expect(Number(driverAdj!.amount)).toBe(4000);
+    expect(driverAdj!.type).toBe('DEBIT');
+    expect(Number(platformAdj!.amount)).toBe(4000);
+    expect(platformAdj!.type).toBe('CREDIT');
+
+    const netTotal = adjRows.reduce(
+      (s, r) => s + (r.type === 'CREDIT' ? Number(r.amount) : -Number(r.amount)),
+      0,
+    );
+    expect(netTotal).toBe(0);
 
     expect(auditActions()).toEqual([
       'SETTLEMENT_DISPUTE_RAISED',
