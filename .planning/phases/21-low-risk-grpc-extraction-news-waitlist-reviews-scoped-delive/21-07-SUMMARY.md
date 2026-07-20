@@ -124,3 +124,7 @@ None - no external service configuration required. `DELIVERY_OTP_SERVICE_URL` wa
 ---
 *Phase: 21-low-risk-grpc-extraction-news-waitlist-reviews-scoped-delive*
 *Completed: 2026-07-20*
+
+## Self-Check: PASSED
+
+All 7 created/modified files confirmed present on disk; all 4 commit hashes (be0219a, f30c369, d59b4f3, 79d1d11) confirmed present in git log.
