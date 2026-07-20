@@ -35,3 +35,7 @@ Add `forwardRef()` on whichever side of the `NotificationsClientModule` relation
 bidirectional, get `test:e2e:tours` green locally, then wire it into
 `.github/workflows/ci.yml` alongside the existing `test:e2e:settlement-splits` step so both
 e2e suites run on every PR.
+
+## Resolved
+
+Resolved in Phase 20: Plan 20-03 broke the `NotificationsClientModule` circular dependency (new `notifications-client.constants.ts` leaf file); Plan 20-04 rewrote `wallet-invariant.e2e-spec.ts` against the `SettlementService` boundary and wired `test:e2e:tours` into CI. Confirmed green: 17/17 e2e tests passing, `npx madge --circular` reports zero cycles.
