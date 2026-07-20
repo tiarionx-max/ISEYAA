@@ -320,7 +320,13 @@ describeE2E('Tour Booking E2E Happy Path (11 steps)', () => {
     expect(res.body.booking.status).toBe('PENDING');
 
     bookingId   = res.body.booking.id;
-    paystackRef = res.body.reference ?? res.body.booking.paymentReference ?? '';
+    // Controller returns `{ booking, payment }` — `payment.reference` (from Paystack
+    // init) is the authoritative reference; `booking.reference` (the minted ISY-TOUR-
+    // value, set at creation) is the fallback. `booking.paymentReference` is NOT
+    // populated on this response object — it's written by a separate `update()` call
+    // AFTER the `booking` object referenced here was already constructed from the
+    // initial `create()` — so it always reads back null/undefined at this point.
+    paystackRef = res.body.payment?.reference ?? res.body.booking.reference ?? '';
     expect(bookingId).toBeTruthy();
     expect(paystackRef).toMatch(/^ISY-TOUR-/);
   });
@@ -351,13 +357,32 @@ describeE2E('Tour Booking E2E Happy Path (11 steps)', () => {
     // Webhooks always return 200 regardless of processing outcome
     expect(res.status).toBe(200);
     expect(res.body.received).toBe(true);
+
+    // WebhooksService.handlePaystack() fires eventEmitter.emit('payment.tour_booking', ...)
+    // WITHOUT awaiting it (fire-and-forget by design — webhook handlers must not block
+    // on downstream settlement). TourSettlementService.handleTourBookingPayment() then
+    // runs several awaited Prisma round-trips before the booking flips to CONFIRMED, so
+    // the HTTP response here can (and does) return before that settlement completes.
+    // Poll briefly for the async settlement to land before the next steps assert on it.
+    const deadline = Date.now() + 5_000;
+    let settled = false;
+    while (Date.now() < deadline) {
+      const b = await prisma.tourBooking.findUnique({
+        where: { id: bookingId },
+        select: { status: true },
+      });
+      if (b && b.status !== 'PENDING') {
+        settled = true;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    expect(settled).toBe(true);
   });
 
   // ── Step 9: Booking transitions to CONFIRMED ──────────────────────────────
 
   it('Step 9 — booking is CONFIRMED after settlement', async () => {
-    // EventEmitter2 settlement is synchronous so booking is already CONFIRMED
-    // by the time the webhook response returns.
     const booking = await prisma.tourBooking.findUnique({
       where: { id: bookingId },
       select: { status: true, paymentReference: true },
@@ -387,9 +412,11 @@ describeE2E('Tour Booking E2E Happy Path (11 steps)', () => {
     expect(vendorRows.length).toBeGreaterThanOrEqual(1);
     expect(platRow).toBeDefined();
 
-    // Every row carries the module=tour metadata tag (audit requirement)
+    // Every row carries the module metadata tag (audit requirement). The value is
+    // 'tour_booking' — the literal string TourSettlementService passes as
+    // `SettlementInput.module` (tour-settlement.service.ts) — not 'tour'.
     for (const t of txns) {
-      expect((t.metadata as any)?.module).toBe('tour');
+      expect((t.metadata as any)?.module).toBe('tour_booking');
     }
   });
 
