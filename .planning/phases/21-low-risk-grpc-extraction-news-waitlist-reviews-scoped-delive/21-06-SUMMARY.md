@@ -140,3 +140,7 @@ Both tasks were committed together, per the plan's explicit staging note (Task 1
 ---
 *Phase: 21-low-risk-grpc-extraction-news-waitlist-reviews-scoped-delive*
 *Completed: 2026-07-20*
+
+## Self-Check: PASSED
+
+All 11 created/modified files confirmed present on disk; both task commits (`90f7a52`, `8e94afc`) confirmed present in git log.
