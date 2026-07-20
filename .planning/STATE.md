@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: — Extraction Backlog Clearance & Settlement Flexibility
-status: executing
+status: ready_to_plan
 stopped_at: Phase 20 context gathered
 last_updated: "2026-07-20T19:12:25.593Z"
 last_activity: 2026-07-20 -- Phase 20 execution started
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 15
   completed_plans: 10
-  percent: 67
+  percent: 60
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-07-19)
 
 ## Current Position
 
-Phase: 20 (grpc-blue-green-healthcheck-retrofit) — EXECUTING
-Plan: 1 of 5
-Status: Executing Phase 20
-Last activity: 2026-07-20 -- Phase 20 execution started
+Phase: 21
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-07-20
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -46,7 +46,7 @@ Progress: [░░░░░░░░░░] 0%
 
 **Velocity:**
 
-- Total plans completed: 64 (v2.0 closed; v2.1 not yet started)
+- Total plans completed: 69 (v2.0 closed; v2.1 not yet started)
 - Average duration: -
 - Total execution time: -
 
@@ -63,6 +63,7 @@ Progress: [░░░░░░░░░░] 0%
 | 16 | 4 | - | - |
 | 17 | 7 | - | - |
 | 19 | 6 | - | - |
+| 20 | 5 | - | - |
 
 *Updated after each plan completion*
 

@@ -535,6 +535,6 @@ For v2.1: Phase 19 requires Phase 18 (needs the centralized split resolver as th
 | 17. gRPC Proof-of-Pattern Extraction (notifications-service) | 7/7 | Complete    | 2026-07-19 |
 | 18. Settlement Split Centralization | 4/4 | Complete    | 2026-07-19 |
 | 19. Settlement Dispute & Adjustment Workflow | 6/6 | Complete    | 2026-07-20 |
-| 20. gRPC Blue-Green Healthcheck Retrofit | 5/5 | Complete   | 2026-07-20 |
+| 20. gRPC Blue-Green Healthcheck Retrofit | 5/5 | Complete    | 2026-07-20 |
 | 21. Low-Risk gRPC Extraction — News/Waitlist/Reviews + Scoped Delivery OTP | 0/TBD | Not started | - |
 | 22. Scheduled Ministry Exports & LGA Heatmap | 0/TBD | Not started | - |
