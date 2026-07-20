@@ -18,6 +18,7 @@
     "prisma:reset": "prisma migrate reset",
     "test:e2e:tours": "jest --config test/jest-e2e.json --testPathPattern=\"wallet-invariant|kyc-encryption|e2e-tour-booking\"",
     "test:e2e:settlement-splits": "jest --config test/jest-e2e.json --testPathPattern=\"e2e-settlement-split-tier-audit-trail\"",
+    "test:e2e:settlement-disputes": "jest --config test/jest-e2e.json --testPathPattern=\"settlement-disputes.e2e\"",
     "build:services": "for s in auth-service wallet-service events-service stays-service marketplace-service admin-service ai-service notifications-service; do npx nest build $s || exit 1; done"
   },
   "dependencies": {
