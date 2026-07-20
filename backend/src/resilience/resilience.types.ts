@@ -18,7 +18,11 @@ export type Vendor =
   | 'fcm'
   | 'metaWhatsapp'
   | 'sendgrid'
-  | 'notificationsGrpc';
+  | 'notificationsGrpc'
+  | 'newsGrpc'
+  | 'waitlistGrpc'
+  | 'reviewsGrpc'
+  | 'deliveryOtpGrpc';
 
 export interface VendorThresholds {
   timeoutMs: number;
@@ -46,4 +50,20 @@ export const RESILIENCE_DEFAULTS: Record<Vendor, VendorThresholds> = {
   // non-financial, expected to be at least as fast as the FCM HTTP round-trip fcm
   // already wraps. Tunable later via PlatformConfig without a code change.
   notificationsGrpc: { timeoutMs: 5_000, retryCount: 1, failureThreshold: 8, halfOpenAfterMs: 20_000 },
+  // Mirrors `fcm`'s shape: a same-region Railway-internal gRPC hop, best-effort/
+  // non-financial, expected to be at least as fast as the FCM HTTP round-trip fcm
+  // already wraps. Tunable later via PlatformConfig without a code change.
+  newsGrpc: { timeoutMs: 5_000, retryCount: 1, failureThreshold: 8, halfOpenAfterMs: 20_000 },
+  // Mirrors `fcm`'s shape: a same-region Railway-internal gRPC hop, best-effort/
+  // non-financial, expected to be at least as fast as the FCM HTTP round-trip fcm
+  // already wraps. Tunable later via PlatformConfig without a code change.
+  waitlistGrpc: { timeoutMs: 5_000, retryCount: 1, failureThreshold: 8, halfOpenAfterMs: 20_000 },
+  // Mirrors `fcm`'s shape: a same-region Railway-internal gRPC hop, best-effort/
+  // non-financial, expected to be at least as fast as the FCM HTTP round-trip fcm
+  // already wraps. Tunable later via PlatformConfig without a code change.
+  reviewsGrpc: { timeoutMs: 5_000, retryCount: 1, failureThreshold: 8, halfOpenAfterMs: 20_000 },
+  // Mirrors `fcm`'s shape: a same-region Railway-internal gRPC hop, best-effort/
+  // non-financial, expected to be at least as fast as the FCM HTTP round-trip fcm
+  // already wraps. Tunable later via PlatformConfig without a code change.
+  deliveryOtpGrpc: { timeoutMs: 5_000, retryCount: 1, failureThreshold: 8, halfOpenAfterMs: 20_000 },
 };

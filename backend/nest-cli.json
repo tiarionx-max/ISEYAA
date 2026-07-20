@@ -77,6 +77,42 @@
       "compilerOptions": {
         "tsConfigPath": "apps/notifications-service/tsconfig.app.json"
       }
+    },
+    "news-service": {
+      "type": "application",
+      "root": "apps/news-service",
+      "entryFile": "src/main",
+      "sourceRoot": "apps/news-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/news-service/tsconfig.app.json"
+      }
+    },
+    "waitlist-service": {
+      "type": "application",
+      "root": "apps/waitlist-service",
+      "entryFile": "src/main",
+      "sourceRoot": "apps/waitlist-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/waitlist-service/tsconfig.app.json"
+      }
+    },
+    "reviews-service": {
+      "type": "application",
+      "root": "apps/reviews-service",
+      "entryFile": "src/main",
+      "sourceRoot": "apps/reviews-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/reviews-service/tsconfig.app.json"
+      }
+    },
+    "delivery-otp-service": {
+      "type": "application",
+      "root": "apps/delivery-otp-service",
+      "entryFile": "src/main",
+      "sourceRoot": "apps/delivery-otp-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/delivery-otp-service/tsconfig.app.json"
+      }
     }
   }
 }
