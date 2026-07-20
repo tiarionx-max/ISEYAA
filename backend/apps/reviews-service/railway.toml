@@ -1,0 +1,10 @@
+[build]
+dockerfilePath = "backend/apps/reviews-service/Dockerfile"
+buildContext = "."
+
+[deploy]
+watchPaths = ["backend/apps/reviews-service/**", "backend/src/modules/reviews/**", "packages/proto/**"]
+healthcheckPath = "/healthz"
+healthcheckTimeout = 60
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
