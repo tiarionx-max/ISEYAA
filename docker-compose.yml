@@ -45,6 +45,10 @@ services:
       DATABASE_URL: postgresql://iseyaa:iseyaa_dev_password@postgres:5432/iseyaa_dev
       REDIS_URL: redis://redis:6379
       NOTIFICATIONS_SERVICE_URL: notifications-service:5008
+      NEWS_SERVICE_URL: news-service:5009
+      WAITLIST_SERVICE_URL: waitlist-service:5010
+      REVIEWS_SERVICE_URL: reviews-service:5011
+      DELIVERY_OTP_SERVICE_URL: delivery-otp-service:5012
     ports:
       - '3001:3001'
     volumes:
@@ -56,6 +60,14 @@ services:
       redis:
         condition: service_healthy
       notifications-service:
+        condition: service_started
+      news-service:
+        condition: service_started
+      waitlist-service:
+        condition: service_started
+      reviews-service:
+        condition: service_started
+      delivery-otp-service:
         condition: service_started
 
   web:
@@ -88,6 +100,78 @@ services:
       REDIS_URL: redis://redis:6379
     ports:
       - '5008:5008'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  news-service:
+    build:
+      context: .
+      dockerfile: backend/apps/news-service/Dockerfile
+    container_name: iseyaa_news_service
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://iseyaa:iseyaa_dev_password@postgres:5432/iseyaa_dev
+      REDIS_URL: redis://redis:6379
+    ports:
+      - '5009:5009'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  waitlist-service:
+    build:
+      context: .
+      dockerfile: backend/apps/waitlist-service/Dockerfile
+    container_name: iseyaa_waitlist_service
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://iseyaa:iseyaa_dev_password@postgres:5432/iseyaa_dev
+      REDIS_URL: redis://redis:6379
+    ports:
+      - '5010:5010'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  reviews-service:
+    build:
+      context: .
+      dockerfile: backend/apps/reviews-service/Dockerfile
+    container_name: iseyaa_reviews_service
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://iseyaa:iseyaa_dev_password@postgres:5432/iseyaa_dev
+      REDIS_URL: redis://redis:6379
+    ports:
+      - '5011:5011'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  delivery-otp-service:
+    build:
+      context: .
+      dockerfile: backend/apps/delivery-otp-service/Dockerfile
+    container_name: iseyaa_delivery_otp_service
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://iseyaa:iseyaa_dev_password@postgres:5432/iseyaa_dev
+      REDIS_URL: redis://redis:6379
+    ports:
+      - '5012:5012'
     depends_on:
       postgres:
         condition: service_healthy
