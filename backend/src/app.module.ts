@@ -30,7 +30,7 @@ import { TransportModule } from './modules/transport/transport.module';
 import { DeliveryModule } from './modules/delivery/delivery.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { WaitlistModule } from './modules/waitlist/waitlist.module';
-import { NewsModule } from './modules/news/news.module';
+import { NewsClientModule } from './modules/news-client/news-client.module';
 import { SearchModule } from './search/search.module';
 import { HealthModule } from './health/health.module';
 import { KafkaModule } from './kafka/kafka.module';
@@ -67,7 +67,7 @@ import { KafkaModule } from './kafka/kafka.module';
     AiModule,
     WebhooksModule,
     WaitlistModule,
-    NewsModule,
+    NewsClientModule,
     SearchModule,
     HealthModule,
     KafkaModule,
