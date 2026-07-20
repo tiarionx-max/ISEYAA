@@ -132,3 +132,7 @@ None - no external service configuration required. This plan touches only in-rep
 ---
 *Phase: 21-low-risk-grpc-extraction-news-waitlist-reviews-scoped-delive*
 *Completed: 2026-07-20*
+
+## Self-Check: PASSED
+
+All 6 plan-declared files and the SUMMARY.md itself confirmed present on disk; all 3 commit hashes (`b0aa0f3`, `c0f8ebb`, `ad70bda`) confirmed present in `git log --oneline --all`.
