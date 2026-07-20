@@ -492,7 +492,36 @@ Plans:
   1. News, waitlist, and reviews each run as their own Railway process, called exclusively via `ClientGrpc`, with zero REST response-shape change observed by web/mobile clients
   2. Delivery's `VerifyDeliveryOtp` RPC is served by a live, independently-deployed gRPC service, while `RequestDelivery`, `AcceptDelivery`, `CompleteDelivery`, and `DeliveryGateway` remain in-process — OTP verification behavior is unchanged end-to-end
   3. Every service extracted in this phase passes Phase 20's health-check-gated rollout (real `/healthz`, real Railway `healthcheckPath`) before being considered live
-**Plans**: TBD
+**Plans**: 7 plans
+Plans:
+**Wave 1**
+- [ ] 21-01-PLAN.md — Shared foundational scaffolding: resilience.types.ts (4 vendor keys), nest-cli.json (4 projects), package.json build:services, .env.example, docker-compose.yml, blue-green runbook extension
+
+**Wave 2** *(blocked on Wave 1)*
+- [ ] 21-02-PLAN.md — News extraction (risk-ascending #1): news-service gRPC app + news-client facade + monolith wiring
+
+**Wave 3** *(blocked on Wave 2 — shares app.module.ts with News)*
+- [ ] 21-03-PLAN.md — Waitlist extraction (risk-ascending #2): waitlist-service gRPC app + waitlist-client facade (join shape reconstruction + stats fan-out) + monolith wiring
+
+**Wave 4** *(blocked on Wave 3 — shares app.module.ts with Waitlist)*
+- [ ] 21-04-PLAN.md — Reviews extraction part 1 (risk-ascending #3): reviews-service gRPC app (CreateReview + ListReviews only, D-07) + ReviewsAdminController module split
+
+**Wave 5** *(blocked on Wave 4)*
+- [ ] 21-05-PLAN.md — Reviews extraction part 2: reviews-client facade (photos write-back, user-embed enrichment, in-memory pagination per D-08) + monolith wiring
+
+**Wave 6** *(blocked on Wave 5 — D-04 staggered rollout ordering)*
+- [ ] 21-06-PLAN.md — Delivery OTP extraction part 1 (risk-ascending #4, final): delivery-otp-service gRPC app (VerifyDeliveryOtp only) + business-vs-transport exception mapping (Pitfall 5)
+
+**Wave 7** *(blocked on Wave 6)*
+- [ ] 21-07-PLAN.md — Delivery OTP extraction part 2: delivery-otp-client facade + DeliveryController partial swap (only verifyOtp changes)
+
+**Cross-cutting constraints:**
+- All 4 services ship staggered, one at a time, each with its own canary flag flip and bake period before the next starts (D-04); rollout order is risk-ascending News -> Waitlist -> Reviews -> Delivery OTP (D-05)
+- Canary flags: `grpc.<service>_canary_enabled`, opt-out kill-switch semantics — absence or any value other than `false` means enabled (D-06)
+- No wallet-touching service is extracted this milestone (GRPC-05 reaffirmed) — DeliveryModule is wholesale-imported per D-01 even though it transitively pulls WalletModule/AuthModule
+- `ResolveReviewFlag`/`getFlagQueue`/`getFlag` stay fully in-process via a dedicated ReviewsAdminModule, never routed through reviews-service (D-07)
+- Full Delivery extraction (RequestDelivery/AcceptDelivery/CompleteDelivery/DeliveryGateway) is explicitly out of scope (GRPC-07x, deferred)
+**UI hint**: no
 
 ### Phase 22: Scheduled Ministry Exports & LGA Heatmap
 **Goal**: The Ministry receives recurring export digests automatically and can see visitor patterns across LGA and season on the dashboard
@@ -536,5 +565,5 @@ For v2.1: Phase 19 requires Phase 18 (needs the centralized split resolver as th
 | 18. Settlement Split Centralization | 4/4 | Complete    | 2026-07-19 |
 | 19. Settlement Dispute & Adjustment Workflow | 6/6 | Complete    | 2026-07-20 |
 | 20. gRPC Blue-Green Healthcheck Retrofit | 5/5 | Complete    | 2026-07-20 |
-| 21. Low-Risk gRPC Extraction — News/Waitlist/Reviews + Scoped Delivery OTP | 0/TBD | Not started | - |
+| 21. Low-Risk gRPC Extraction — News/Waitlist/Reviews + Scoped Delivery OTP | 0/7 | Not started | - |
 | 22. Scheduled Ministry Exports & LGA Heatmap | 0/TBD | Not started | - |
