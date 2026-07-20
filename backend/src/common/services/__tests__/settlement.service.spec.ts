@@ -4,6 +4,8 @@ import {
   SettlementService,
   SettlementInput,
   SettlementRecipient,
+  SettlementAdjustmentInput,
+  InsufficientAdjustmentBalanceError,
 } from '../settlement.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { RefundService } from '../refund.service';
@@ -81,15 +83,35 @@ let txn: TxnCapture;
  * `wallet.update` call — a plain `Error` by default, or a `Prisma.PrismaClientKnownRequestError`
  * with `code: 'P2002'` when `opts.failWithP2002` is set (Scenario F — the race-condition
  * benign-replay path, Pitfall 1 from RESEARCH.md).
+ *
+ * `opts.initialBalances` pre-populates the internal `balances` record before any
+ * `wallet.update` call — used by `adjust()`'s insufficient-balance scenarios (19-02).
+ *
+ * Rollback semantics (19-02): if `cb` throws, any `wallet.update`/`transaction.create`
+ * calls issued during THIS `$transaction` invocation are unwound from `txn` and the
+ * `balances` record is restored to its pre-call snapshot — mirrors real Postgres/Prisma
+ * all-or-nothing `$transaction` semantics (required by `adjust()`'s SETTLE-10d
+ * insufficient-balance test: no partial write from any line in a failed batch, including
+ * earlier-processed lines, may ever be observed as committed).
  */
 function wireTransaction(
-  opts: { failOnWalletId?: string; failWithP2002?: boolean } = {},
+  opts: {
+    failOnWalletId?: string;
+    failWithP2002?: boolean;
+    initialBalances?: Record<string, number>;
+  } = {},
 ) {
-  const balances: Record<string, number> = {};
+  const balances: Record<string, number> = { ...(opts.initialBalances ?? {}) };
   mockPrisma.$transaction.mockImplementation(async (cb: any) => {
+    const walletUpdatesStart = txn.walletUpdates.length;
+    const transactionCreatesStart = txn.transactionCreates.length;
+    const balanceSnapshot = { ...balances };
     const tx: any = {
-      $executeRaw: jest.fn(async (strings: any) => {
-        txn.executeRawCalls.push((strings as TemplateStringsArray).join('?'));
+      $executeRaw: jest.fn(async (strings: any, ...values: any[]) => {
+        // Capture the interpolated walletId (the only substitution in every
+        // `SELECT ... FOR UPDATE` call this service issues) so adjust()'s
+        // lock-order test can assert on the actual sequence of locked wallets.
+        txn.executeRawCalls.push(String(values[0]));
         return 1;
       }),
       wallet: {
@@ -122,7 +144,15 @@ function wireTransaction(
         }),
       },
     };
-    return cb(tx);
+    try {
+      return await cb(tx);
+    } catch (err) {
+      txn.walletUpdates.length = walletUpdatesStart;
+      txn.transactionCreates.length = transactionCreatesStart;
+      Object.keys(balances).forEach((k) => delete balances[k]);
+      Object.assign(balances, balanceSnapshot);
+      throw err;
+    }
   });
 }
 
@@ -462,6 +492,173 @@ describe('SettlementService', () => {
         /Malformed SettlementSplitTier/,
       );
     });
+  });
+
+  // ── adjust() — SETTLE-10c/10d compensating-transaction primitive ────────────
+  describe('adjust()', () => {
+    const ORIGINAL_REF = 'ISY-ORD-ADJ-BASE001';
+
+    function buildAdjustInput(
+      over: Partial<SettlementAdjustmentInput> = {},
+    ): SettlementAdjustmentInput {
+      return {
+        originalReference: ORIGINAL_REF,
+        module: 'marketplace',
+        lines: [
+          { walletId: WAL_1, deltaNgn: 500 },
+          { walletId: WAL_2, deltaNgn: -200 },
+        ],
+        reason: 'Dispute resolution adjustment',
+        metadata: { disputeId: 'DISP-1' },
+        ...over,
+      };
+    }
+
+    it('1. happy path — credit + debit lines write 1-based ADJ-numbered append-only Transaction rows', async () => {
+      const svc = await makeService();
+      mockPrisma.transaction.findFirst
+        .mockResolvedValueOnce(null) // ADJ-prefix precheck — no adjustment applied yet
+        .mockResolvedValueOnce({ id: 'TXN-orig' }); // original settlement exists
+      wireTransaction({ initialBalances: { [WAL_2]: 1000 } });
+
+      const input = buildAdjustInput();
+      const result = await svc.adjust(input);
+
+      expect(result.status).toBe('SETTLED');
+      expect(txn.transactionCreates).toHaveLength(2);
+
+      const creditRow = txn.transactionCreates.find(
+        (c) => c.reference === `${ORIGINAL_REF}-ADJ-1`,
+      );
+      const debitRow = txn.transactionCreates.find(
+        (c) => c.reference === `${ORIGINAL_REF}-ADJ-2`,
+      );
+      expect(creditRow).toBeDefined();
+      expect(creditRow.type).toBe('CREDIT');
+      expect(Number(creditRow.amount)).toBe(500);
+      expect(creditRow.gateway).toBe('INTERNAL');
+      expect(creditRow.gatewayRef).toBe(ORIGINAL_REF);
+      expect(creditRow.metadata).toEqual({ module: 'marketplace', disputeId: 'DISP-1' });
+
+      expect(debitRow).toBeDefined();
+      expect(debitRow.type).toBe('DEBIT');
+      expect(Number(debitRow.amount)).toBe(200);
+      expect(debitRow.gateway).toBe('INTERNAL');
+      expect(debitRow.gatewayRef).toBe(ORIGINAL_REF);
+      expect(debitRow.metadata).toEqual({ module: 'marketplace', disputeId: 'DISP-1' });
+    });
+
+    it('2. idempotency replay — an existing ADJ-prefixed row short-circuits without entering $transaction', async () => {
+      const svc = await makeService();
+      mockPrisma.transaction.findFirst.mockResolvedValueOnce({ id: 'TXN-ADJ-old' });
+
+      const result = await svc.adjust(buildAdjustInput());
+
+      expect(result).toEqual({ status: 'REPLAYED', platformAmountNgn: 0, recipientCredits: [] });
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('3. throws when no settled Transaction exists at all for originalReference', async () => {
+      const svc = await makeService();
+      mockPrisma.transaction.findFirst
+        .mockResolvedValueOnce(null) // ADJ-prefix precheck
+        .mockResolvedValueOnce(null); // original settlement lookup — not found
+
+      await expect(svc.adjust(buildAdjustInput())).rejects.toThrow(
+        new RegExp(`No settled Transaction found for originalReference="${ORIGINAL_REF}"`),
+      );
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('4. locks touched wallets in ascending walletId order regardless of input.lines array order', async () => {
+      const svc = await makeService();
+      mockPrisma.transaction.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'TXN-orig' });
+      wireTransaction({
+        initialBalances: { [WAL_3]: 5000, [WAL_1]: 5000, [WAL_2]: 5000 },
+      });
+
+      const input = buildAdjustInput({
+        lines: [
+          { walletId: WAL_3, deltaNgn: 100 },
+          { walletId: WAL_1, deltaNgn: 100 },
+          { walletId: WAL_2, deltaNgn: 100 },
+        ],
+      });
+
+      await svc.adjust(input);
+
+      // WAL_1 < WAL_2 < WAL_3 lexicographically — lock order must be ascending
+      // regardless of input.lines' original (3, 1, 2) array order.
+      expect(txn.executeRawCalls).toEqual([WAL_1, WAL_2, WAL_3]);
+    });
+
+    it('5. insufficient balance — a debit that would overdraw throws InsufficientAdjustmentBalanceError before any wallet mutation commits, including earlier-processed lines', async () => {
+      const svc = await makeService();
+      mockPrisma.transaction.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'TXN-orig' });
+      wireTransaction({ initialBalances: { [WAL_1]: 100, [WAL_2]: 1000 } });
+
+      const input = buildAdjustInput({
+        lines: [
+          { walletId: WAL_2, deltaNgn: 500 }, // would succeed if reached (processed first)
+          { walletId: WAL_1, deltaNgn: -300 }, // exceeds WAL_1's ₦100 balance
+        ],
+      });
+
+      let thrown: unknown;
+      try {
+        await svc.adjust(input);
+      } catch (err) {
+        thrown = err;
+      }
+
+      expect(thrown).toBeInstanceOf(InsufficientAdjustmentBalanceError);
+      expect((thrown as InsufficientAdjustmentBalanceError).walletId).toBe(WAL_1);
+      expect((thrown as InsufficientAdjustmentBalanceError).shortfallNgn).toBeGreaterThan(0);
+      // No wallet.update/transaction.create from ANY line in this batch committed —
+      // not even WAL_2's earlier-processed, individually-valid credit line.
+      expect(txn.walletUpdates).toHaveLength(0);
+      expect(txn.transactionCreates).toHaveLength(0);
+    });
+
+    it('6. mid-transaction P2002 unique-constraint race is treated as a benign REPLAYED result, not rethrown', async () => {
+      const svc = await makeService();
+      mockPrisma.transaction.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'TXN-orig' });
+      wireTransaction({
+        failOnWalletId: WAL_2,
+        failWithP2002: true,
+        initialBalances: { [WAL_1]: 5000, [WAL_2]: 5000 },
+      });
+
+      const result = await svc.adjust(buildAdjustInput());
+
+      expect(result).toEqual({ status: 'REPLAYED', platformAmountNgn: 0, recipientCredits: [] });
+    });
+
+    it.each([NaN, Infinity])(
+      '7. throws before $transaction is entered when a line has a non-finite deltaNgn (%p)',
+      async (badDelta) => {
+        const svc = await makeService();
+        mockPrisma.transaction.findFirst
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce({ id: 'TXN-orig' });
+
+        const input = buildAdjustInput({
+          lines: [
+            { walletId: WAL_1, deltaNgn: badDelta },
+            { walletId: WAL_2, deltaNgn: -200 },
+          ],
+        });
+
+        await expect(svc.adjust(input)).rejects.toThrow(/Non-finite deltaNgn/);
+        expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+      },
+    );
   });
 
   // Scenario K — SETTLE-11d NaN/Infinity recipient amount guard.
