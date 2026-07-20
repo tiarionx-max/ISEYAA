@@ -441,7 +441,17 @@ Plans:
   3. Resolving a dispute produces a new append-only adjustment transaction via `SettlementService.adjust()` (its own idempotency namespace, its own `SELECT FOR UPDATE` lock order) — the original historical `Transaction` rows are never mutated
   4. An adjustment that would drive a recipient's wallet balance negative is blocked (not applied) and flagged for manual ops resolution instead of silently posting
   5. Every dispute action — raise, review, resolve, dismiss — appears in `AuditLog` with who, when, why, and amount
-**Plans**: TBD
+**Plans**: 4 plans
+Plans:
+**Wave 1**
+- [ ] 19-01-PLAN.md — SettlementDispute Prisma model + migration (5-status state machine incl. BLOCKED)
+- [ ] 19-02-PLAN.md — SettlementService.adjust() compensating-transaction primitive (SETTLE-10c/10d)
+
+**Wave 2** *(blocked on Wave 1)*
+- [ ] 19-03-PLAN.md — SettlementDisputesService: raise/queue/review/computeAdjustmentLines/resolve/dismiss (D-01/D-04/D-05, SETTLE-10a/b/c/d/e)
+
+**Wave 3** *(blocked on Wave 2)*
+- [ ] 19-04-PLAN.md — SettlementDisputesController + module wiring + end-to-end regression
 
 ### Phase 20: gRPC Blue-Green Healthcheck Retrofit
 **Goal**: Extracted gRPC services can be deployed and cut over safely, health-gated, with zero risk of a cron job double-firing during a dual-liveness window
@@ -503,7 +513,7 @@ For v2.1: Phase 19 requires Phase 18 (needs the centralized split resolver as th
 | 16. Connection Pooling Infrastructure | 4/4 | Complete    | 2026-07-18 |
 | 17. gRPC Proof-of-Pattern Extraction (notifications-service) | 7/7 | Complete    | 2026-07-19 |
 | 18. Settlement Split Centralization | 4/4 | Complete    | 2026-07-19 |
-| 19. Settlement Dispute & Adjustment Workflow | 0/TBD | Not started | - |
+| 19. Settlement Dispute & Adjustment Workflow | 0/4 | Not started | - |
 | 20. gRPC Blue-Green Healthcheck Retrofit | 0/TBD | Not started | - |
 | 21. Low-Risk gRPC Extraction — News/Waitlist/Reviews + Scoped Delivery OTP | 0/TBD | Not started | - |
 | 22. Scheduled Ministry Exports & LGA Heatmap | 0/TBD | Not started | - |
