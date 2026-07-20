@@ -16,6 +16,7 @@ import { TourGuidesModule } from './modules/tour-guides/tour-guides.module';
 import { TourPackagesModule } from './modules/tour-packages/tour-packages.module';
 import { TourBookingsModule } from './modules/tour-bookings/tour-bookings.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
+import { ReviewsAdminModule } from './modules/reviews/reviews-admin.module';
 import { EventsModule } from './modules/events/events.module';
 import { StaysModule } from './modules/stays/stays.module';
 import { MarketplaceModule } from './modules/marketplace/marketplace.module';
@@ -53,6 +54,7 @@ import { KafkaModule } from './kafka/kafka.module';
     TourPackagesModule,
     TourBookingsModule,
     ReviewsModule,
+    ReviewsAdminModule,
     EventsModule,
     StaysModule,
     TransportModule,
