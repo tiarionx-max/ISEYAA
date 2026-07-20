@@ -116,3 +116,7 @@ None - no external service configuration required. The D-08 checkpoint required 
 ---
 *Phase: 21-low-risk-grpc-extraction-news-waitlist-reviews-scoped-delive*
 *Completed: 2026-07-20*
+
+## Self-Check: PASSED
+
+All 8 created/modified files verified present on disk; all 4 commit hashes (`1238451`, `839f584`, `def2151`, `50e92a3`) verified present in git log. Re-ran plan verification commands post-checkpoint: `cd backend && npx tsc --noEmit -p tsconfig.json` exits 0; `cd backend && npx jest src/modules/reviews src/modules/reviews-client --silent` — 2 suites / 23 tests passed, no regressions from the Task 4 checkpoint resolution.
