@@ -5,7 +5,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { SettlementService } from '../../common/services/settlement.service';
+import {
+  SettlementService,
+  SettlementAdjustmentLine,
+  InsufficientAdjustmentBalanceError,
+} from '../../common/services/settlement.service';
 import { RaiseDisputeDto } from './dto/raise-dispute.dto';
 import { ResolveDisputeDto } from './dto/resolve-dispute.dto';
 
@@ -181,6 +185,210 @@ export class SettlementDisputesService {
     });
 
     await this.writeAudit(actorUserId, 'SETTLEMENT_DISPUTE_MOVED_TO_REVIEW', disputeId, {});
+
+    return updated;
+  }
+
+  // INTERNAL — exposed for the spec and for resolve()
+
+  /**
+   * Reverse-engineers "what the split should have been" against "what was
+   * actually paid" from the original settlement's already-persisted
+   * Transaction rows (D-01: the system computes this, never the reviewer).
+   *
+   * Row shape reversed here matches exactly what `settle()` writes
+   * (`settlement.service.ts` lines 184-234): recipient rows carry
+   * `metadata.recipientType = tag` ('DRIVER'/'VENDOR'/'MINISTRY'/etc.), the
+   * platform row's reference ends in `-PLAT` and carries no `recipientType`.
+   */
+  async computeAdjustmentLines(
+    module: string,
+    settlementReference: string,
+  ): Promise<{ lines: SettlementAdjustmentLine[]; chargeAmountNgn: number }> {
+    const rows = await this.prisma.transaction.findMany({
+      where: {
+        reference: { startsWith: `${settlementReference}-` },
+        NOT: { reference: { contains: '-ADJ-' } },
+        status: 'SUCCESS',
+      },
+      select: { id: true, reference: true, amount: true, walletId: true, metadata: true },
+    });
+    if (rows.length === 0) {
+      throw new NotFoundException('No settled Transaction rows found for this settlement reference');
+    }
+
+    const platformRow = rows.find((r) => r.reference.endsWith('-PLAT'));
+    const ministryRow = rows.find((r) => (r.metadata as any)?.recipientType === 'MINISTRY');
+    const earnerRows = rows.filter((r) => r.id !== platformRow?.id && r.id !== ministryRow?.id);
+
+    const chargeAmountNgn = rows.reduce((s, r) => s + Number(r.amount), 0);
+    const actualEarnerTotal = earnerRows.reduce((s, r) => s + Number(r.amount), 0);
+    const actualMinistryTotal = ministryRow ? Number(ministryRow.amount) : 0;
+
+    const { earnerPct, ministryPct } = await this.settlementService.resolveSplit(
+      module,
+      chargeAmountNgn,
+    );
+
+    const correctEarnerTotal = Math.round(chargeAmountNgn * earnerPct * 100) / 100;
+    const correctMinistryTotal = Math.round(chargeAmountNgn * ministryPct * 100) / 100;
+    const earnerDeltaTotal = Math.round((correctEarnerTotal - actualEarnerTotal) * 100) / 100;
+    const ministryDelta = Math.round((correctMinistryTotal - actualMinistryTotal) * 100) / 100;
+
+    const lines: SettlementAdjustmentLine[] = [];
+
+    if (ministryRow?.walletId && Math.abs(ministryDelta) >= 0.01) {
+      lines.push({ walletId: ministryRow.walletId, deltaNgn: ministryDelta });
+    }
+
+    const earnerRowsWithWallet = earnerRows.filter((r) => r.walletId);
+    if (
+      earnerRowsWithWallet.length > 0 &&
+      actualEarnerTotal > 0 &&
+      Math.abs(earnerDeltaTotal) >= 0.01
+    ) {
+      let remaining = earnerDeltaTotal;
+      for (let i = 0; i < earnerRowsWithWallet.length - 1; i++) {
+        const row = earnerRowsWithWallet[i];
+        const share = Number(row.amount) / actualEarnerTotal;
+        const deltaNgn = Math.round(earnerDeltaTotal * share * 100) / 100;
+        remaining = Math.round((remaining - deltaNgn) * 100) / 100;
+        if (Math.abs(deltaNgn) >= 0.01) {
+          lines.push({ walletId: row.walletId!, deltaNgn });
+        }
+      }
+      const lastRow = earnerRowsWithWallet[earnerRowsWithWallet.length - 1];
+      if (Math.abs(remaining) >= 0.01) {
+        lines.push({ walletId: lastRow.walletId!, deltaNgn: remaining });
+      }
+    }
+
+    return { lines, chargeAmountNgn };
+  }
+
+  // ── resolve() ───────────────────────────────────────────────────────────
+
+  /**
+   * System-computed resolution (D-01): diffs `resolveSplit()`'s output
+   * against the original settlement's actual payout via
+   * `computeAdjustmentLines()`, then posts the derived lines through
+   * `SettlementService.adjust()`. Callable from OPEN, IN_REVIEW, and BLOCKED
+   * (D-05: BLOCKED is retryable) — only RESOLVED/DISMISSED are terminal.
+   */
+  async resolve(disputeId: string, actorUserId: string, dto: ResolveDisputeDto) {
+    const dispute = await this.prisma.settlementDispute.findUnique({ where: { id: disputeId } });
+    if (!dispute) throw new NotFoundException('Dispute not found');
+    if (dispute.status === 'RESOLVED' || dispute.status === 'DISMISSED') {
+      throw new ConflictException(`Dispute is already ${dispute.status}`);
+    }
+
+    const { lines } = await this.computeAdjustmentLines(
+      dispute.module,
+      dispute.settlementReference,
+    );
+
+    if (lines.length === 0) {
+      const updated = await this.prisma.settlementDispute.update({
+        where: { id: disputeId },
+        data: {
+          status: 'RESOLVED',
+          assignedTo: actorUserId,
+          resolvedAt: new Date(),
+          resolution:
+            dto.resolution ??
+            'No adjustment required — current resolveSplit() output matches the original settlement',
+          adjustmentReference: null,
+        },
+      });
+      await this.writeAudit(actorUserId, 'SETTLEMENT_DISPUTE_RESOLVED_NOOP', disputeId, {
+        module: dispute.module,
+        settlementReference: dispute.settlementReference,
+      });
+      return updated;
+    }
+
+    try {
+      const adjResult = await this.settlementService.adjust({
+        originalReference: dispute.settlementReference,
+        module: dispute.module,
+        lines,
+        reason: dto.resolution ?? dispute.reason,
+        metadata: { disputeId: dispute.id, adjustmentReason: dto.resolution ?? dispute.reason },
+      });
+
+      // Prefix only — individual lines carry the `-ADJ-${n}` suffix internally.
+      const adjustmentReference = `${dispute.settlementReference}-ADJ`;
+
+      const updated = await this.prisma.settlementDispute.update({
+        where: { id: disputeId },
+        data: {
+          status: 'RESOLVED',
+          assignedTo: actorUserId,
+          resolvedAt: new Date(),
+          resolution: dto.resolution ?? null,
+          adjustmentReference,
+        },
+      });
+
+      await this.writeAudit(actorUserId, 'SETTLEMENT_DISPUTE_RESOLVED', disputeId, {
+        module: dispute.module,
+        settlementReference: dispute.settlementReference,
+        adjustmentReference,
+        lines,
+        adjustResultStatus: adjResult.status,
+      });
+
+      return updated;
+    } catch (err) {
+      if (err instanceof InsufficientAdjustmentBalanceError) {
+        const updated = await this.prisma.settlementDispute.update({
+          where: { id: disputeId },
+          data: {
+            status: 'BLOCKED',
+            assignedTo: actorUserId,
+            resolution: `Blocked — insufficient balance on wallet ${err.walletId} (shortfall ₦${err.shortfallNgn})`,
+          },
+        });
+        await this.writeAudit(actorUserId, 'SETTLEMENT_DISPUTE_BLOCKED', disputeId, {
+          module: dispute.module,
+          settlementReference: dispute.settlementReference,
+          walletId: err.walletId,
+          shortfallNgn: err.shortfallNgn,
+        });
+        return updated;
+      }
+      throw err;
+    }
+  }
+
+  // ── dismiss() ───────────────────────────────────────────────────────────
+
+  /**
+   * Transition to DISMISSED (no adjustment warranted). Never touches
+   * `computeAdjustmentLines()` or the settlement adjust primitive — a
+   * dismissed dispute means "no adjustment", full stop.
+   */
+  async dismiss(disputeId: string, actorUserId: string, dto: ResolveDisputeDto) {
+    const dispute = await this.prisma.settlementDispute.findUnique({ where: { id: disputeId } });
+    if (!dispute) throw new NotFoundException('Dispute not found');
+    if (dispute.status === 'RESOLVED' || dispute.status === 'DISMISSED') {
+      throw new ConflictException(`Dispute is already ${dispute.status}`);
+    }
+
+    const updated = await this.prisma.settlementDispute.update({
+      where: { id: disputeId },
+      data: {
+        status: 'DISMISSED',
+        assignedTo: actorUserId,
+        resolvedAt: new Date(),
+        resolution: dto.resolution ?? null,
+      },
+    });
+
+    await this.writeAudit(actorUserId, 'SETTLEMENT_DISPUTE_DISMISSED', disputeId, {
+      module: dispute.module,
+      settlementReference: dispute.settlementReference,
+    });
 
     return updated;
   }
