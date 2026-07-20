@@ -454,7 +454,7 @@ Plans:
 - [x] 19-04-PLAN.md — SettlementDisputesController + module wiring + end-to-end regression
 
 **Gap closure** *(19-VERIFICATION.md + 19-REVIEW.md: CR-01/CR-02/CR-03)*
-- [ ] 19-05-PLAN.md — Fix computeAdjustmentLines() platform-wallet balancing (CR-01), DB-enforced one-active-dispute-per-settlement + module cross-check in raise() (CR-02/CR-03)
+- [x] 19-05-PLAN.md — Fix computeAdjustmentLines() platform-wallet balancing (CR-01), DB-enforced one-active-dispute-per-settlement + module cross-check in raise() (CR-02/CR-03)
 
 ### Phase 20: gRPC Blue-Green Healthcheck Retrofit
 **Goal**: Extracted gRPC services can be deployed and cut over safely, health-gated, with zero risk of a cron job double-firing during a dual-liveness window
@@ -516,7 +516,7 @@ For v2.1: Phase 19 requires Phase 18 (needs the centralized split resolver as th
 | 16. Connection Pooling Infrastructure | 4/4 | Complete    | 2026-07-18 |
 | 17. gRPC Proof-of-Pattern Extraction (notifications-service) | 7/7 | Complete    | 2026-07-19 |
 | 18. Settlement Split Centralization | 4/4 | Complete    | 2026-07-19 |
-| 19. Settlement Dispute & Adjustment Workflow | 4/4 | Complete   | 2026-07-20 |
+| 19. Settlement Dispute & Adjustment Workflow | 5/5 | Complete   | 2026-07-20 |
 | 20. gRPC Blue-Green Healthcheck Retrofit | 0/TBD | Not started | - |
 | 21. Low-Risk gRPC Extraction — News/Waitlist/Reviews + Scoped Delivery OTP | 0/TBD | Not started | - |
 | 22. Scheduled Ministry Exports & LGA Heatmap | 0/TBD | Not started | - |
