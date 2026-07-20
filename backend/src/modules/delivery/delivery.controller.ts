@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { DeliveryService } from './delivery.service';
+import { DeliveryOtpClientService } from '../delivery-otp-client/delivery-otp-client.service';
 import { CreateDeliveryRiderDto } from './dto/create-delivery-rider.dto';
 import { ApproveDeliveryRiderDto } from './dto/approve-delivery-rider.dto';
 import { RiderGoOnlineDto } from './dto/rider-go-online.dto';
@@ -28,7 +29,10 @@ import { UserRole } from '../../common/enums/user-role.enum';
 @ApiTags('delivery')
 @Controller('delivery')
 export class DeliveryController {
-  constructor(private readonly deliveryService: DeliveryService) {}
+  constructor(
+    private readonly deliveryService: DeliveryService,
+    private readonly deliveryOtpClient: DeliveryOtpClientService,
+  ) {}
 
   // ── Fee Estimate (public — no auth) ──────────────────────────────────────
 
@@ -169,7 +173,7 @@ export class DeliveryController {
     @Param('id') id: string,
     @Body() dto: VerifyDeliveryOtpDto,
   ) {
-    return this.deliveryService.verifyOtp(id, dto);
+    return this.deliveryOtpClient.verifyOtp(id, dto.otp);
   }
 
   @Patch('orders/:id/complete')
