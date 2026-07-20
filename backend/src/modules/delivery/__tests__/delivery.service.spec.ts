@@ -131,6 +131,7 @@ const mockRedis = {
   get: jest.fn(),
   set: jest.fn(),
   del: jest.fn(),
+  setNx: jest.fn().mockResolvedValue(true),
 };
 
 const mockWallet = {
@@ -675,6 +676,28 @@ describe('DeliveryService', () => {
       await expect(
         (service as any).sendTermiiDeliveryOtp('+2348012345678', '654321'),
       ).resolves.toBeUndefined();
+    });
+  });
+
+  // ── cleanStaleRiderHeartbeats (cron lock guard) ─────────────────────────────
+
+  describe('cleanStaleRiderHeartbeats', () => {
+    it('acquires the cron lock and runs existing pass-through behavior unchanged when lock is granted', async () => {
+      mockRedis.geosearch.mockResolvedValue([]);
+
+      await service.cleanStaleRiderHeartbeats();
+
+      expect(mockRedis.setNx).toHaveBeenCalledWith('cron-lock:cleanStaleRiderHeartbeats', '1', 25);
+      expect(mockRedis.geosearch).toHaveBeenCalledWith('riders:online', 0, 0, 20000);
+    });
+
+    it('skips the tick without calling geosearch when the lock is held by another replica', async () => {
+      mockRedis.setNx.mockResolvedValueOnce(false);
+
+      await service.cleanStaleRiderHeartbeats();
+
+      expect(mockRedis.setNx).toHaveBeenCalledWith('cron-lock:cleanStaleRiderHeartbeats', '1', 25);
+      expect(mockRedis.geosearch).not.toHaveBeenCalled();
     });
   });
 });

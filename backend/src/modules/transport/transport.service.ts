@@ -822,6 +822,12 @@ export class TransportService {
   @Cron(CronExpression.EVERY_30_SECONDS)
   async cleanStaleDriverHeartbeats(): Promise<void> {
     try {
+      const acquired = await this.redis.setNx('cron-lock:cleanStaleDriverHeartbeats', '1', 25);
+      if (!acquired) {
+        this.logger.debug('cleanStaleDriverHeartbeats: lock held by another replica — skipping this tick');
+        return;
+      }
+
       // Get all online drivers from geo set using a global search radius
       const allDriverIds = await this.redis.geosearch('drivers:online', 0, 0, 20000);
 

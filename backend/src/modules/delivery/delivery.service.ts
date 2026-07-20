@@ -829,6 +829,12 @@ export class DeliveryService {
   @Cron(CronExpression.EVERY_30_SECONDS)
   async cleanStaleRiderHeartbeats(): Promise<void> {
     try {
+      const acquired = await this.redis.setNx('cron-lock:cleanStaleRiderHeartbeats', '1', 25);
+      if (!acquired) {
+        this.logger.debug('cleanStaleRiderHeartbeats: lock held by another replica — skipping this tick');
+        return;
+      }
+
       // Get all online riders from geo set using a global search radius
       const allRiderIds = await this.redis.geosearch('riders:online', 0, 0, 20000);
 

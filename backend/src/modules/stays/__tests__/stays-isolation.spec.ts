@@ -9,6 +9,7 @@ import { ImageService } from '../../../common/services/image.service';
 import { KafkaService } from '../../../kafka/kafka.service';
 import { SettlementService } from '../../../common/services/settlement.service';
 import { VisitorLogService } from '../../../common/services/visitor-log.service';
+import { RedisService } from '../../../redis/redis.service';
 
 // ── Fixtures ───────────────────────────────────────────────────────────────
 
@@ -60,6 +61,7 @@ const mockSettlement = {
   resolveMinistryWallet: jest.fn().mockResolvedValue({ id: 'WAL-MINISTRY' }),
 };
 const mockVisitorLog = { record: jest.fn().mockResolvedValue(undefined) };
+const mockRedis = { setNx: jest.fn().mockResolvedValue(true) };
 
 // ── Suite ─────────────────────────────────────────────────────────────────
 
@@ -80,6 +82,7 @@ describe('Stays isolation — createReview', () => {
         { provide: KafkaService, useValue: mockKafka },
         { provide: SettlementService, useValue: mockSettlement },
         { provide: VisitorLogService, useValue: mockVisitorLog },
+        { provide: RedisService, useValue: mockRedis },
       ],
     }).compile();
 

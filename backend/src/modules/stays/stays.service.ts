@@ -21,6 +21,7 @@ import { ImageService } from '../../common/services/image.service';
 import { SettlementService } from '../../common/services/settlement.service';
 import { VisitorLogService } from '../../common/services/visitor-log.service';
 import { DEFAULT_VISITOR_PURPOSE } from '../../common/constants/visitor-purpose.constants';
+import { RedisService } from '../../redis/redis.service';
 import { CreatePropertyDto } from './dto/create-property.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
 import { CreateBookingDto } from './dto/create-booking.dto';
@@ -43,6 +44,7 @@ export class StaysService implements OnModuleInit {
     private kafka: KafkaService,
     private settlementService: SettlementService,
     private visitorLogService: VisitorLogService,
+    private redis: RedisService,
   ) {}
 
   async onModuleInit() {
@@ -328,6 +330,12 @@ export class StaysService implements OnModuleInit {
 
   @Cron(CronExpression.EVERY_HOUR)
   async releaseEscrow(): Promise<void> {
+    const acquired = await this.redis.setNx('cron-lock:releaseEscrow', '1', 3300);
+    if (!acquired) {
+      this.logger.debug('releaseEscrow: lock held by another replica — skipping this tick');
+      return;
+    }
+
     // Escrow releases 24 h after checkOut — not checkIn — to give host time to report issues
     const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
 

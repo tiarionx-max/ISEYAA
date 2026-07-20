@@ -5,6 +5,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { NotificationsClientService } from '../../notifications-client/notifications-client.service';
 import { SendgridService } from '../../../common/services/sendgrid.service';
 import { ItineraryPdfService } from '../../../common/services/itinerary-pdf.service';
+import { RedisService } from '../../../redis/redis.service';
 
 /**
  * 09-07 — TourNotificationsService spec.
@@ -38,6 +39,7 @@ let mockNotifications: { sendPush: jest.Mock };
 let mockSendgrid: { sendEmail: jest.Mock };
 let mockPdf: { generateAndUpload: jest.Mock; renderPdf: jest.Mock };
 let mockConfig: { get: jest.Mock };
+let mockRedis: { setNx: jest.Mock };
 
 async function makeService(): Promise<TourNotificationsService> {
   mockPrisma = {
@@ -58,6 +60,7 @@ async function makeService(): Promise<TourNotificationsService> {
     renderPdf: jest.fn().mockResolvedValue(Buffer.from('pdf')),
   };
   mockConfig = { get: jest.fn() };
+  mockRedis = { setNx: jest.fn().mockResolvedValue(true) };
 
   const moduleRef: TestingModule = await Test.createTestingModule({
     providers: [
@@ -67,6 +70,7 @@ async function makeService(): Promise<TourNotificationsService> {
       { provide: SendgridService, useValue: mockSendgrid },
       { provide: ItineraryPdfService, useValue: mockPdf },
       { provide: ConfigService, useValue: mockConfig },
+      { provide: RedisService, useValue: mockRedis },
     ],
   }).compile();
 
@@ -350,5 +354,68 @@ describe('TourNotificationsService', () => {
       ([arg]) => arg.data.metadata?.notifiedTMinus24h === true,
     );
     expect(flagUpdates).toHaveLength(0);
+  });
+
+  // 10. pushTMinus24h cron-lock guard.
+  it('10. pushTMinus24h: acquires cron-lock:pushTMinus24h (TTL 3300) and proceeds when granted', async () => {
+    const svc = await makeService();
+    mockPrisma.tourBooking.findMany.mockResolvedValueOnce([]);
+
+    await svc.pushTMinus24h();
+
+    expect(mockRedis.setNx).toHaveBeenCalledWith('cron-lock:pushTMinus24h', '1', 3300);
+    expect(mockPrisma.tourBooking.findMany).toHaveBeenCalled();
+  });
+
+  it('10b. pushTMinus24h: skips without querying bookings when the lock is held by another replica', async () => {
+    const svc = await makeService();
+    mockRedis.setNx.mockResolvedValueOnce(false);
+
+    await svc.pushTMinus24h();
+
+    expect(mockRedis.setNx).toHaveBeenCalledWith('cron-lock:pushTMinus24h', '1', 3300);
+    expect(mockPrisma.tourBooking.findMany).not.toHaveBeenCalled();
+  });
+
+  // 11. pushTMinus2h cron-lock guard.
+  it('11. pushTMinus2h: acquires cron-lock:pushTMinus2h (TTL 840) and proceeds when granted', async () => {
+    const svc = await makeService();
+    mockPrisma.tourBooking.findMany.mockResolvedValueOnce([]);
+
+    await svc.pushTMinus2h();
+
+    expect(mockRedis.setNx).toHaveBeenCalledWith('cron-lock:pushTMinus2h', '1', 840);
+    expect(mockPrisma.tourBooking.findMany).toHaveBeenCalled();
+  });
+
+  it('11b. pushTMinus2h: skips without querying bookings when the lock is held by another replica', async () => {
+    const svc = await makeService();
+    mockRedis.setNx.mockResolvedValueOnce(false);
+
+    await svc.pushTMinus2h();
+
+    expect(mockRedis.setNx).toHaveBeenCalledWith('cron-lock:pushTMinus2h', '1', 840);
+    expect(mockPrisma.tourBooking.findMany).not.toHaveBeenCalled();
+  });
+
+  // 12. pushPostTourRating cron-lock guard.
+  it('12. pushPostTourRating: acquires cron-lock:pushPostTourRating (TTL 840) and proceeds when granted', async () => {
+    const svc = await makeService();
+    mockPrisma.tourBooking.findMany.mockResolvedValueOnce([]);
+
+    await svc.pushPostTourRating();
+
+    expect(mockRedis.setNx).toHaveBeenCalledWith('cron-lock:pushPostTourRating', '1', 840);
+    expect(mockPrisma.tourBooking.findMany).toHaveBeenCalled();
+  });
+
+  it('12b. pushPostTourRating: skips without querying bookings when the lock is held by another replica', async () => {
+    const svc = await makeService();
+    mockRedis.setNx.mockResolvedValueOnce(false);
+
+    await svc.pushPostTourRating();
+
+    expect(mockRedis.setNx).toHaveBeenCalledWith('cron-lock:pushPostTourRating', '1', 840);
+    expect(mockPrisma.tourBooking.findMany).not.toHaveBeenCalled();
   });
 });
