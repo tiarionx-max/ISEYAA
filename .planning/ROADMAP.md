@@ -498,7 +498,7 @@ Plans:
 - [x] 21-01-PLAN.md — Shared foundational scaffolding: resilience.types.ts (4 vendor keys), nest-cli.json (4 projects), package.json build:services, .env.example, docker-compose.yml, blue-green runbook extension
 
 **Wave 2** *(blocked on Wave 1)*
-- [ ] 21-02-PLAN.md — News extraction (risk-ascending #1): news-service gRPC app + news-client facade + monolith wiring
+- [x] 21-02-PLAN.md — News extraction (risk-ascending #1): news-service gRPC app + news-client facade + monolith wiring
 
 **Wave 3** *(blocked on Wave 2 — shares app.module.ts with News)*
 - [ ] 21-03-PLAN.md — Waitlist extraction (risk-ascending #2): waitlist-service gRPC app + waitlist-client facade (join shape reconstruction + stats fan-out) + monolith wiring
@@ -565,5 +565,5 @@ For v2.1: Phase 19 requires Phase 18 (needs the centralized split resolver as th
 | 18. Settlement Split Centralization | 4/4 | Complete    | 2026-07-19 |
 | 19. Settlement Dispute & Adjustment Workflow | 6/6 | Complete    | 2026-07-20 |
 | 20. gRPC Blue-Green Healthcheck Retrofit | 5/5 | Complete    | 2026-07-20 |
-| 21. Low-Risk gRPC Extraction — News/Waitlist/Reviews + Scoped Delivery OTP | 1/7 | In Progress|  |
+| 21. Low-Risk gRPC Extraction — News/Waitlist/Reviews + Scoped Delivery OTP | 2/7 | In Progress|  |
 | 22. Scheduled Ministry Exports & LGA Heatmap | 0/TBD | Not started | - |
