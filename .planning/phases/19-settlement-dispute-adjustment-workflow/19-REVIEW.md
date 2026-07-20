@@ -1,158 +1,299 @@
 ---
 phase: 19-settlement-dispute-adjustment-workflow
-reviewed: 2026-07-20T00:00:00Z
+reviewed: 2026-07-20T11:20:00Z
 depth: standard
 files_reviewed: 13
 files_reviewed_list:
-  - backend/prisma/schema.prisma
+  - backend/package.json
   - backend/prisma/migrations/20260720022922_add_settlement_dispute/migration.sql
-  - backend/src/common/services/settlement.service.ts
+  - backend/prisma/migrations/20260720040000_settlement_dispute_partial_unique_active/migration.sql
+  - backend/prisma/schema.prisma
+  - backend/src/app.module.ts
   - backend/src/common/services/__tests__/settlement.service.spec.ts
+  - backend/src/common/services/settlement.service.ts
+  - backend/src/modules/settlement-disputes/__tests__/settlement-disputes.e2e-spec.ts
+  - backend/src/modules/settlement-disputes/__tests__/settlement-disputes.service.spec.ts
   - backend/src/modules/settlement-disputes/dto/raise-dispute.dto.ts
   - backend/src/modules/settlement-disputes/dto/resolve-dispute.dto.ts
-  - backend/src/modules/settlement-disputes/settlement-disputes.service.ts
-  - backend/src/modules/settlement-disputes/__tests__/settlement-disputes.service.spec.ts
   - backend/src/modules/settlement-disputes/settlement-disputes.controller.ts
   - backend/src/modules/settlement-disputes/settlement-disputes.module.ts
-  - backend/src/app.module.ts
-  - backend/src/modules/settlement-disputes/__tests__/settlement-disputes.e2e-spec.ts
-  - backend/package.json
+  - backend/src/modules/settlement-disputes/settlement-disputes.service.ts
 findings:
-  critical: 3
+  critical: 1
   warning: 4
-  info: 3
-  total: 10
+  info: 4
+  total: 9
 status: issues_found
 ---
 
-# Phase 19: Code Review Report
+# Phase 19: Code Review Report (Full Re-Review After Gap-Closure Plan 19-05)
 
-**Reviewed:** 2026-07-20T00:00:00Z
+**Reviewed:** 2026-07-20T11:20:00Z
 **Depth:** standard
 **Files Reviewed:** 13
 **Status:** issues_found
 
 ## Summary
 
-Reviewed the Settlement Dispute & Adjustment Workflow (`SettlementService.adjust()` primitive + the new `SettlementDisputesModule`). The state-machine plumbing (raise/queue/review/resolve/dismiss), audit logging, and the `adjust()` transaction/locking/idempotency mechanics are well tested and mirror the existing `settle()` primitive's proven patterns (canonical lock ordering, P2002 replay handling, atomic rollback).
+Full re-review of the Settlement Dispute & Adjustment Workflow after gap-closure plan 19-05,
+which claimed to close three prior CRITICAL findings from the original `19-REVIEW.md`:
+CR-01 (money-conservation gap — platform wallet never adjusted), CR-02 (TOCTOU race on
+"one active dispute per settlement"), and CR-03 (no `module` cross-check in `raise()`).
 
-However, tracing the actual money math in `SettlementDisputesService.computeAdjustmentLines()` — the core "diff what was paid against what should have been paid" routine this whole phase exists to implement — surfaces a serious accounting defect: **the derived adjustment lines never touch the platform/system wallet**, so every non-trivial dispute resolution either creates or destroys currency rather than reallocating it between parties. This was not caught by the unit or e2e tests because none of them assert on the platform wallet's balance after an adjustment. Two further correctness/integrity gaps were found in `raise()` (a TOCTOU race on the "one active dispute per settlement" invariant, and no validation that the caller-supplied `module` actually matches the settlement being disputed). All three are Critical and should block merge.
+**All three of those specific fixes were verified present and correct:**
+- **CR-02 (fixed):** DB-level partial unique index `settlement_disputes_active_per_reference`
+  (`20260720040000_settlement_dispute_partial_unique_active/migration.sql`) backstops the
+  in-app `findFirst` precheck in `raise()`; the resulting `P2002` is translated into the same
+  `ConflictException` as the precheck, closing the race.
+- **CR-03 (fixed):** `raise()` now compares `dto.module` against
+  `(original.metadata as any)?.module` and rejects a mismatch with `BadRequestException`,
+  while tolerating legacy rows with no recorded module (verified by test).
+- **CR-01 (fixed for the case it targeted):** the platform wallet's own compensating line is
+  now derived via the self-balancing formula
+  `correctPlatformTotal = chargeAmountNgn - correctEarnerTotal - correctMinistryTotal` (never
+  the nullable `platformPct` directly) and is pushed into `lines` whenever non-negligible.
+
+All 78 relevant unit/e2e tests pass (`settlement-disputes.service.spec.ts`,
+`settlement-disputes.e2e-spec.ts`, `settlement.service.spec.ts`) and `tsc --noEmit` is clean.
+
+**However, this re-review found that the underlying root cause of CR-01 was only partially
+closed.** `computeAdjustmentLines()` still silently drops a category's corrected delta (with no
+compensating adjustment anywhere) whenever that category has no *actual* wallet-bearing
+Transaction row to receive it — while `correctPlatformTotal`'s formula unconditionally
+subtracts that category's full corrected total regardless of whether it was actually
+deliverable. This reproduces the exact same class of ledger-imbalance bug the original CR-01
+fix addressed for the platform side, just triggered from the ministry/earner side instead. It
+is written up below as a new CR-01 finding (superseding/extending the closed one), since it is
+not covered by any existing test and is otherwise indistinguishable in severity from the
+originally-reported CR-01. Several warning/info items from the original review that were out
+of gap-closure scope remain open and are carried forward unchanged.
 
 ## Critical Issues
 
-### CR-01: `computeAdjustmentLines()` never adjusts the platform/system wallet — adjustments create or destroy money
+### CR-01: `computeAdjustmentLines()` still leaks money when a recipient category has no persisted wallet row to receive its correction
 
-**File:** `backend/src/modules/settlement-disputes/settlement-disputes.service.ts:204-267`
+**File:** `backend/src/modules/settlement-disputes/settlement-disputes.service.ts:259-317`
+
 **Issue:**
-`computeAdjustmentLines()` reconstructs `earnerDeltaTotal` and `ministryDelta` from `resolveSplit()`'s `earnerPct`/`ministryPct`, but **destructures `platformPct` out and never uses it** (line 228: `const { earnerPct, ministryPct } = await this.settlementService.resolveSplit(...)`), and it locates `platformRow` (line 220) purely to *exclude* it from `earnerRows` — it never computes a corresponding platform delta or pushes a line for `platformRow.walletId`.
+The gap-closure fix correctly made the platform's own correction self-balancing
+(`correctPlatformTotal = chargeAmountNgn - correctEarnerTotal - correctMinistryTotal`), and
+correctly guards *pushing* a line on whether a destination wallet is actually known
+(`ministryRow?.walletId`, `earnerRowsWithWallet.length > 0 && actualEarnerTotal > 0`). But
+those two things are inconsistent with each other: **`correctPlatformTotal`'s subtraction is
+unconditional**, while the corresponding ministry/earner line is only pushed when there is a
+concrete wallet to receive it. Whenever a category is owed a nonzero correction but has no
+matching original Transaction row (or, for earners, a total of exactly `0`), the correction is
+subtracted out of the platform's total but never lands anywhere — `sum(lines[].deltaNgn)` ends
+up nonzero and `adjust()` faithfully applies an unbalanced set of debits/credits, destroying (or
+manufacturing) real money.
 
-Concretely, for the service spec's own "single-earner" fixture (lines 251-287 of `settlement-disputes.service.spec.ts`): actual payout was DRIVER 8500 + MINISTRY 500 = 9000 (no platform row in that fixture). Corrected split (90/6/4) implies DRIVER 8100, MINISTRY 540, PLATFORM 360. The code emits `lines = [{MINISTRY: +40}, {DRIVER: -400}]` — net `-360` removed from the wallet ledger with nothing crediting the platform's corrected +360 share. In the e2e happy-path scenario (`settlement-disputes.e2e-spec.ts:235-293`), the original settlement *does* include a `-PLAT` row (created unconditionally by `settle()`), and the corrected split (85/5/10) implies the platform's share should *shrink* from 2100 to 1000 — a −1100 platform debit that is silently skipped, meaning DRIVER (+1000) and MINISTRY (+100) are credited ₦1100 with **no offsetting debit anywhere in the ledger**. Every call to `SettlementService.adjust()` from this code path is therefore unbalanced.
+There are three independent trigger paths for this, all in the same function:
 
-This is exactly the invariant `SettlementService.settle()` enforces defensively (drift-tolerance assert, `settlement.service.ts:160-186`) but `adjust()` performs no such check (by design — see the comment at `settlement.service.ts:341-343`, "every line here is caller-supplied and caller-directed"), so the burden of conservation-of-money falls entirely on the caller. `computeAdjustmentLines()` is the only caller in this phase and does not honor it. Neither `settlement-disputes.service.spec.ts` nor `settlement-disputes.e2e-spec.ts` assert on the platform/system wallet's post-adjustment balance, which is why this shipped without a failing test.
+1. **No `ministryRow` at all** (line 279: `if (ministryRow?.walletId && ...)`) — plausible
+   whenever a settlement was originally recorded without a ministry-tagged recipient (e.g. the
+   ministry wallet was unconfigured at settle-time — `resolveMinistryWallet()` explicitly
+   documents that it "may resolve `null`"), and the *currently active* `SettlementSplitTier`
+   used for the correction now assigns `ministryPct` a nonzero share. This is exactly the
+   scenario this feature exists for: correcting a settlement made under an old/wrong tier.
+2. **No `earnerRowsWithWallet` at all** (line 284-288: guarded by
+   `earnerRowsWithWallet.length > 0`) — the symmetric case for a multi-vendor (e.g. Tour)
+   settlement where every earner recipient had an unresolved/`null` wallet at settle-time.
+3. **`earnerRowsWithWallet` present but `actualEarnerTotal === 0`** (same guard,
+   `actualEarnerTotal > 0`) — e.g. a fully-comped/promotional booking where the earner's
+   original row legitimately recorded `amountNgn: 0`, but the corrected split now assigns a
+   nonzero earner share. The proportional-distribution loop divides by `actualEarnerTotal`
+   (line 292: `Number(row.amount) / actualEarnerTotal`), so this branch is skipped entirely to
+   avoid a division by zero — but the correction is dropped, not redistributed evenly.
 
-**Fix:** Include the platform wallet in the diff. `platformRow.walletId` is already selected in the query — use it:
+Worked example for trigger path 1: a `transport` settlement originally settled DRIVER ₦9,500 +
+PLATFORM ₦500 on a ₦10,000 charge, with no MINISTRY row. An admin later updates the `transport`
+`SettlementSplitTier` to `earnerPct: 0.85, ministryPct: 0.05, platformPct: 0.10` and resolves a
+dispute against that settlement:
+
+```
+chargeAmountNgn        = 10000
+correctEarnerTotal      = 8500   actualEarnerTotal   = 9500  -> earnerDelta   = -1000 (pushed)
+correctMinistryTotal    =  500   actualMinistryTotal =    0  -> ministryDelta =  500  (DROPPED — no ministryRow)
+correctPlatformTotal    = 10000 - 8500 - 500 = 1000
+actualPlatformTotal     =  500                              -> platformDelta =  500  (pushed)
+
+lines = [ {DRIVER, -1000}, {PLATFORM, +500} ]
+sum(lines.deltaNgn) = -1000 + 500 = -500   // must be 0
+```
+
+`adjust()` applies exactly these two lines: the driver is debited ₦1,000 and the platform is
+credited only ₦500, ending at exactly `correctPlatformTotal` (₦1,000) as though the ministry had
+already been paid its ₦500 — which it never was, and which no wallet in the system now holds.
+₦500 has been destroyed from the ledger with no error, warning, or `BLOCKED` state raised. This
+is not covered by any existing test: every current test fixture happens to include a
+wallet-bearing row for every category the resolved split assigns a nonzero percentage to, which
+is precisely why this variant of the bug survived the CR-01 fix.
+
+**Fix:** Do not let `correctPlatformTotal` "claim" a category's corrected total unless there is
+an actual wallet that will receive the corresponding line for it — mirror `settle()`'s own
+semantics, where any recipient with no resolvable wallet has its share rolled into the platform
+commission instead of vanishing:
+
 ```typescript
-const platformRow = rows.find((r) => r.reference.endsWith('-PLAT'));
-// ...
-const correctEarnerTotal = Math.round(chargeAmountNgn * earnerPct * 100) / 100;
-const correctMinistryTotal = Math.round(chargeAmountNgn * ministryPct * 100) / 100;
-// Platform absorbs whatever's left, mirroring settle()'s own drift-absorption design —
-// self-balancing regardless of whether earnerPct+ministryPct+platformPct sums to exactly 1.
-const correctPlatformTotal = Math.round((chargeAmountNgn - correctEarnerTotal - correctMinistryTotal) * 100) / 100;
-const actualPlatformTotal = platformRow ? Number(platformRow.amount) : 0;
-const platformDelta = Math.round((correctPlatformTotal - actualPlatformTotal) * 100) / 100;
+// A category's corrected total is only "delivered" if a wallet exists to receive it —
+// otherwise it stays with the platform (mirrors settle()'s own unresolved-recipient
+// roll-up), so correctPlatformTotal never claims a share nobody will actually get.
+const ministryDelivered = ministryRow?.walletId;
+const earnerDelivered = earnerRowsWithWallet.length > 0 && actualEarnerTotal > 0;
 
-if (platformRow?.walletId && Math.abs(platformDelta) >= 0.01) {
-  lines.push({ walletId: platformRow.walletId, deltaNgn: platformDelta });
-}
+const correctPlatformTotal =
+  Math.round(
+    (chargeAmountNgn
+      - (earnerDelivered ? correctEarnerTotal : actualEarnerTotal)
+      - (ministryDelivered ? correctMinistryTotal : actualMinistryTotal)) * 100,
+  ) / 100;
 ```
-Add a test asserting `sum(lines.map(l => l.deltaNgn)) === 0` (mirroring `settlement.service.spec.ts`'s Scenario C zero-drift pattern) for every fixture in this spec file, and add a platform-wallet-balance assertion to the e2e spec.
 
-### CR-02: `raise()` has an unenforced TOCTOU race on "one active dispute per settlement"
+At minimum, add a regression test for each of the three trigger paths above that asserts
+`sum(lines.map(l => l.deltaNgn)) === 0` — mirroring the money-conservation assertions the 19-05
+gap-closure already added for the platform-side case. Consider also whether silently retaining
+an owed-but-undeliverable ministry/earner share on the platform wallet is the right product
+behavior, versus raising to `BLOCKED` so a SUPER_ADMIN is forced to resolve the missing-wallet
+condition before any partial adjustment is posted.
 
-**File:** `backend/src/modules/settlement-disputes/settlement-disputes.service.ts:79-118`
-**Issue:** The docstring above `raise()` (lines 68-78) explicitly states this exact failure mode must be prevented: *"two concurrent disputes racing to resolve the same settlement could otherwise post two DIFFERENT adjustments, with the second silently REPLAYing onto the first's numbers (T-19-07)."* But the actual guard is a plain, non-atomic `findFirst` (line 88) followed later by `create` (line 99) — no `$transaction`, no advisory lock, and critically no DB-level constraint. Contrast this with `SettlementSplitTier` in the same schema (`schema.prisma:696-720`), which documents and implements a *partial unique index* specifically to close this class of race for an analogous "at most one active row" invariant — that pattern was not applied to `SettlementDispute`, and the migration (`20260720022922_add_settlement_dispute/migration.sql`) creates only plain (non-unique, non-partial) indexes on `status` and `settlementReference`.
+## Warnings
 
-Two concurrent `POST /admin/settlement-disputes` calls for the same `settlementReference` will both pass the `activeExisting` check and both `create()` successfully. `SettlementService.adjust()`'s own `Transaction.reference` uniqueness does prevent a literal double financial application (the second `resolve()` call's `adjust()` invocation will hit the `-ADJ-` prefix idempotency precheck or a P2002 fallback and return `REPLAYED`), but both `SettlementDispute` rows are still independently marked `RESOLVED` with the identical `adjustmentReference` (`settlement-disputes.service.ts:320-331`) — even though only one of them actually caused a wallet mutation. For a government financial audit trail, having two dispute records both claim to have resolved the same correction is a data-integrity defect, and it's one the implementer's own comment says is out of scope to allow.
+### WR-01: `raise()`'s settlement-existence check does not filter `status: 'SUCCESS'`
 
-**Fix:** Add a partial unique index (mirroring the `SettlementSplitTier` pattern) via raw SQL in a migration:
-```sql
-CREATE UNIQUE INDEX "settlement_disputes_active_per_reference"
-  ON "settlement_disputes" ("settlementReference")
-  WHERE "status" IN ('OPEN', 'IN_REVIEW', 'BLOCKED');
-```
-and catch the resulting P2002 in `raise()` to translate it into the same `ConflictException` the pre-check already throws, closing the race window.
+**File:** `backend/src/modules/settlement-disputes/settlement-disputes.service.ts:90-96`
 
-### CR-03: `raise()` never validates that `dto.module` matches the settlement actually being disputed
+**Issue:** The precheck in `raise()` —
 
-**File:** `backend/src/modules/settlement-disputes/settlement-disputes.service.ts:79-97`
-**Issue:** `raise()`'s only existence check is `transaction.findFirst({ where: { reference: { startsWith: `${dto.settlementReference}-` } } })` (line 80-83) — it selects `{ id: true }` only and never compares the found row's `metadata.module` against the caller-supplied `dto.module`. `dto.module` is later persisted verbatim onto the `SettlementDispute` row (line 102) and is what `resolve()` passes into `computeAdjustmentLines(dispute.module, ...)` → `settlementService.resolveSplit(module, chargeAmountNgn)` (settlement.service.ts:513-539) to select the `SettlementSplitTier` used for the entire correction.
-
-If a SUPER_ADMIN selects the wrong module for a given `settlementReference` (a plausible fat-finger error given `module` is a free-choice enum unrelated to how the reference string is structured), `resolveSplit()` silently fetches a completely unrelated tier's `earnerPct`/`ministryPct`, and the resulting adjustment lines (already dubious per CR-01) get computed and applied against the wrong percentages with no server-side guardrail — there's no cross-check anywhere in the request path that would reject this.
-
-**Fix:** In `raise()`, select `metadata` from the found transaction row and validate it matches:
 ```typescript
 const original = await this.prisma.transaction.findFirst({
   where: { reference: { startsWith: `${dto.settlementReference}-` } },
   select: { id: true, metadata: true },
 });
-if (!original) throw new NotFoundException('No settlement found for this reference');
-const recordedModule = (original.metadata as any)?.module;
-if (recordedModule && recordedModule !== dto.module) {
-  throw new BadRequestException(
-    `module mismatch: settlement is recorded under "${recordedModule}", not "${dto.module}"`,
-  );
-}
 ```
 
-## Warnings
+— has no `status: 'SUCCESS'` filter, unlike `computeAdjustmentLines()`'s equivalent query
+(`settlement-disputes.service.ts:247-254`, which explicitly filters `status: 'SUCCESS'`). A
+dispute can therefore be successfully raised (`201 Created`) against a `settlementReference`
+whose only matching rows are `FAILED`/`PENDING`/`REVERSED` — a settlement that never actually
+completed. The dispute is then stuck: calling `resolve()` on it throws an uncaught
+`NotFoundException` out of `computeAdjustmentLines()` ("No settled Transaction rows found..."),
+surfacing as a confusing 404 on an already-created OPEN dispute rather than `raise()` rejecting
+it up front with its own "no settlement found" 404.
 
-### WR-01: `RaiseDisputeDto.settlementReference` / `.reason` accept empty strings
+**Fix:** Add `status: 'SUCCESS'` to `raise()`'s existence check, matching
+`computeAdjustmentLines()`'s stricter filter.
 
-**File:** `backend/src/modules/settlement-disputes/dto/raise-dispute.dto.ts:33-45`
-**Issue:** Both fields use only `@IsString()` (plus `@MaxLength(1000)` on `reason`) — `class-validator`'s `@IsString()` accepts `""`. A caller can raise a dispute with `settlementReference: ""` (which then matches `transaction.findFirst({ reference: { startsWith: '-' } })` — unlikely to match anything today, but is an unvalidated degenerate input) or `reason: ""`, which is meaningless for an audit trail entry that exists specifically to justify a financial correction.
-**Fix:** Add `@IsNotEmpty()` to both fields.
+### WR-02: Lost-update race across the dispute state machine's non-atomic transitions
 
-### WR-02: `RaiseDisputeDto.requestedAdjustmentNgn` has no lower-bound validation
+**File:** `backend/src/modules/settlement-disputes/settlement-disputes.service.ts:202-220, 328-412, 421-444`
 
-**File:** `backend/src/modules/settlement-disputes/dto/raise-dispute.dto.ts:47-53`
-**Issue:** Documented as "informational only," but nothing stops a negative value from being submitted and persisted (`@IsNumber()` allows negatives). Low risk since it's never used to derive the actual adjustment, but a negative "requested adjustment" displayed in an admin queue is misleading noise at best.
-**Fix:** Add `@Min(0)`.
+**Issue:** `moveToReview()`, `resolve()`, and `dismiss()` each follow a `findUnique` →
+in-process status check → `update()` sequence with no `WHERE status = <expected>` guard on the
+final write and no optimistic-lock version column. Two concurrent SUPER_ADMIN requests against
+the *same* dispute id (e.g. one operator calls `/resolve` while another calls `/dismiss` in the
+same request window) can both pass their own initial status check and both proceed to write.
+`adjust()` itself is idempotent/atomic, so no double financial application can occur — but the
+`SettlementDispute` row's own bookkeeping is not protected: whichever `update()` lands last wins,
+and since each transition's `update()` payload only sets the fields relevant to that transition
+(`dismiss()` never touches `adjustmentReference`), the row can end up `status: 'DISMISSED'` while
+`adjustmentReference` remains set from a concurrently-completed `resolve()` — i.e. the audit
+record claims "no adjustment was warranted" while a real compensating transaction was actually
+posted. The CR-02 partial unique index only protects "at most one active dispute per
+`settlementReference`"; it does not protect a single dispute row's own transition consistency.
 
-### WR-03: Proportional earner-delta distribution silently drops the correction when `actualEarnerTotal === 0`
+**Fix:** Add a status-guarded conditional update (e.g. Prisma `updateMany` with
+`where: { id, status: { in: [...expectedStatuses] } }`, verifying `count === 1` before treating
+the transition as applied) to `moveToReview()`/`resolve()`/`dismiss()`.
 
-**File:** `backend/src/modules/settlement-disputes/settlement-disputes.service.ts:244-264`
-**Issue:** The earner-delta distribution branch is gated on `actualEarnerTotal > 0` (line 247) to avoid a division-by-zero on `Number(row.amount) / actualEarnerTotal` (line 253). But if the original settlement legitimately recorded `$0` for every wallet-holding earner row (e.g. a fully-comped/promotional trip where the driver's line was `amountNgn: 0`) and the corrected split says earners should now receive a non-zero share, `earnerDeltaTotal` is silently discarded — no lines are generated for the earner side at all, and no error/log surfaces this. The correction is dropped rather than distributed (e.g. evenly across `earnerRowsWithWallet`).
-**Fix:** When `actualEarnerTotal === 0` but `earnerRowsWithWallet.length > 0` and `Math.abs(earnerDeltaTotal) >= 0.01`, fall back to an even split across `earnerRowsWithWallet` instead of skipping the correction.
+### WR-03: `GET /admin/settlement-disputes/queue`'s `status` query param is unvalidated
 
-### WR-04: `findQueue()` accepts an unvalidated free-text `status` query param
+**File:** `backend/src/modules/settlement-disputes/settlement-disputes.controller.ts:81-87`, `backend/src/modules/settlement-disputes/settlement-disputes.service.ts:156-179`
 
-**File:** `backend/src/modules/settlement-disputes/settlement-disputes.controller.ts:81-87`, `backend/src/modules/settlement-disputes/settlement-disputes.service.ts:126-149`
-**Issue:** `@Query('status') status?: string` has no `@IsEnum`/whitelist validation and is passed straight into `where: { status }` (service.ts:134). A typo'd status value (e.g. `?status=OPEM`) silently returns an empty page rather than a 400, making the failure hard to notice from an admin UI.
-**Fix:** Validate `status` against `['OPEN','IN_REVIEW','RESOLVED','DISMISSED','BLOCKED']` (e.g. via a small query DTO with `@IsIn(...)`) and reject unknown values with a 400.
+**Issue:** `@Query('status') status?: string` accepts any string and is passed straight into
+`findQueue()`'s Prisma `where: { status }` with no validation against the known 5-value set
+(`OPEN | IN_REVIEW | RESOLVED | DISMISSED | BLOCKED`). Not exploitable (Prisma parameterizes the
+query), but a typo'd status (e.g. `?status=OPEND`) silently returns an empty paginated result
+instead of a `400`, making the mistake hard to notice from admin tooling. (Carried over from the
+original review — not in gap-closure 19-05's scope.)
+
+**Fix:** Validate `status` against the known set (e.g. a small `@IsIn([...])`-decorated query
+DTO, or an explicit check that throws `BadRequestException` for unrecognized values).
+
+### WR-04: `RaiseDisputeDto` fields accept empty strings and unbounded/negative values
+
+**File:** `backend/src/modules/settlement-disputes/dto/raise-dispute.dto.ts:29-54`
+
+**Issue:** `settlementReference` and `reason` are validated only with `@IsString()` (plus
+`@MaxLength(1000)` on `reason`), so both accept `""` — meaningless for an audit-trail field that
+exists specifically to justify a financial correction, and `settlementReference: ""` is fed
+directly into a `startsWith` Prisma filter. `settlementReference` also has no `@MaxLength` bound,
+unlike `reason`/`resolution` elsewhere in the same feature. Separately, `requestedAdjustmentNgn`
+(`@IsNumber()` only) accepts negative values despite being purely informational display data.
+(Carried over from the original review — not in gap-closure 19-05's scope.)
+
+**Fix:** Add `@IsNotEmpty()` to `settlementReference` and `reason`, a `@MaxLength` bound to
+`settlementReference`, and `@Min(0)` to `requestedAdjustmentNgn`.
 
 ## Info
 
-### IN-01: `getQueue()`'s `page`/`limit` params are typed optional despite always being populated
+### IN-01: `getQueue()`'s `page`/`limit` params are typed optional despite `DefaultValuePipe` guaranteeing they're always defined
 
 **File:** `backend/src/modules/settlement-disputes/settlement-disputes.controller.ts:81-87`
-**Issue:** `@Query('page', new DefaultValuePipe(1), ParseIntPipe) page?: number` — the `DefaultValuePipe` guarantees `page`/`limit` are always defined, so the `?` optional modifier is misleading.
-**Fix:** Drop the `?` (`page: number`), or drop `DefaultValuePipe` and handle defaults in the service only (the service already re-defaults via `opts.page ?? 1`, making the controller-level default redundant either way).
 
-### IN-02: `computeAdjustmentLines()` is public purely to support direct unit testing
+**Issue:** `@Query('page', new DefaultValuePipe(1), ParseIntPipe) page?: number` — the
+`DefaultValuePipe` guarantees `page`/`limit` are always defined by the time the handler body
+runs, so the `?` optional modifier is misleading; the service also independently re-defaults via
+`opts.page ?? 1`, making the controller-level default redundant either way. (Carried over,
+unchanged since the original review.)
 
-**File:** `backend/src/modules/settlement-disputes/settlement-disputes.service.ts:192-204`
-**Issue:** The comment above it ("INTERNAL — exposed for the spec and for resolve()") acknowledges this is a deliberate encapsulation trade-off, but it does mean any other code that imports `SettlementDisputesService` can invoke the raw financial-diffing routine directly, bypassing the controller's `SUPER_ADMIN`-only guard entirely (there's no authorization check inside the service itself, by documented design). Not exploitable today since nothing else calls it, but worth a note for future maintainers extending this service.
-**Fix:** No action required now; consider `@internal` JSDoc tagging or moving the test to use a `(service as any).computeAdjustmentLines` cast if stricter encapsulation is ever desired.
+**Fix:** Drop the `?` (`page: number`), or drop `DefaultValuePipe` and let the service's own
+defaulting be the single source of truth.
 
-### IN-03: `resolveSplit()`'s `amountNgn` parameter is unused, so amount-tiered splits are silently ignored by dispute resolution too
+### IN-02: `computeAdjustmentLines()` is public purely to support direct unit testing, bypassing the controller's authorization boundary
+
+**File:** `backend/src/modules/settlement-disputes/settlement-disputes.service.ts:222-243`
+
+**Issue:** The comment above it ("INTERNAL — exposed for the spec and for resolve()")
+acknowledges this trade-off. There is no authorization check inside the service itself (by
+documented design — SUPER_ADMIN-only enforcement lives entirely at the controller), so any
+future code that imports `SettlementDisputesService` and calls this method directly bypasses
+that boundary entirely. Not exploitable today since nothing else calls it. (Carried over,
+unchanged since the original review.)
+
+**Fix:** No action required now; consider `@internal` JSDoc tagging, or a cast-based test access
+pattern, if stricter encapsulation is ever desired.
+
+### IN-03: `resolveSplit()` ignores its `amountNgn` parameter, so amount-tiered splits are silently unsupported by dispute resolution too
 
 **File:** `backend/src/common/services/settlement.service.ts:513-539`
-**Issue:** Pre-existing from phase 18 (not introduced by this phase), but directly consumed by this phase's new `computeAdjustmentLines()` (`settlement-disputes.service.ts:228-231`). `resolveSplit(module, amountNgn)` never uses `amountNgn` in its `where` clause — it always fetches the single `tierName: 'default'` row regardless of the schema's `minAmountNgn`/`maxAmountNgn` fields (`schema.prisma:700-701`). If amount-tiered splits are ever configured, both original settlement and dispute-resolution adjustments would silently use the same (wrong) tier.
-**Fix:** Out of scope for this phase's fix, but flag for whoever implements amount-tiered splits — `computeAdjustmentLines()` will inherit whatever `resolveSplit()` does once that's fixed, no changes needed on the dispute side.
+
+**Issue:** Pre-existing from an earlier phase (not introduced by Phase 19), but directly
+consumed by `computeAdjustmentLines()` (`settlement-disputes.service.ts:267-270`).
+`resolveSplit(module, amountNgn)` never references `amountNgn` in its `where` clause — it always
+fetches the single `tierName: 'default'` row regardless of the schema's `minAmountNgn`/
+`maxAmountNgn` fields (`schema.prisma:700-701`). If amount-tiered splits are ever configured,
+both original settlement and dispute-resolution adjustments will silently use the same (wrong)
+tier. (Carried over — flagged again here only because this phase's `computeAdjustmentLines()`
+inherits the same limitation.)
+
+**Fix:** Out of scope for this phase; flag for whoever implements amount-tiered splits.
+
+### IN-04: `SettlementDispute.status` is an unconstrained `String` column, not a Prisma enum
+
+**File:** `backend/prisma/schema.prisma:1138`
+
+**Issue:** The 5-value status contract (`OPEN | IN_REVIEW | RESOLVED | DISMISSED | BLOCKED`) is
+enforced only by application code and comments, not by the schema — mirrors the existing
+`AdminReviewFlag.status` precedent, so this is a consistent project pattern rather than a
+regression. It does mean any future raw SQL, seed script, or direct-write admin tooling against
+this table can produce an out-of-range status value with no DB-level rejection.
+
+**Fix:** Optional/low-priority — consider a Prisma enum in a future phase only if direct-write
+tooling against this table becomes common; not blocking given the existing project-wide
+precedent.
 
 ---
 
-_Reviewed: 2026-07-20T00:00:00Z_
+_Reviewed: 2026-07-20T11:20:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
