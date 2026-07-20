@@ -274,18 +274,17 @@ export class SettlementDisputesService {
     const earnerDeltaTotal = Math.round((correctEarnerTotal - actualEarnerTotal) * 100) / 100;
     const ministryDelta = Math.round((correctMinistryTotal - actualMinistryTotal) * 100) / 100;
 
+    const earnerRowsWithWallet = earnerRows.filter((r) => r.walletId);
+    const ministryDelivered = !!ministryRow?.walletId;
+    const earnerDelivered = earnerRowsWithWallet.length > 0 && actualEarnerTotal > 0;
+
     const lines: SettlementAdjustmentLine[] = [];
 
-    if (ministryRow?.walletId && Math.abs(ministryDelta) >= 0.01) {
-      lines.push({ walletId: ministryRow.walletId, deltaNgn: ministryDelta });
+    if (ministryDelivered && Math.abs(ministryDelta) >= 0.01) {
+      lines.push({ walletId: ministryRow!.walletId!, deltaNgn: ministryDelta });
     }
 
-    const earnerRowsWithWallet = earnerRows.filter((r) => r.walletId);
-    if (
-      earnerRowsWithWallet.length > 0 &&
-      actualEarnerTotal > 0 &&
-      Math.abs(earnerDeltaTotal) >= 0.01
-    ) {
+    if (earnerDelivered && Math.abs(earnerDeltaTotal) >= 0.01) {
       let remaining = earnerDeltaTotal;
       for (let i = 0; i < earnerRowsWithWallet.length - 1; i++) {
         const row = earnerRowsWithWallet[i];
@@ -305,8 +304,19 @@ export class SettlementDisputesService {
     // Platform-wallet balancing line (CR-01) — self-derives from the charge
     // total minus both corrected totals above, mirroring settle()'s own
     // drift-absorption formula. Works even when platformPct is null.
+    // Residual CR-01 fix: when a category has no deliverable wallet row
+    // (ministryDelivered/earnerDelivered false), its ACTUAL total — not its
+    // corrected total — is what gets subtracted here, so the platform wallet
+    // retains that category's corrected share instead of the correction
+    // being silently discarded. Mirrors settle()'s own unresolved-recipient
+    // roll-up-to-platform semantics.
     const correctPlatformTotal =
-      Math.round((chargeAmountNgn - correctEarnerTotal - correctMinistryTotal) * 100) / 100;
+      Math.round(
+        (chargeAmountNgn -
+          (earnerDelivered ? correctEarnerTotal : actualEarnerTotal) -
+          (ministryDelivered ? correctMinistryTotal : actualMinistryTotal)) *
+          100,
+      ) / 100;
     const actualPlatformTotal = platformRow ? Number(platformRow.amount) : 0;
     const platformDelta = Math.round((correctPlatformTotal - actualPlatformTotal) * 100) / 100;
     if (platformRow?.walletId && Math.abs(platformDelta) >= 0.01) {

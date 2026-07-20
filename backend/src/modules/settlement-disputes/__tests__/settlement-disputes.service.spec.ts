@@ -442,6 +442,121 @@ describe('computeAdjustmentLines()', () => {
     expect(Math.round(lines.reduce((s, l) => s + l.deltaNgn, 0) * 100) / 100).toBe(0);
   });
 
+  it('retains a missing MINISTRY category\'s corrected share on the platform wallet when the corrected split assigns it a nonzero ministryPct but no MINISTRY-tagged row exists in the original settlement (residual CR-01)', async () => {
+    mockPrisma.transaction.findMany.mockResolvedValue([
+      {
+        id: 'TX-1',
+        reference: `${SETTLEMENT_REFERENCE}-DRV`,
+        amount: 8000,
+        walletId: WAL_DRIVER,
+        metadata: { recipientType: 'DRIVER' },
+      },
+      {
+        id: 'TX-2',
+        reference: `${SETTLEMENT_REFERENCE}-PLAT`,
+        amount: 2000,
+        walletId: WAL_PLATFORM,
+        metadata: {},
+      },
+    ]);
+    mockSettlementService.resolveSplit.mockResolvedValue({
+      earnerPct: 0.85,
+      ministryPct: 0.05,
+      platformPct: 0.1,
+    });
+
+    const { lines, chargeAmountNgn } = await service.computeAdjustmentLines(
+      'transport',
+      SETTLEMENT_REFERENCE,
+    );
+
+    expect(chargeAmountNgn).toBe(10000);
+    expect(lines).toEqual([
+      { walletId: WAL_DRIVER, deltaNgn: 500 },
+      { walletId: WAL_PLATFORM, deltaNgn: -500 },
+    ]);
+    expect(Math.round(lines.reduce((s, l) => s + l.deltaNgn, 0) * 100) / 100).toBe(0);
+  });
+
+  it('retains a missing earner category\'s corrected share on the platform wallet when no earnerRowsWithWallet exist at all but the corrected split assigns a nonzero earnerPct (residual CR-01)', async () => {
+    mockPrisma.transaction.findMany.mockResolvedValue([
+      {
+        id: 'TX-1',
+        reference: `${SETTLEMENT_REFERENCE}-MINISTRY`,
+        amount: 1000,
+        walletId: WAL_MINISTRY,
+        metadata: { recipientType: 'MINISTRY' },
+      },
+      {
+        id: 'TX-2',
+        reference: `${SETTLEMENT_REFERENCE}-PLAT`,
+        amount: 9000,
+        walletId: WAL_PLATFORM,
+        metadata: {},
+      },
+    ]);
+    mockSettlementService.resolveSplit.mockResolvedValue({
+      earnerPct: 0.8,
+      ministryPct: 0.05,
+      platformPct: 0.15,
+    });
+
+    const { lines, chargeAmountNgn } = await service.computeAdjustmentLines(
+      'transport',
+      SETTLEMENT_REFERENCE,
+    );
+
+    expect(chargeAmountNgn).toBe(10000);
+    expect(lines).toEqual([
+      { walletId: WAL_MINISTRY, deltaNgn: -500 },
+      { walletId: WAL_PLATFORM, deltaNgn: 500 },
+    ]);
+    expect(Math.round(lines.reduce((s, l) => s + l.deltaNgn, 0) * 100) / 100).toBe(0);
+  });
+
+  it('retains a zero-amount earner category\'s corrected share on the platform wallet when earnerRowsWithWallet exist but actualEarnerTotal is exactly 0 (residual CR-01)', async () => {
+    mockPrisma.transaction.findMany.mockResolvedValue([
+      {
+        id: 'TX-1',
+        reference: `${SETTLEMENT_REFERENCE}-DRV`,
+        amount: 0,
+        walletId: WAL_DRIVER,
+        metadata: { recipientType: 'DRIVER' },
+      },
+      {
+        id: 'TX-2',
+        reference: `${SETTLEMENT_REFERENCE}-MINISTRY`,
+        amount: 1000,
+        walletId: WAL_MINISTRY,
+        metadata: { recipientType: 'MINISTRY' },
+      },
+      {
+        id: 'TX-3',
+        reference: `${SETTLEMENT_REFERENCE}-PLAT`,
+        amount: 9000,
+        walletId: WAL_PLATFORM,
+        metadata: {},
+      },
+    ]);
+    mockSettlementService.resolveSplit.mockResolvedValue({
+      earnerPct: 0.1,
+      ministryPct: 0.05,
+      platformPct: 0.85,
+    });
+
+    const { lines, chargeAmountNgn } = await service.computeAdjustmentLines(
+      'transport',
+      SETTLEMENT_REFERENCE,
+    );
+
+    expect(chargeAmountNgn).toBe(10000);
+    expect(lines).toEqual([
+      { walletId: WAL_MINISTRY, deltaNgn: -500 },
+      { walletId: WAL_PLATFORM, deltaNgn: 500 },
+    ]);
+    expect(Math.round(lines.reduce((s, l) => s + l.deltaNgn, 0) * 100) / 100).toBe(0);
+  });
+
   it('throws NotFoundException when no Transaction rows at all match the settlementReference prefix', async () => {
     mockPrisma.transaction.findMany.mockResolvedValue([]);
 
