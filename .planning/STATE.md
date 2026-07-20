@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: — Extraction Backlog Clearance & Settlement Flexibility
-status: executing
+status: ready_to_plan
 stopped_at: Phase 19 context gathered
 last_updated: "2026-07-20T16:19:46.740Z"
 last_activity: 2026-07-20 -- Phase 19 planning complete
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 10
   completed_plans: 9
-  percent: 90
+  percent: 40
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-07-19)
 
 ## Current Position
 
-Phase: 19 (settlement-dispute-adjustment-workflow) — EXECUTING
-Plan: 1 of 5
-Status: Ready to execute
-Last activity: 2026-07-20 -- Phase 19 planning complete
+Phase: 20
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-07-20
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -46,7 +46,7 @@ Progress: [░░░░░░░░░░] 0%
 
 **Velocity:**
 
-- Total plans completed: 58 (v2.0 closed; v2.1 not yet started)
+- Total plans completed: 64 (v2.0 closed; v2.1 not yet started)
 - Average duration: -
 - Total execution time: -
 
@@ -62,6 +62,7 @@ Progress: [░░░░░░░░░░] 0%
 | 15 | 6 | - | - |
 | 16 | 4 | - | - |
 | 17 | 7 | - | - |
+| 19 | 6 | - | - |
 
 *Updated after each plan completion*
 
