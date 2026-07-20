@@ -1145,6 +1145,15 @@ model SettlementDispute {
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 
+  // No @@unique([settlementReference]) here — a settlementReference
+  // legitimately repeats across historical (RESOLVED/DISMISSED) rows once a
+  // prior dispute against the same settlement has terminated. Uniqueness is
+  // enforced only among ACTIVE statuses (OPEN/IN_REVIEW/BLOCKED) via a
+  // partial index added by raw SQL in the migration (Postgres/Prisma can't
+  // express a partial unique index as an `@@unique` schema attribute) —
+  // mirrors SettlementSplitTier's `settlement_split_tiers_module_tierName_active_key`
+  // pattern. See migration 20260720040000_settlement_dispute_partial_unique_active
+  // (`settlement_disputes_active_per_reference`).
   @@index([status])
   @@index([settlementReference])
   @@map("settlement_disputes")

@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { SettlementDisputesService } from '../settlement-disputes.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
@@ -147,6 +148,60 @@ describe('raise()', () => {
         }),
       }),
     );
+  });
+
+  it('throws ConflictException when settlementDispute.create() rejects with P2002 (CR-02 DB-level backstop)', async () => {
+    mockPrisma.transaction.findFirst.mockResolvedValue({
+      id: 'TXN-1',
+      metadata: { module: 'transport' },
+    });
+    mockPrisma.settlementDispute.findFirst.mockResolvedValue(null);
+    mockPrisma.settlementDispute.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError(
+        'Unique constraint failed on the fields: (settlementReference)',
+        { code: 'P2002', clientVersion: '5.11.0', meta: { target: ['settlementReference'] } },
+      ),
+    );
+
+    await expect(
+      service.raise(ACTOR_USER_ID, {
+        settlementReference: SETTLEMENT_REFERENCE,
+        module: 'transport',
+        reason: 'bad split',
+      }),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  it('throws BadRequestException when dto.module does not match the settlement\'s recorded module (CR-03)', async () => {
+    mockPrisma.transaction.findFirst.mockResolvedValue({
+      id: 'TXN-1',
+      metadata: { module: 'delivery' },
+    });
+
+    await expect(
+      service.raise(ACTOR_USER_ID, {
+        settlementReference: SETTLEMENT_REFERENCE,
+        module: 'transport',
+        reason: 'bad split',
+      }),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(mockPrisma.settlementDispute.findFirst).not.toHaveBeenCalled();
+    expect(mockPrisma.settlementDispute.create).not.toHaveBeenCalled();
+  });
+
+  it('does not reject when the settlement\'s metadata has no module field (legacy row)', async () => {
+    mockPrisma.transaction.findFirst.mockResolvedValue({ id: 'TXN-1', metadata: null });
+    mockPrisma.settlementDispute.findFirst.mockResolvedValue(null);
+    mockPrisma.settlementDispute.create.mockResolvedValue(buildDispute());
+
+    await expect(
+      service.raise(ACTOR_USER_ID, {
+        settlementReference: SETTLEMENT_REFERENCE,
+        module: 'transport',
+        reason: 'Driver split looks wrong',
+      }),
+    ).resolves.toEqual(expect.objectContaining({ id: DISPUTE_ID }));
   });
 });
 
