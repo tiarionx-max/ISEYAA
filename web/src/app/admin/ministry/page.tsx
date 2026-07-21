@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useSession } from 'next-auth/react';
 import { redirect } from 'next/navigation';
 import { toast } from 'sonner';
-import { Users, Tag, TrendingUp, FileText, Table2 } from 'lucide-react';
+import { Users, Tag, TrendingUp, FileText, Table2, Map } from 'lucide-react';
 import { fetcher, api } from '@/lib/api';
 import { VisitorEntriesChart, VisitorEntryRow } from '@/components/admin/ministry/VisitorEntriesChart';
 import { PurposeBreakdownChart, PurposeRow } from '@/components/admin/ministry/PurposeBreakdownChart';
@@ -15,6 +15,7 @@ import {
   MonthRevenueRow,
   ModuleLgaRevenueRow,
 } from '@/components/admin/ministry/RevenueChart';
+import { LgaMonthHeatmap } from '@/components/admin/ministry/LgaMonthHeatmap';
 
 // Per UI-SPEC.md Copywriting Contract — deviates from the tours/revenue page's
 // redirect('/admin') for disallowed roles: Ministry viewers have no legitimate
@@ -355,6 +356,27 @@ export default function MinistryDashboardPage() {
                 byMonth={revenue?.byMonth ?? []}
                 byModuleLga={revenue?.byModuleLga ?? []}
               />
+            )}
+          </div>
+        </div>
+
+        {/* LGA x Month Visitor Density panel — MIN-09, reuses visitorEntries query, no export buttons per D-08 */}
+        <div className="glass rounded-2xl border border-white/6 overflow-hidden mb-6">
+          <div className="flex items-center justify-between gap-2 px-5 py-4 border-b border-white/6">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-forest/20 border border-forest/30 flex items-center justify-center">
+                <Map size={14} className="text-forest-light" />
+              </div>
+              <h2 className="font-bold text-white text-sm">LGA × Month Visitor Density</h2>
+            </div>
+          </div>
+          <div className="px-4 py-5">
+            {isVisitorLoading ? (
+              <div className="h-64 skeleton rounded-xl" />
+            ) : isVisitorError ? (
+              <ErrorPanelState />
+            ) : (
+              <LgaMonthHeatmap data={visitorEntries ?? []} />
             )}
           </div>
         </div>

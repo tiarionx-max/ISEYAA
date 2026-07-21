@@ -82,11 +82,11 @@ export function LgaMonthHeatmap({ data }: { data: VisitorEntryRow[] }) {
 
   const { months, grid } = buildGrid(data);
   let max = 0;
-  for (const monthMap of grid.values()) {
-    for (const count of monthMap.values()) {
+  Array.from(grid.values()).forEach((monthMap) => {
+    Array.from(monthMap.values()).forEach((count) => {
       if (count > max) max = count;
-    }
-  }
+    });
+  });
 
   return (
     <div>
