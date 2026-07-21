@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: — Extraction Backlog Clearance & Settlement Flexibility
-status: executing
+status: ready_to_plan
 stopped_at: Phase 21 context gathered
 last_updated: "2026-07-21T00:51:35.990Z"
 last_activity: 2026-07-21 -- Phase 21 execution started
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 23
   completed_plans: 22
-  percent: 96
+  percent: 80
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-07-19)
 
 ## Current Position
 
-Phase: 21 (low-risk-grpc-extraction-news-waitlist-reviews-scoped-delive) — EXECUTING
-Plan: 1 of 8
-Status: Executing Phase 21
-Last activity: 2026-07-21 -- Phase 21 execution started
+Phase: 22
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-07-21
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -46,7 +46,7 @@ Progress: [░░░░░░░░░░] 0%
 
 **Velocity:**
 
-- Total plans completed: 69 (v2.0 closed; v2.1 not yet started)
+- Total plans completed: 77 (v2.0 closed; v2.1 not yet started)
 - Average duration: -
 - Total execution time: -
 
@@ -64,6 +64,7 @@ Progress: [░░░░░░░░░░] 0%
 | 17 | 7 | - | - |
 | 19 | 6 | - | - |
 | 20 | 5 | - | - |
+| 21 | 8 | - | - |
 
 *Updated after each plan completion*
 

@@ -12,8 +12,8 @@ Requirements for milestone v2.1 (Extraction Backlog Clearance & Settlement Flexi
 - [x] **GRPC-06a**: Every newly-extracted gRPC service exposes a `grpc.health.v1.Health` endpoint wired to Railway's `healthcheckPath`, enabling health-check-gated rollout
 - [x] **GRPC-06b**: Every existing `@Cron` job (escrow release, heartbeat cleanup, tour reminders, and any new jobs added this milestone) is guarded by a `RedisService.setNx()` distributed lock so it cannot double-fire during a dual-liveness deploy window
 - [x] **GRPC-06c**: A shadow-verify dual-run + manual pointer-flip blue-green cutover is proven end-to-end on a real extracted service, with a documented bake-window rollback path
-- [ ] **GRPC-07**: Delivery's `VerifyDeliveryOtp` RPC is extracted to a live, independently-deployed gRPC service (own Railway process, `ClientGrpc`, zero REST behavior change); `RequestDelivery`, `AcceptDelivery`, `CompleteDelivery`, and `DeliveryGateway` remain in-process this milestone (wallet-adjacent and Socket.IO-coupled)
-- [ ] **GRPC-08**: The news, waitlist, and reviews modules are each extracted to live, independently-deployed gRPC services (own `.proto` contracts authored, own Railway process, `ClientGrpc`, zero REST behavior change) following the `notifications-service` pattern
+- [x] **GRPC-07**: Delivery's `VerifyDeliveryOtp` RPC is extracted to a live, independently-deployed gRPC service (own Railway process, `ClientGrpc`, zero REST behavior change); `RequestDelivery`, `AcceptDelivery`, `CompleteDelivery`, and `DeliveryGateway` remain in-process this milestone (wallet-adjacent and Socket.IO-coupled)
+- [x] **GRPC-08**: The news, waitlist, and reviews modules are each extracted to live, independently-deployed gRPC services (own `.proto` contracts authored, own Railway process, `ClientGrpc`, zero REST behavior change) following the `notifications-service` pattern
 
 ### Settlement Flexibility
 
@@ -78,8 +78,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | GRPC-06a | Phase 20 | Complete |
 | GRPC-06b | Phase 20 | Complete |
 | GRPC-06c | Phase 20 | Complete |
-| GRPC-07 | Phase 21 | Pending |
-| GRPC-08 | Phase 21 | Pending |
+| GRPC-07 | Phase 21 | Complete |
+| GRPC-08 | Phase 21 | Complete |
 | SETTLE-11a | Phase 18 | Complete |
 | SETTLE-11b | Phase 18 | Complete |
 | SETTLE-11c | Phase 18 | Complete |
