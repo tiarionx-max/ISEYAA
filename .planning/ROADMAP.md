@@ -531,7 +531,7 @@ Plans:
   1. A configurable, recurring Ministry export digest (CSV + branded PDF attachment) is generated and delivered by email with no manual trigger, on a cadence set via database configuration
   2. An operator can change the export recipient list and delivery cadence via the database with no redeploy required
   3. Every scheduled delivery attempt (success or failure) is logged, and a transient SendGrid outage does not silently drop a report (send wrapped in the existing `cockatiel` resilience layer)
-  4. The Ministry dashboard shows an LGA × month/season visitor heatmap built on existing `MinistryService` query shapes and the existing `recharts` dependency, with no new mapping dependency introduced
+  4. The Ministry dashboard shows an LGA × month/season visitor heatmap built on existing `MinistryService` query shapes with a custom CSS-grid component — no new mapping/charting dependency introduced
 **Plans**: 4 plans
 Plans:
 **Wave 1** *(no dependencies — runs in parallel)*

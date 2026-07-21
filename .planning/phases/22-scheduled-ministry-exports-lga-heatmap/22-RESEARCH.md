@@ -473,17 +473,19 @@ async setNx(key: string, value: string, ttlSeconds: number): Promise<boolean> {
 
 **If this table is empty:** N/A — see rows above. All CONTEXT.md-sourced claims (file paths, method signatures, model precedent) were independently re-verified by direct file reads in this research session and are NOT included in this table (they are `[VERIFIED: codebase]`, not `[ASSUMED]`).
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Exact `@Cron` schedule expression for the "check subscriptions due" tick**
    - What we know: `@nestjs/schedule` 6.1.3's `CronExpression` enum includes daily presets (e.g. `EVERY_DAY_AT_6AM`); the codebase's existing crons range from `EVERY_30_SECONDS` (heartbeat cleanup) to `EVERY_HOUR` (escrow release) to raw `*/15 * * * *` strings (tour reminders) — no existing cron runs at daily-or-coarser granularity.
    - What's unclear: Whether the Ministry has an expected delivery time-of-day (e.g. "digest should land in inboxes by 8am WAT on the due day") that should drive the exact hour chosen, or whether "sometime during the day it becomes due" is acceptable.
    - Recommendation: Default to a single fixed daily time (e.g. 6am server time) unless the planner/user has a specific delivery-time preference; this is a config-value choice, not an architecture choice, and can be changed with a one-line edit later with no migration.
+   - RESOLVED: Plan 22-03 uses `@Cron(CronExpression.EVERY_DAY_AT_6AM)` — the single fixed daily time recommended above; no Ministry-specific delivery-time preference surfaced, so the default preset was adopted verbatim.
 
 2. **Whether one combined CSV attachment (3 reports concatenated with a `breakdown` discriminator, like the existing `revenue/export` CSV route) or 3 separate CSV attachments better satisfies MIN-08a's "CSV + branded PDF attachment" wording**
    - What we know: The existing 3 export routes each produce their own single-report CSV; only `revenue/export`'s CSV already unions multiple sub-breakdowns into one file (via a `breakdown` column, per its own D-14 precedent at `ministry.controller.ts:178-194`).
    - What's unclear: MIN-08a's singular "CSV" (not "CSVs") could support either reading, and CONTEXT.md's D-01 says "CSV attachment(s)" — the parenthetical plural leaves this genuinely open.
    - Recommendation: Follow the PDF's own precedent (D-01: "one multi-section branded PDF") and produce ONE combined CSV per digest email (visitor entries + purpose breakdown + revenue rows unioned with a `report` discriminator column, mirroring the existing `revenue/export`'s `breakdown` column technique) — keeps the digest's attachment count small (2 files: 1 PDF + 1 CSV) and avoids the D-15 size-guard needing to reason about partial-attachment-omission across 4 separate files.
+   - RESOLVED: Plan 22-03 ships ONE combined CSV with a `report` discriminator column (`MINISTRY_DIGEST_CSV_COLUMNS = ['report','lgaId','lgaName','month','userRole','purpose','count','module','total']`), exactly as recommended — 2 total attachments (1 PDF + 1 CSV) per digest send.
 
 ## Environment Availability
 

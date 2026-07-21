@@ -32,7 +32,7 @@ Requirements for milestone v2.1 (Extraction Backlog Clearance & Settlement Flexi
 - [ ] **MIN-08a**: A scheduled (`@Cron`-driven) Ministry export digest — CSV + branded PDF attachment — is generated and delivered by email on a configurable cadence, reusing the existing Phase 14 export code
 - [ ] **MIN-08b**: The Ministry export recipient list and delivery cadence are configurable via the database, requiring no redeploy to change
 - [ ] **MIN-08c**: Every scheduled delivery attempt (success or failure) is logged; the send is wrapped in the existing `cockatiel` resilience layer so a transient SendGrid outage doesn't silently drop a report
-- [ ] **MIN-09**: The Ministry dashboard shows an LGA × month/season point-density visitor heatmap built with the existing `recharts` dependency over existing `MinistryService` query shapes — no new GeoJSON or mapping dependency this milestone
+- [ ] **MIN-09**: The Ministry dashboard shows an LGA × month/season point-density visitor heatmap built with a custom CSS-grid component (no new mapping/charting dependency) over existing `MinistryService` query shapes — no new GeoJSON or mapping dependency this milestone
 
 ## v2 Requirements
 
