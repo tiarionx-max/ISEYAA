@@ -1,5 +1,13 @@
-import { Inject, Injectable, Logger, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  OnModuleInit,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ClientGrpc } from '@nestjs/microservices';
+import { status as GrpcStatus } from '@grpc/grpc-js';
 import { firstValueFrom } from 'rxjs';
 import { waitlist } from '@iseyaa/proto';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -73,6 +81,12 @@ export class WaitlistClientService implements OnModuleInit {
         id: result.id,
       };
     } catch (err: any) {
+      // T-21-08-03: strict `===` against numeric GrpcStatus enum values — a malformed/
+      // codeless error always falls through to the safe ServiceUnavailableException
+      // default below, never a mis-mapped 400.
+      if (err?.code === GrpcStatus.INVALID_ARGUMENT) {
+        throw new BadRequestException(err.message);
+      }
       // T-21-03-02: log only err?.message — never the full gRPC error object or PII
       // (email/phone) from the join payload.
       this.logger.error(`Waitlist gRPC joinWaitlist failed: ${err?.message ?? err}`);

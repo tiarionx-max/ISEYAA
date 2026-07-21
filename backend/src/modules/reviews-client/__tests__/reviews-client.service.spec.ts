@@ -1,5 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import { status as GrpcStatus } from '@grpc/grpc-js';
 import { of, throwError } from 'rxjs';
 import { ReviewsClientService } from '../reviews-client.service';
 import { REVIEWS_PACKAGE } from '../reviews-client.constants';
@@ -158,6 +165,66 @@ describe('ReviewsClientService', () => {
       expect(mockGrpcService.createReview).not.toHaveBeenCalled();
       expect(mockPrisma.review.findUnique).not.toHaveBeenCalled();
       expect(mockPrisma.review.update).not.toHaveBeenCalled();
+    });
+
+    it('5. on gRPC error code NOT_FOUND, throws NotFoundException with the exact preserved message and does not touch Prisma', async () => {
+      const svc = await makeService();
+      const message = 'Booking not found';
+      mockGrpcService.createReview.mockReturnValue(throwError(() => ({ code: GrpcStatus.NOT_FOUND, message })));
+
+      await expect(svc.createReview(USER_ID, CREATE_DTO)).rejects.toThrow(NotFoundException);
+      await expect(svc.createReview(USER_ID, CREATE_DTO)).rejects.toThrow(message);
+      expect(mockPrisma.review.findUnique).not.toHaveBeenCalled();
+      expect(mockPrisma.review.update).not.toHaveBeenCalled();
+    });
+
+    it('6. on gRPC error code PERMISSION_DENIED, throws ForbiddenException with the exact preserved message and does not touch Prisma', async () => {
+      const svc = await makeService();
+      const message = 'You did not own this tour booking';
+      mockGrpcService.createReview.mockReturnValue(
+        throwError(() => ({ code: GrpcStatus.PERMISSION_DENIED, message })),
+      );
+
+      await expect(svc.createReview(USER_ID, CREATE_DTO)).rejects.toThrow(ForbiddenException);
+      await expect(svc.createReview(USER_ID, CREATE_DTO)).rejects.toThrow(message);
+      expect(mockPrisma.review.findUnique).not.toHaveBeenCalled();
+      expect(mockPrisma.review.update).not.toHaveBeenCalled();
+    });
+
+    it('7. on gRPC error code INVALID_ARGUMENT, throws BadRequestException with the exact preserved message and does not touch Prisma', async () => {
+      const svc = await makeService();
+      const message = 'Tour has not ended yet';
+      mockGrpcService.createReview.mockReturnValue(
+        throwError(() => ({ code: GrpcStatus.INVALID_ARGUMENT, message })),
+      );
+
+      await expect(svc.createReview(USER_ID, CREATE_DTO)).rejects.toThrow(BadRequestException);
+      await expect(svc.createReview(USER_ID, CREATE_DTO)).rejects.toThrow(message);
+      expect(mockPrisma.review.findUnique).not.toHaveBeenCalled();
+      expect(mockPrisma.review.update).not.toHaveBeenCalled();
+    });
+
+    it('8. on gRPC error code ALREADY_EXISTS, throws ConflictException with the exact preserved message and does not touch Prisma', async () => {
+      const svc = await makeService();
+      const message = 'You already reviewed this target for this booking';
+      mockGrpcService.createReview.mockReturnValue(
+        throwError(() => ({ code: GrpcStatus.ALREADY_EXISTS, message })),
+      );
+
+      await expect(svc.createReview(USER_ID, CREATE_DTO)).rejects.toThrow(ConflictException);
+      await expect(svc.createReview(USER_ID, CREATE_DTO)).rejects.toThrow(message);
+      expect(mockPrisma.review.findUnique).not.toHaveBeenCalled();
+      expect(mockPrisma.review.update).not.toHaveBeenCalled();
+    });
+
+    it('9. on an unrecognized/codeless error, still falls through to ServiceUnavailableException (regression guard)', async () => {
+      const svc = await makeService();
+      mockGrpcService.createReview.mockReturnValue(throwError(() => new Error('UNAVAILABLE')));
+
+      await expect(svc.createReview(USER_ID, CREATE_DTO)).rejects.toThrow(ServiceUnavailableException);
+      await expect(svc.createReview(USER_ID, CREATE_DTO)).rejects.toThrow(
+        /Reviews service is temporarily unavailable/,
+      );
     });
   });
 
