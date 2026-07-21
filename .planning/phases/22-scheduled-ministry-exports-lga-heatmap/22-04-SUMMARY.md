@@ -111,3 +111,15 @@ None - no external service configuration required.
 ---
 *Phase: 22-scheduled-ministry-exports-lga-heatmap*
 *Completed: 2026-07-21*
+
+## Self-Check: PASSED
+
+All created files and commit hashes verified present on disk / in git log:
+- `web/src/components/admin/ministry/LgaMonthHeatmap.tsx` — FOUND
+- `web/src/components/admin/ministry/__tests__/LgaMonthHeatmap.test.tsx` — FOUND
+- `web/src/app/admin/ministry/page.tsx` — FOUND
+- `.planning/phases/22-scheduled-ministry-exports-lga-heatmap/22-04-SUMMARY.md` — FOUND
+- `.planning/phases/22-scheduled-ministry-exports-lga-heatmap/deferred-items.md` — FOUND
+- `193e29c` — FOUND
+- `eecc42c` — FOUND
+- `170ed2c` — FOUND
