@@ -23,18 +23,23 @@ A tourist in Abeokuta can discover an attraction, book a guesthouse, buy an even
 
 **Key context:** Surfaced from a stakeholder call. `ROADMAP.md` Phase 2 previously marked gRPC extraction `[x]` complete for 8 services, but a code audit confirmed zero `@GrpcMethod`/`ClientGrpc` usage anywhere — the platform was actually a single-process monolith. Phase 10 corrected that documentation claim before any new work was bolted on top.
 
-## Current Milestone: v2.1 Extraction Backlog Clearance & Settlement Flexibility
+## Shipped: v2.1 Extraction Backlog Clearance & Settlement Flexibility (2026-07-21)
 
 **Goal:** Extend v2.0's proven patterns — more services onto real gRPC, safer deploys for them, automated Ministry exports, and settlement disputes/flexible splits.
 
-**Target features:**
-- Live gRPC extraction: Delivery + remaining core modules (GRPC-07)
-- Live gRPC extraction: news/waitlist/reviews (GRPC-08)
-- Blue-green/canary deploys per extracted gRPC service (GRPC-06)
-- Scheduled/recurring Ministry export delivery (MIN-08)
-- Seasonal/LGA heatmap visualization on Ministry dashboard (MIN-09)
-- Settlement dispute/adjustment workflow (SETTLE-10)
-- Configurable per-module Ministry split tiers (SETTLE-11)
+**Delivered:**
+
+- Centralized settlement split configuration — one validated, effective-dated `SettlementSplitTier` resolver (`SettlementService.resolveSplit()`) replacing 6 duplicated inline `PlatformConfig` reads across Transport/Delivery/Marketplace/Events/Stays/Studio, with a `Number.isFinite()` guard rejecting NaN-corrupted config before any wallet mutation (SETTLE-11)
+- `SUPER_ADMIN`-only settlement dispute/adjustment workflow — `OPEN → IN_REVIEW → RESOLVED/DISMISSED` lifecycle with an append-only `SettlementService.adjust()` compensating-transaction primitive that never mutates historical `Transaction` rows, fully audited (SETTLE-10)
+- gRPC blue-green healthcheck retrofit — every extracted gRPC service exposes a real `grpc.health.v1.Health` endpoint gating Railway rollout, all 6 named `@Cron` jobs guarded against dual-liveness double-fire via `setNx()` distributed locks, plus a documented 6-step blue-green cutover/rollback runbook (GRPC-06)
+- Four more services independently extracted onto live gRPC (News, Waitlist, Reviews, and Delivery's `VerifyDeliveryOtp`), following the `notifications-service` hybrid HTTP+gRPC pattern with zero client-visible behavior change; the wallet-adjacent remainder of Delivery stays in-process by design (GRPC-07, GRPC-08)
+- Scheduled Ministry export digests — recurring CSV + branded PDF delivery via a distributed-lock-guarded `@Cron` scheduler, DB-configurable recipients/cadence, wrapped in the existing resilience layer (MIN-08); an LGA×month visitor heatmap added to the Ministry dashboard with zero new backend queries or mapping dependencies (MIN-09)
+
+**Key context:** A code-review gap-closure round (21-08) fixed a business-exception-to-503 downgrade bug — Reviews' and Waitlist's gRPC controllers weren't wrapping business exceptions in `RpcException`, so 4xx rejections silently became generic 503s once canary was live. 800 backend tests passing at close. 12 items remain human-verification-only debt at milestone close (live WhatsApp template approval, live blue-green cutover rehearsal, staging migration confirmation, bookkeeping) — see STATE.md Deferred Items, none block v2.1's completion.
+
+## Current Milestone: Planning next milestone
+
+Run `/gsd-new-milestone` to define v2.2 (or the next major version) scope — questioning → research → requirements → roadmap.
 
 ## Requirements
 
@@ -91,7 +96,7 @@ This closes out milestone v2.1 — all 5 phases (18-22) complete.
 
 ### Active
 
-None — v2.1's target features are fully delivered; milestone ready for `/gsd-complete-milestone`.
+None yet — v2.1 fully shipped and archived. Awaiting next milestone definition via `/gsd-new-milestone`. Candidate carry-forward items already scoped by v2.1 research (full detail preserved in `milestones/v2.1-REQUIREMENTS.md` v2 section): full Delivery gRPC extraction (GRPC-07x), weighted canary traffic shifting (GRPC-06x), remaining wallet-adjacent module extraction (GRPC-09), tiered/rule-based settlement splits (SETTLE-11e), self-service vendor/rider dispute filing (SETTLE-10f), true LGA choropleth mapping (MIN-09x), in-dashboard notification banner (MIN-10), LGA/month drill-down (MIN-11).
 
 ### Out of Scope
 
@@ -109,10 +114,10 @@ None — v2.1's target features are fully delivered; milestone ready for `/gsd-c
 
 - **Government client**: Ogun State Government, Nigeria — ~7M citizen addressable market
 - **Operated by**: LJ Entertainment
-- **Current state (2026-07-21)**: v2.1 shipped — all 5 phases (18-22) complete, 800 backend tests passing. Working on branch `microservices-redesign`. Backend confirmed live on Railway; `notifications-service` remains the first genuinely separate deployed gRPC process, joined this milestone by News/Waitlist/Reviews services proving the pattern repeats cleanly. Settlement engine now supports disputes/adjustments and centralized per-module split tiers. Ministry dashboard gained scheduled digest delivery and an LGA×month heatmap. Several human-verification items remain open across Phases 19-22 (see each phase's `*-HUMAN-UAT.md`) — code-complete but pending live-deployment confirmation. Multi-channel OTP shipped in Phase 15; live WhatsApp delivery awaits Meta template approval (stakeholder/ops action, tracked in `MANUAL-ACTIONS.md`).
+- **Current state (2026-07-21)**: v2.1 shipped — milestone archived, both v2.0 (Phases 10-17) and v2.1 (Phases 18-22) complete, 800 backend tests passing. Working on branch `microservices-redesign`. Five services now run as genuinely separate deployed gRPC processes (`notifications-service`, `news-service`, `waitlist-service`, `reviews-service`, `delivery-otp-service`), each health-gated for blue-green rollout with distributed-lock-guarded crons; Transport/Delivery/Marketplace/Events/Stays/Studio/Auth/Wallet/Tour* remain in-process by design (GRPC-05 reaffirmed). Settlement engine now supports disputes/adjustments (`SettlementService.adjust()`) and one centralized, effective-dated split-tier resolver (`resolveSplit()`) replacing 6 duplicated inline reads. Ministry dashboard gained scheduled digest delivery and an LGA×month heatmap. 12 known deferred items remain open (see STATE.md Deferred Items) — all human-verification-only or bookkeeping, none blocking. Multi-channel OTP shipped in Phase 15; live WhatsApp delivery still awaits Meta template approval (stakeholder/ops action, tracked in `MANUAL-ACTIONS.md`).
 - **Stack**: Node.js 20 LTS + NestJS + TypeScript, Next.js 14 App Router, Expo SDK 51, Neon PostgreSQL 16 + Prisma ORM, Upstash Redis, Paystack + Flutterwave webhooks, Cloudflare R2 + SendGrid, Anthropic Claude API
-- **Architecture reality vs. plan**: `packages/proto/*.proto` contracts exist for auth/wallet/events/marketplace/notifications/stays/admin/ai but are unwired; transport/delivery/tour-packages/tour-guides/news/waitlist/reviews have no proto stubs at all. v2.0 commits to actually building the split.
-- **Revenue model (current)**: Two-way platform fees from `PlatformConfig` — Transport 15%, Accommodation 8%, Events 10%, Marketplace 8%, Delivery 20%. v2.0 generalizes this to three-way (vendor/rider, Ministry, platform) using the pattern already proven in Phase 9's tour settlement engine.
+- **Architecture reality (current)**: `packages/proto/*.proto` contracts exist for all 15 modules; 5 are genuinely wired to independently-deployable Railway processes via `ClientGrpc` (notifications, news, waitlist, reviews, delivery-otp — the last scoped to `VerifyDeliveryOtp` only). The remaining 10 modules stay in-process — deliberate (GRPC-05), not unfinished. Full Delivery extraction, remaining wallet-adjacent modules, and weighted canary shifting are tracked as GRPC-07x/GRPC-09/GRPC-06x for a future milestone.
+- **Revenue model (current)**: Three-way settlement (vendor/rider, Ministry, platform) via `SettlementService.resolveSplit()` for all 6 revenue-generating modules (Transport, Delivery, Marketplace, Events, Stays, Studio), each split percentage stored effective-dated in `SettlementSplitTier` and admin-editable without a code deploy. Disputes/adjustments post as append-only compensating transactions, never mutating historical records.
 - **KYC tiers**: Tier 0 phone-only → Tier 1 BVN → Tier 2 BVN+NIN → Tier 3 liveness, each raising wallet daily limits
 - **Design language**: Forest Green #1A6B3C, Tropical Gold #C8962A, Deep Jungle #1C2B2B. Playfair Display + Syne + DM Mono. Premium tropical dark aesthetic.
 
@@ -142,6 +147,11 @@ None — v2.1's target features are fully delivered; milestone ready for `/gsd-c
 | Platform fees from DB platformConfig | Never hardcoded — fee changes don't require code deployments | ✓ Good |
 | Typesense over Elasticsearch | Open source, 10x simpler to operate, typo-tolerant, built-in geo-search, no JVM | ✓ Good |
 | Cloudflare R2 over AWS S3 | Zero egress fees, S3-compatible API, free CDN — same SDK, no code change | ✓ Good |
+| Centralize settlement splits before adding disputes (v2.1) | Phase 19's dispute/adjustment resolver needs one source of truth for "what split should have applied" — building it on 6 duplicated inline reads would mean 6 places to get it wrong | ✓ Good — Phase 18 shipped `resolveSplit()` first; Phase 19 built cleanly on top with zero rework |
+| Healthcheck retrofit sequenced before new gRPC extraction (v2.1) | Cutting live traffic to a new `ClientGrpc` service without a working health endpoint defeats blue-green — a hard prerequisite, not a preference | ✓ Good — Phase 20 shipped real health endpoints + cron lock guards before Phase 21 extracted 4 more services |
+| GRPC-07 scoped to `VerifyDeliveryOtp` only (v2.1) | `RequestDelivery`/`AcceptDelivery`/`CompleteDelivery`/`DeliveryGateway` are wallet-adjacent and/or Socket.IO-coupled; full extraction needs a durable match-timeout + Socket.IO Redis adapter redesign explicitly out of scope | ✓ Good — narrow scope shipped cleanly; full extraction tracked as GRPC-07x for a future milestone |
+| No wallet-touching service extracted in v2.1 (reaffirms GRPC-05) | Any newly-extracted service needing `SettlementService` embeds its own copy against the same Postgres rather than calling a separately-extracted wallet-service over gRPC | ✓ Good — News/Waitlist/Reviews/Delivery-OTP all extracted without touching wallet-adjacent code paths |
+| Heatmap as custom CSS-grid, not a mapping library (MIN-09) | No LGA boundary GeoJSON exists in the schema; a point-density grid over existing `MinistryService` query shapes ships this milestone with zero new dependencies | ✓ Good — shipped with zero new npm dependencies; true choropleth deferred to MIN-09x pending stakeholder ask |
 
 ## Evolution
 
@@ -161,4 +171,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-21 — Phase 22 (Scheduled Ministry Exports & LGA Heatmap) complete — milestone v2.1 fully delivered*
+*Last updated: 2026-07-21 — milestone v2.1 (Extraction Backlog Clearance & Settlement Flexibility) archived and complete*
