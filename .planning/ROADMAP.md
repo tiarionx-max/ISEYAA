@@ -539,7 +539,7 @@ Plans:
 - [x] 22-04-PLAN.md — Web: LgaMonthHeatmap component (buildGrid() aggregation, 5-bucket color-intensity grid) + mount as 4th Ministry dashboard panel
 
 **Wave 2** *(blocked on 22-01 — needs MinistryExportSubscription Prisma Client types)*
-- [ ] 22-02-PLAN.md — Subscription CRUD: DTOs + MinistryExportSubscriptionService + SUPER_ADMIN-gated MinistryExportSubscriptionController + ministry.module.ts wiring
+- [x] 22-02-PLAN.md — Subscription CRUD: DTOs + MinistryExportSubscriptionService + SUPER_ADMIN-gated MinistryExportSubscriptionController + ministry.module.ts wiring
 
 **Wave 3** *(blocked on 22-02 — shares ministry.module.ts)*
 - [ ] 22-03-PLAN.md — MinistryExportSchedulerService: @Cron + setNx() lock guard, per-subscription rolling-window digest gather/render/send via ResilienceService.execute('sendgrid', ...)
@@ -581,4 +581,4 @@ For v2.1: Phase 19 requires Phase 18 (needs the centralized split resolver as th
 | 19. Settlement Dispute & Adjustment Workflow | 6/6 | Complete    | 2026-07-20 |
 | 20. gRPC Blue-Green Healthcheck Retrofit | 5/5 | Complete    | 2026-07-20 |
 | 21. Low-Risk gRPC Extraction — News/Waitlist/Reviews + Scoped Delivery OTP | 8/8 | Complete    | 2026-07-21 |
-| 22. Scheduled Ministry Exports & LGA Heatmap | 2/4 | In Progress|  |
+| 22. Scheduled Ministry Exports & LGA Heatmap | 3/4 | In Progress|  |
