@@ -150,4 +150,24 @@ export class SendgridService {
 
     await this.sendEmail(to, subject, html);
   }
+
+  // Deliberately has NO try/catch (mirrors sendOtpEmail(), NOT sendEmail()'s swallow
+  // behavior) — the caller (22-03's scheduler, via resilience.execute('sendgrid', ...))
+  // depends on a real rejection propagating here to mark lastStatus = FAILED.
+  async sendMinistryDigest(params: {
+    to: string[];
+    subject: string;
+    html: string;
+    attachments?: Array<{ content: string; filename: string; type: string; disposition: string }>;
+  }): Promise<void> {
+    const { to, subject, html, attachments } = params;
+
+    await sgMail.send({
+      to,
+      from: this.from,
+      subject,
+      html,
+      ...(attachments && attachments.length > 0 ? { attachments } : {}),
+    });
+  }
 }
