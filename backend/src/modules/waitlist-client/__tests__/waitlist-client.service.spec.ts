@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ServiceUnavailableException } from '@nestjs/common';
+import { status as GrpcStatus } from '@grpc/grpc-js';
 import { of, throwError } from 'rxjs';
 import { WaitlistClientService } from '../waitlist-client.service';
 import { WAITLIST_PACKAGE } from '../waitlist-client.constants';
@@ -135,6 +136,28 @@ describe('WaitlistClientService', () => {
       await svc.join(JOIN_DTO);
 
       expect(mockResilience.execute).toHaveBeenCalledWith('waitlistGrpc', expect.any(Function));
+    });
+
+    it('9. on gRPC error code INVALID_ARGUMENT, throws BadRequestException with the exact preserved message and does not touch prisma.waitlistEntry.count', async () => {
+      const svc = await makeService();
+      const message = 'Provide an email or phone number';
+      mockGrpcService.joinWaitlist.mockReturnValue(
+        throwError(() => ({ code: GrpcStatus.INVALID_ARGUMENT, message })),
+      );
+
+      await expect(svc.join(JOIN_DTO)).rejects.toThrow(BadRequestException);
+      await expect(svc.join(JOIN_DTO)).rejects.toThrow(message);
+      expect(mockPrisma.waitlistEntry.count).not.toHaveBeenCalled();
+    });
+
+    it('10. on an unrecognized/codeless error, still falls through to ServiceUnavailableException (regression guard)', async () => {
+      const svc = await makeService();
+      mockGrpcService.joinWaitlist.mockReturnValue(throwError(() => new Error('UNAVAILABLE')));
+
+      await expect(svc.join(JOIN_DTO)).rejects.toThrow(ServiceUnavailableException);
+      await expect(svc.join(JOIN_DTO)).rejects.toThrow(
+        /Waitlist service is temporarily unavailable/,
+      );
     });
   });
 
