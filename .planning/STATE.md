@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-07-19)
 Phase: 21 (low-risk-grpc-extraction-news-waitlist-reviews-scoped-delive) — EXECUTING
 Plan: 1 of 7
 Status: Ready to execute
-Last activity: 2026-07-21 -- Phase 21 planning complete
+Last activity: 2026-07-21 - Completed quick task 260720-qth: Correct README.md inaccuracies against current codebase
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -98,6 +98,7 @@ Key decisions logged in PROJECT.md. Decisions affecting current v2.1 work:
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260716-lbl | Fix deleteOutDir/tsbuildinfo stale-cache race and root .env not loading in backend dev bootstrap | 2026-07-16 | 5bd04f4 | [260716-lbl-fix-deleteoutdir-tsbuildinfo-stale-cache](./quick/260716-lbl-fix-deleteoutdir-tsbuildinfo-stale-cache/) |
+| 260720-qth | Correct README.md inaccuracies against current codebase (stale monolith description, missing microservices/gRPC architecture) | 2026-07-21 | 2e88e78 | [260720-qth-correct-readme-md-inaccuracies-against-c](./quick/260720-qth-correct-readme-md-inaccuracies-against-c/) |
 
 ## Deferred Items
 
