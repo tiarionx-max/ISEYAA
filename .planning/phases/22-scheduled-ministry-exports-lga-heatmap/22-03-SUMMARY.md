@@ -122,3 +122,14 @@ None - no external service configuration required. `SendgridService.sendMinistry
 ---
 *Phase: 22-scheduled-ministry-exports-lga-heatmap*
 *Completed: 2026-07-21*
+
+## Self-Check: PASSED
+
+All claimed files verified present on disk:
+- `backend/src/modules/ministry/ministry-export-scheduler.service.ts`
+- `backend/src/modules/ministry/__tests__/ministry-export-scheduler.service.spec.ts`
+- `backend/src/modules/ministry/ministry.module.ts`
+- `.planning/phases/22-scheduled-ministry-exports-lga-heatmap/22-03-SUMMARY.md`
+
+All claimed commit hashes verified present in git history:
+- `163fe54`, `b9fc520`, `fa68e39`, `041812b`, `b893539`
