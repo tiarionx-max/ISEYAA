@@ -55,4 +55,68 @@ describe('SendgridService', () => {
       ).resolves.toBeUndefined();
     });
   });
+
+  describe('sendMinistryDigest', () => {
+    it('Test 1: resolves when sgMail.send() resolves, and captured call args include to[] and a 2-entry attachments array matching input verbatim', async () => {
+      (sgMail.send as jest.Mock).mockResolvedValue([{}, {}]);
+
+      const attachments = [
+        { content: 'base64pdf', filename: 'ministry-digest.pdf', type: 'application/pdf', disposition: 'attachment' },
+        { content: 'base64csv', filename: 'ministry-digest.csv', type: 'text/csv', disposition: 'attachment' },
+      ];
+
+      await expect(
+        service.sendMinistryDigest({
+          to: ['a@gov.ng', 'b@gov.ng'],
+          subject: 'Ministry Export Digest',
+          html: '<p>...</p>',
+          attachments,
+        }),
+      ).resolves.toBeUndefined();
+
+      expect(sgMail.send).toHaveBeenCalledTimes(1);
+      const sentArgs = (sgMail.send as jest.Mock).mock.calls[0][0];
+      expect(sentArgs.to).toEqual(['a@gov.ng', 'b@gov.ng']);
+      expect(sentArgs.attachments).toHaveLength(2);
+      expect(sentArgs.attachments).toEqual(attachments);
+    });
+
+    it('Test 2: omitting attachments (or passing an empty array) results in sgMail.send() being called WITHOUT an attachments key at all', async () => {
+      (sgMail.send as jest.Mock).mockResolvedValue([{}, {}]);
+
+      await service.sendMinistryDigest({
+        to: ['a@gov.ng'],
+        subject: 'Ministry Export Digest',
+        html: '<p>...</p>',
+      });
+
+      let sentArgs = (sgMail.send as jest.Mock).mock.calls[0][0];
+      expect(sentArgs).not.toHaveProperty('attachments');
+
+      jest.clearAllMocks();
+      (sgMail.send as jest.Mock).mockResolvedValue([{}, {}]);
+
+      await service.sendMinistryDigest({
+        to: ['a@gov.ng'],
+        subject: 'Ministry Export Digest',
+        html: '<p>...</p>',
+        attachments: [],
+      });
+
+      sentArgs = (sgMail.send as jest.Mock).mock.calls[0][0];
+      expect(sentArgs).not.toHaveProperty('attachments');
+    });
+
+    it('Test 3: REJECTS (propagates the sgMail.send() error) when sgMail.send() rejects — proves the same NO-swallow contract as sendOtpEmail', async () => {
+      (sgMail.send as jest.Mock).mockRejectedValue(new Error('SendGrid API error'));
+
+      await expect(
+        service.sendMinistryDigest({
+          to: ['a@gov.ng'],
+          subject: 'Ministry Export Digest',
+          html: '<p>...</p>',
+        }),
+      ).rejects.toThrow('SendGrid API error');
+    });
+  });
 });
