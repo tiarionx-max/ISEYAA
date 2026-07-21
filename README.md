@@ -175,6 +175,12 @@ All routes are prefixed with `/api/v1`.
 | Wallet | `GET /wallet/balance` `GET /wallet/transactions` `POST /wallet/topup` |
 | Admin | `GET /admin/dashboard` `GET /admin/revenue` |
 | Webhooks | `POST /webhooks/paystack` |
+| Delivery | `POST /delivery/orders` `POST /delivery/orders/:id/verify-otp` `PATCH /delivery/orders/:id/complete` |
+| Notifications | `GET /notifications` `POST /notifications/register-token` `POST /notifications/send` |
+| Waitlist | `POST /waitlist` `GET /waitlist/stats` |
+| News | `GET /news` |
+| Reviews | `POST /reviews` `GET /reviews` `GET /admin/reviews/queue` |
+| AI | `POST /ai/chat` `POST /ai/itinerary` `POST /ai/lga-intel` |
 
 Full OpenAPI spec: http://localhost:3001/api/docs (Swagger UI)
 
@@ -215,6 +221,8 @@ cd backend && npm run test:cov      # coverage report
 
 ## Module Reference
 
+gRPC-client-only wrapper modules (`notifications-client`, `news-client`, `waitlist-client`, `reviews-client`, `delivery-otp-client`) are not documented separately below — they are thin proxies to the extracted services described in the [Architecture](#architecture) section, not standalone business-logic modules.
+
 ### EventsModule
 - `ORGANISER` role creates and manages events
 - Ticket purchase → Paystack → `charge.success` webhook → QR PNG → S3 → SendGrid email
@@ -252,3 +260,35 @@ cd backend && npm run test:cov      # coverage report
 - Revenue breakdown: govt_levy by LGA, by vendor category, by month
 - User/vendor/property/studio-slot management
 - Platform config CRUD (including PLATFORM_FEE_PCT)
+
+### DeliveryModule
+- Riders apply via `createDeliveryRider`; `LGA_ADMIN` approves before they can go online
+- Fee estimate read from `platformConfig` (`delivery_base_fee`, `delivery_platform_fee_pct`) — never hardcoded
+- OTP-gated handoff: `POST /delivery/orders/:id/verify-otp` is served by the extracted `delivery-otp-service` via `DeliveryOtpClientService` (gRPC), gated by a `grpc.delivery_otp_service.canary_enabled` kill-switch; `RequestDelivery`/`AcceptDelivery`/`CompleteDelivery` stay in-process
+- Completion settles rider earnings + government levy through the shared `SettlementService.resolveSplit('delivery', fee)`, with a deterministic `ISY-DLV-<orderId>` idempotency reference
+- `@Cron(EVERY_30_SECONDS)` clears stale rider heartbeats
+
+### NotificationsModule
+- FCM HTTP v1 push via a Google service-account JWT (`FIREBASE_SERVICE_ACCOUNT_JSON`); logs a warning and no-ops if not configured
+- `POST /notifications/register-token` stores the device's FCM token on the user's `metadata` JSON field
+- `GET /notifications` currently returns an empty list — no `Notification` persistence model exists yet in the Prisma schema
+
+### WaitlistModule
+- `POST /waitlist` upserts by `(source, email)` or `(source, phone)` — re-submitting with extra info refreshes phone/fullName without duplicating the entry
+- Requires at least one of email or phone
+- `GET /waitlist/stats` returns signup counts grouped by `source`
+
+### NewsModule
+- `GET /news` returns live, non-deleted `NewsItem` rows ordered by `isPriority` then `publishedAt`, optionally filtered by `category`
+- Read-only — no create/update endpoints exposed yet
+
+### ReviewsModule
+- `POST /reviews` auto-flags any review with `rating <= 2`, creating the review and its `AdminReviewFlag` row in one transaction
+- Public reads (`GET /reviews`, per-target routes) exclude flagged reviews
+- `LGA_ADMIN`+ moderation queue: `GET /admin/reviews/queue`, `GET /admin/reviews/flags/:id`, `POST /admin/reviews/flags/:id/resolve` (OPEN/IN_REVIEW → RESOLVED or DISMISSED; 409 if already terminal)
+
+### AiModule
+- `POST /ai/chat` streams Claude (`claude-sonnet-4-20250514`) responses via SSE, with tool-calling against attractions, events, stays, ride estimates, and weather
+- `POST /ai/itinerary` streams a multi-day itinerary grounded in real attractions/events/stays for the requested LGA(s)
+- `POST /ai/lga-intel` answers ad-hoc questions about a specific LGA
+- All Anthropic calls are wrapped in `ResilienceService.execute('anthropic', ...)` for circuit-breaking/retries
