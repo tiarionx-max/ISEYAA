@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: — Extraction Backlog Clearance & Settlement Flexibility
-status: ready_to_plan
-stopped_at: Phase 21 context gathered
-last_updated: "2026-07-21T00:51:35.990Z"
-last_activity: 2026-07-21 -- Phase 21 execution started
+status: planning
+stopped_at: Phase 22 context gathered
+last_updated: "2026-07-21T11:49:59.396Z"
+last_activity: 2026-07-21
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 23
-  completed_plans: 22
-  percent: 80
+  completed_plans: 23
+  percent: 100
 ---
 
 # Project State
@@ -118,9 +118,9 @@ Items acknowledged and carried forward from previous milestone close. GRPC-06/07
 
 ## Session Continuity
 
-Last session: 2026-07-20T20:26:12.325Z
-Stopped at: Phase 21 context gathered
-Resume file: .planning/phases/21-low-risk-grpc-extraction-news-waitlist-reviews-scoped-delive/21-CONTEXT.md
+Last session: 2026-07-21T11:49:59.386Z
+Stopped at: Phase 22 context gathered
+Resume file: .planning/phases/22-scheduled-ministry-exports-lga-heatmap/22-CONTEXT.md
 
 ## Operator Next Steps
 
