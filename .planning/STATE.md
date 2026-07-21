@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: — Extraction Backlog Clearance & Settlement Flexibility
-status: executing
+status: milestone_complete
 stopped_at: Phase 22 UI-SPEC approved
 last_updated: "2026-07-21T13:11:36.467Z"
 last_activity: 2026-07-21 -- Phase 22 execution started
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 27
   completed_plans: 23
-  percent: 85
+  percent: 100
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-07-19)
 
 ## Current Position
 
-Phase: 22 (scheduled-ministry-exports-lga-heatmap) — EXECUTING
-Plan: 1 of 4
-Status: Executing Phase 22
-Last activity: 2026-07-21 -- Phase 22 execution started
+Phase: 22
+Plan: Not started
+Status: Milestone complete
+Last activity: 2026-07-21
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -46,7 +46,7 @@ Progress: [░░░░░░░░░░] 0%
 
 **Velocity:**
 
-- Total plans completed: 77 (v2.0 closed; v2.1 not yet started)
+- Total plans completed: 81 (v2.0 closed; v2.1 not yet started)
 - Average duration: -
 - Total execution time: -
 
@@ -65,6 +65,7 @@ Progress: [░░░░░░░░░░] 0%
 | 19 | 6 | - | - |
 | 20 | 5 | - | - |
 | 21 | 8 | - | - |
+| 22 | 4 | - | - |
 
 *Updated after each plan completion*
 

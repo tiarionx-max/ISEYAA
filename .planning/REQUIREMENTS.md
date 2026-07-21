@@ -29,10 +29,10 @@ Requirements for milestone v2.1 (Extraction Backlog Clearance & Settlement Flexi
 
 ### Ministry Reporting
 
-- [ ] **MIN-08a**: A scheduled (`@Cron`-driven) Ministry export digest — CSV + branded PDF attachment — is generated and delivered by email on a configurable cadence, reusing the existing Phase 14 export code
-- [ ] **MIN-08b**: The Ministry export recipient list and delivery cadence are configurable via the database, requiring no redeploy to change
-- [ ] **MIN-08c**: Every scheduled delivery attempt (success or failure) is logged; the send is wrapped in the existing `cockatiel` resilience layer so a transient SendGrid outage doesn't silently drop a report
-- [ ] **MIN-09**: The Ministry dashboard shows an LGA × month/season point-density visitor heatmap built with a custom CSS-grid component (no new mapping/charting dependency) over existing `MinistryService` query shapes — no new GeoJSON or mapping dependency this milestone
+- [x] **MIN-08a**: A scheduled (`@Cron`-driven) Ministry export digest — CSV + branded PDF attachment — is generated and delivered by email on a configurable cadence, reusing the existing Phase 14 export code
+- [x] **MIN-08b**: The Ministry export recipient list and delivery cadence are configurable via the database, requiring no redeploy to change
+- [x] **MIN-08c**: Every scheduled delivery attempt (success or failure) is logged; the send is wrapped in the existing `cockatiel` resilience layer so a transient SendGrid outage doesn't silently drop a report
+- [x] **MIN-09**: The Ministry dashboard shows an LGA × month/season point-density visitor heatmap built with a custom CSS-grid component (no new mapping/charting dependency) over existing `MinistryService` query shapes — no new GeoJSON or mapping dependency this milestone
 
 ## v2 Requirements
 
@@ -89,10 +89,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SETTLE-10c | Phase 19 | Complete |
 | SETTLE-10d | Phase 19 | Complete |
 | SETTLE-10e | Phase 19 | Complete |
-| MIN-08a | Phase 22 | Pending |
-| MIN-08b | Phase 22 | Pending |
-| MIN-08c | Phase 22 | Pending |
-| MIN-09 | Phase 22 | Pending |
+| MIN-08a | Phase 22 | Complete |
+| MIN-08b | Phase 22 | Complete |
+| MIN-08c | Phase 22 | Complete |
+| MIN-09 | Phase 22 | Complete |
 
 **Coverage:**
 - v1 requirements: 18 total
