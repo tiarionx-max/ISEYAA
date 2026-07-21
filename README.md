@@ -201,23 +201,26 @@ Full OpenAPI spec: http://localhost:3001/api/docs (Swagger UI)
 ## Running Tests
 
 ```bash
-cd backend && npm test              # 153 tests, 11 suites
-cd backend && npm run test:cov      # coverage report
+cd backend && npm test              # 70 test suites (npx jest --listTests to recount)
+cd backend && npm run test:cov      # coverage report — run for current pass/fail totals
 ```
 
 ## Deployment Checklist
 
-- [ ] Set `NODE_ENV=production`
-- [ ] Set all secrets (JWT_SECRET, PAYSTACK_*, AWS_*, SENDGRID_*) in environment
+This is a multi-target Railway deployment, not a single monolith deploy: `railway.toml` (repo root) deploys the monolith, `web/railway.toml` deploys the web app, and each `backend/apps/<service>/railway.toml` deploys that gRPC service independently. See `docs/blue-green-cutover-runbook.md` for the blue-green cutover process used when shifting live traffic to a newly-extracted gRPC service (notifications, news, waitlist, reviews, delivery-otp), including the `grpc.<service>_service.canary_enabled` `platformConfig` kill-switches.
+
+- [ ] Set `NODE_ENV=production` on every deployed target (monolith, web, and each live gRPC service)
+- [ ] Set all secrets (JWT_SECRET, JWT_REFRESH_SECRET, PAYSTACK_*, R2_*/AWS_*, SENDGRID_*) in environment
 - [ ] Set `NEXTAUTH_SECRET` to a 32+ char random string
 - [ ] Run `npx prisma db push` against production DB
 - [ ] Configure Paystack webhook URL: `https://api.iseyaa.gov.ng/api/v1/webhooks/paystack`
 - [ ] Set Paystack `PAYSTACK_WEBHOOK_SECRET` to match your Paystack dashboard secret
-- [ ] Configure S3 bucket CORS policy for frontend uploads
-- [ ] Set `CDN_BASE_URL` to CloudFront distribution domain
+- [ ] Configure storage bucket CORS policy for frontend uploads (R2 bucket, or S3 bucket if running in AWS mode)
+- [ ] Set `R2_PUBLIC_URL` + `R2_BUCKET` (or `AWS_CLOUDFRONT_URL` + `AWS_S3_BUCKET` if running in AWS mode) per `S3Service`'s dual-mode env var reads
 - [ ] Enable Redis persistence (`appendonly yes`) for cron job state
 - [ ] Set up DB backups (pg_dump daily minimum)
 - [ ] Configure rate limiting on `/auth` routes in nginx/API gateway
+- [ ] Confirm each live-wired gRPC service's `grpc.<service>_service.canary_enabled` `platformConfig` flag before cutting traffic to it
 
 ## Module Reference
 
