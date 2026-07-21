@@ -2,8 +2,8 @@
 phase: 22
 slug: scheduled-ministry-exports-lga-heatmap
 status: draft
-nyquist_compliant: false
-wave_0_complete: false
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-07-21
 ---
 
@@ -75,11 +75,11 @@ created: 2026-07-21
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 60s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references — web-side RTL tooling (`@testing-library/react` 14.2.1) is already installed and has an existing precedent test (`web/src/components/ui/__tests__/PageTransition.test.tsx`); the one flagged Wave 0 uncertainty is resolved
+- [x] No watch-mode flags
+- [x] Feedback latency < 60s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved

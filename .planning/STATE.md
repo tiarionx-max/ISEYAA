@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: — Extraction Backlog Clearance & Settlement Flexibility
-status: planning
-stopped_at: Phase 22 context gathered
-last_updated: "2026-07-21T11:49:59.396Z"
-last_activity: 2026-07-21
+status: executing
+stopped_at: Phase 22 UI-SPEC approved
+last_updated: "2026-07-21T13:11:36.467Z"
+last_activity: 2026-07-21 -- Phase 22 execution started
 progress:
   total_phases: 5
   completed_phases: 4
-  total_plans: 23
+  total_plans: 27
   completed_plans: 23
-  percent: 100
+  percent: 85
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-19)
 
 **Core value:** A tourist in Abeokuta can discover an attraction, book a guesthouse, buy an event ticket, and request a ride — all paid through one wallet — and the government analyst sees the revenue in real time.
-**Current focus:** Phase 21 — low-risk-grpc-extraction-news-waitlist-reviews-scoped-delive
+**Current focus:** Phase 22 — scheduled-ministry-exports-lga-heatmap
 
 ## Current Position
 
-Phase: 22
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-07-21
+Phase: 22 (scheduled-ministry-exports-lga-heatmap) — EXECUTING
+Plan: 1 of 4
+Status: Executing Phase 22
+Last activity: 2026-07-21 -- Phase 22 execution started
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -118,9 +118,9 @@ Items acknowledged and carried forward from previous milestone close. GRPC-06/07
 
 ## Session Continuity
 
-Last session: 2026-07-21T11:49:59.386Z
-Stopped at: Phase 22 context gathered
-Resume file: .planning/phases/22-scheduled-ministry-exports-lga-heatmap/22-CONTEXT.md
+Last session: 2026-07-21T12:14:56.855Z
+Stopped at: Phase 22 UI-SPEC approved
+Resume file: .planning/phases/22-scheduled-ministry-exports-lga-heatmap/22-UI-SPEC.md
 
 ## Operator Next Steps
 
