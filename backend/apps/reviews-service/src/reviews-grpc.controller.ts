@@ -1,5 +1,12 @@
-import { Controller } from '@nestjs/common';
-import { GrpcMethod } from '@nestjs/microservices';
+import {
+  BadRequestException,
+  ConflictException,
+  Controller,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
+import { GrpcMethod, RpcException } from '@nestjs/microservices';
+import { status as GrpcStatus } from '@grpc/grpc-js';
 import { ReviewsService } from '../../../src/modules/reviews/reviews.service';
 import { PrismaService } from '../../../src/prisma/prisma.service';
 import { ReviewTargetTypeLiteral } from '../../../src/modules/reviews/dto/create-review.dto';
@@ -19,18 +26,43 @@ export class ReviewsGrpcController {
     private readonly prisma: PrismaService,
   ) {}
 
+  // NestJS's default @GrpcMethod exception handling does NOT preserve a thrown
+  // NotFoundException/ForbiddenException/BadRequestException/ConflictException's
+  // message across the gRPC boundary — BaseRpcExceptionFilter replaces any
+  // non-RpcException with the generic "Internal server error" string.
+  // Business-rule review failures (booking not found, not-your-booking, tour-not-ended,
+  // duplicate review) are explicitly re-wrapped in RpcException below so the original
+  // message reaches the citizen. Any other error type is rethrown unmodified,
+  // deliberately falling through to the default filter's generic response — that path
+  // is for genuine defects, not business-rule failures.
   @GrpcMethod('ReviewsService', 'CreateReview')
   async createReview(data: reviews.CreateReviewRequest): Promise<reviews.CreateReviewResponse> {
-    // The DTO's `photos` field cannot be populated here — the proto request has no
-    // `photos` field at all; this is resolved client-side in 21-05, not here.
-    const review = await this.reviewsService.createReview(data.userId, {
-      tourBookingId: data.tourBookingId,
-      targetType: data.targetType as ReviewTargetTypeLiteral,
-      targetId: data.targetId,
-      rating: data.rating,
-      comment: data.comment || undefined,
-    });
-    return { id: review.id, flagged: review.flagged };
+    try {
+      // The DTO's `photos` field cannot be populated here — the proto request has no
+      // `photos` field at all; this is resolved client-side in 21-05, not here.
+      const review = await this.reviewsService.createReview(data.userId, {
+        tourBookingId: data.tourBookingId,
+        targetType: data.targetType as ReviewTargetTypeLiteral,
+        targetId: data.targetId,
+        rating: data.rating,
+        comment: data.comment || undefined,
+      });
+      return { id: review.id, flagged: review.flagged };
+    } catch (err) {
+      if (err instanceof NotFoundException) {
+        throw new RpcException({ code: GrpcStatus.NOT_FOUND, message: err.message });
+      }
+      if (err instanceof ForbiddenException) {
+        throw new RpcException({ code: GrpcStatus.PERMISSION_DENIED, message: err.message });
+      }
+      if (err instanceof ConflictException) {
+        throw new RpcException({ code: GrpcStatus.ALREADY_EXISTS, message: err.message });
+      }
+      if (err instanceof BadRequestException) {
+        throw new RpcException({ code: GrpcStatus.INVALID_ARGUMENT, message: err.message });
+      }
+      throw err;
+    }
   }
 
   @GrpcMethod('ReviewsService', 'ListReviews')
