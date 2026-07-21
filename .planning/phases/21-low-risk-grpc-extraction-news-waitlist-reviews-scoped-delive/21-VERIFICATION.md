@@ -1,140 +1,123 @@
 ---
 phase: 21-low-risk-grpc-extraction-news-waitlist-reviews-scoped-delive
-verified: 2026-07-20T19:15:00Z
-status: gaps_found
-score: 8/10 must-haves verified
+verified: 2026-07-21T01:02:34Z
+status: human_needed
+score: 10/10 must-haves verified
 overrides_applied: 0
-gaps:
-  - truth: "Reviews extraction has zero client-visible behavior change — business-rule rejections (booking not found, not-your-booking, tour-not-ended, duplicate review) surface with their correct HTTP status/message"
-    status: failed
-    reason: "reviews-grpc.controller.ts's CreateReview handler calls ReviewsService.createReview() with no try/catch, so NotFoundException/ForbiddenException/BadRequestException/ConflictException thrown by the domain service are never wrapped in RpcException. NestJS's default BaseRpcExceptionFilter replaces any non-RpcException with a generic 'Internal server error' response. reviews-client.service.ts's catch block never inspects err.code — every failure (business or transport) becomes ServiceUnavailableException(503). Confirmed by independent source read: backend/apps/reviews-service/src/reviews-grpc.controller.ts:22-34 has no try/catch; backend/src/modules/reviews-client/reviews-client.service.ts:99-103 catches unconditionally into a 503. Confirmed by the test gap: reviews-client.service.spec.ts's only failure-path test uses a plain Error('UNAVAILABLE') with no .code — no test exercises a business-exception-shaped gRPC error, unlike delivery-otp-client.service.spec.ts which explicitly asserts INVALID_ARGUMENT/NOT_FOUND mapping. This matches CR-01 in 21-REVIEW.md, independently reproduced."
-    artifacts:
-      - path: backend/apps/reviews-service/src/reviews-grpc.controller.ts
-        issue: "createReview() has no try/catch around this.reviewsService.createReview(...) — business exceptions (400/403/404/409) fall through to the default gRPC exception filter and become a generic error, unlike delivery-otp-grpc.controller.ts's explicit RpcException mapping"
-      - path: backend/src/modules/reviews-client/reviews-client.service.ts
-        issue: "catch block (lines 99-103) throws ServiceUnavailableException unconditionally, never inspecting err.code — a citizen reviewing a tour they don't own gets HTTP 503 instead of 403; a duplicate review gets 503 instead of 409; an early review gets 503 instead of 400 with the real reason"
-    missing:
-      - "Wrap NotFoundException/ForbiddenException/BadRequestException/ConflictException in RpcException with the appropriate GrpcStatus code inside reviews-grpc.controller.ts's createReview handler, mirroring delivery-otp-grpc.controller.ts's pattern"
-      - "Add err?.code inspection in reviews-client.service.ts's createReview catch block, mapping INVALID_ARGUMENT/NOT_FOUND/PERMISSION_DENIED/ALREADY_EXISTS back to BadRequestException/NotFoundException/ForbiddenException/ConflictException before falling back to ServiceUnavailableException"
-      - "A test asserting a business-exception-shaped gRPC error (err.code set) round-trips to the correct HTTP exception, not a 503"
-  - truth: "Waitlist extraction has zero client-visible behavior change — a join request missing both email and phone still surfaces its correct HTTP 400 with the original validation message"
-    status: failed
-    reason: "waitlist-grpc.controller.ts's JoinWaitlist handler calls WaitlistService.join() with no try/catch, so the BadRequestException('Provide an email or phone number') thrown when both email and phone are absent is never wrapped in RpcException and is replaced by NestJS's default gRPC exception filter with a generic error. waitlist-client.service.ts's catch block never inspects err.code — every failure becomes ServiceUnavailableException(503). Confirmed by independent source read: backend/apps/waitlist-service/src/waitlist-grpc.controller.ts:11-24 has no try/catch; backend/src/modules/waitlist-client/waitlist-client.service.ts:75-80 catches unconditionally into a 503. This matches CR-02 in 21-REVIEW.md, independently reproduced."
-    artifacts:
-      - path: backend/apps/waitlist-service/src/waitlist-grpc.controller.ts
-        issue: "joinWaitlist() has no try/catch around this.waitlistService.join(...) — the BadRequestException thrown for missing email/phone is never wrapped in RpcException"
-      - path: backend/src/modules/waitlist-client/waitlist-client.service.ts
-        issue: "catch block (lines 75-80) throws ServiceUnavailableException unconditionally — a caller submitting POST /waitlist with neither email nor phone gets HTTP 503 instead of the correct HTTP 400 with the actionable message"
-    missing:
-      - "Wrap BadRequestException in RpcException({code: GrpcStatus.INVALID_ARGUMENT, message}) inside waitlist-grpc.controller.ts's joinWaitlist handler"
-      - "Add err?.code === GrpcStatus.INVALID_ARGUMENT inspection in waitlist-client.service.ts's join() catch block, mapping back to BadRequestException with the original message before falling back to ServiceUnavailableException"
-      - "A test asserting a business-exception-shaped gRPC error round-trips to BadRequestException with the original message, not a 503"
+re_verification:
+  previous_status: gaps_found
+  previous_score: 8/10
+  gaps_closed:
+    - "Reviews extraction has zero client-visible behavior change — business-rule rejections (booking not found, not-your-booking, tour-not-ended, duplicate review) surface with their correct HTTP status/message"
+    - "Waitlist extraction has zero client-visible behavior change — a join request missing both email and phone still surfaces its correct HTTP 400 with the original validation message"
+  gaps_remaining: []
+  regressions: []
 human_verification:
   - test: "D-08 sizing gate verdicts (21-03 Task 3, 21-05 Task 4) — confirm real production/staging WaitlistEntry-per-source and Review-per-target row counts were actually queried and pose no P95/truncation risk before flipping grpc.waitlist_service.canary_enabled / grpc.reviews_service.canary_enabled"
     expected: "SUMMARY.md files record a narrative 'PASS' verdict but include no actual query output (row counts, source breakdown) — only a claim that 'the human operator reviewed real staging/production row counts.' A human with real DB access should independently re-run the specified SQL queries and confirm the recorded PASS verdicts are accurate before any canary flag is flipped in production."
     why_human: "Requires live production/staging database access this verifier does not have; the checkpoint's own design (checkpoint:human-verify, gate=blocking) requires human judgment against real data volumes, not something inferable from source code"
-  - test: "Manually exercise POST /api/v1/reviews with a booking a user doesn't own (or a duplicate review) and POST /api/v1/waitlist with neither email nor phone, against a running instance with the reviews/waitlist canary flags enabled, and confirm the actual HTTP status returned"
-    expected: "Per CR-01/CR-02 and this verifier's independent code review, both currently return HTTP 503 instead of the correct 403/409 (reviews) or 400 (waitlist) — human confirmation against a live server would remove any residual doubt about NestJS's default gRPC exception filter behavior in this exact deployed configuration"
-    why_human: "Requires a running server with the canary flags enabled and gRPC services live; this verifier confirmed the code path via static analysis only (matching source-level evidence explicitly cited in 21-REVIEW.md's own confirmation that BaseRpcExceptionFilter's behavior was verified by direct read of node_modules source)"
+  - test: "Manually exercise POST /api/v1/reviews with a booking a user doesn't own (or a duplicate review) and POST /api/v1/waitlist with neither email nor phone, against a running instance with the reviews/waitlist canary flags enabled, and confirm the actual HTTP status returned is now 403/409/400 (not 503)"
+    expected: "Per 21-08's code fix and this verifier's independent unit-level round-trip tests, both should now return the correct business-rule HTTP status with the original message preserved. A live end-to-end run against a deployed instance would remove any residual doubt about NestJS's runtime `@GrpcMethod`/`RpcException` behavior in the exact deployed configuration, since this verifier's confirmation is via source review + unit tests (mocked gRPC boundary), not a live gRPC round-trip."
+    why_human: "Requires a running server with the canary flags enabled and gRPC services live; this verifier's evidence is source-level (code fix confirmed present and correct) plus unit tests that mock the gRPC transport layer — not an actual network round-trip through a real gRPC server"
 ---
 
 # Phase 21: Low-Risk gRPC Extraction — News/Waitlist/Reviews + Scoped Delivery OTP Verification Report
 
-**Phase Goal:** Extract News, Waitlist, Reviews, and Delivery-OTP into independently-deployable gRPC microservices, following the risk-ascending order (News -> Waitlist -> Reviews -> Delivery OTP), each with a canary kill-switch and zero client-visible behavior change, mirroring the hybrid HTTP+gRPC pattern already proven by notifications-service.
-**Verified:** 2026-07-20T19:15:00Z
-**Status:** gaps_found
-**Re-verification:** No — initial verification
+**Phase Goal:** News, waitlist, reviews, and Delivery's OTP verification run as independently-deployed gRPC services with zero client-visible behavior change
+**Verified:** 2026-07-21T01:02:34Z
+**Status:** human_needed
+**Re-verification:** Yes — after gap closure (21-08 plan)
 
 ## Goal Achievement
+
+### Re-Verification Summary
+
+The prior verification (2026-07-20T19:15:00Z) found 8/10 truths verified, with 2 FAILED truths sharing one root cause: `reviews-grpc.controller.ts`'s `createReview` and `waitlist-grpc.controller.ts`'s `joinWaitlist` never wrapped domain-service business exceptions in `RpcException`, so NestJS's default `BaseRpcExceptionFilter` downgraded every legitimate 4xx rejection to a generic 503 once the canary flag was enabled (CR-01, CR-02 in 21-REVIEW.md). Plan 21-08 was created and executed specifically to close these two gaps by mirroring the already-verified `delivery-otp-grpc.controller.ts` / `delivery-otp-client.service.ts` pattern.
+
+This re-verification independently re-read all four affected source files (not the SUMMARY's claims) and confirms both fixes are present, correct, and covered by new business-exception-shaped tests — not just generic transport-error tests.
 
 ### Observable Truths
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | News runs as its own Railway process, called exclusively via `ClientGrpc`, zero REST response-shape change (Roadmap SC #1, News slice) | ✓ VERIFIED | `backend/apps/news-service/` scaffolded (main.ts on `:5009`, news-grpc.controller.ts, health.controller.ts); `NewsClientService` canary+resilience-wrapped facade; `app.module.ts` imports `NewsClientModule` not `NewsModule`; `NewsService.findLatest` has zero business exceptions (pure Prisma read) so there is no exception-mapping gap to worry about here; `npx tsc --noEmit` and `npx jest apps/news-service src/modules/news-client` both pass |
-| 2 | Waitlist runs as its own Railway process, called exclusively via `ClientGrpc`, zero REST response-shape change (Roadmap SC #1, Waitlist slice) | ✗ FAILED | Response *shape* is preserved (`{message, position, id}` reconstructed via Prisma count; stats fan-out reassembles the grouped array — verified in source and by 10 passing unit tests), BUT business-rule error *behavior* regresses: a join request with no email/phone gets HTTP 503 instead of 400. See gap CR-02 below. |
-| 3 | Reviews runs as its own Railway process, called exclusively via `ClientGrpc`, zero REST response-shape change (Roadmap SC #1, Reviews slice) | ✗ FAILED | Response *shape* is preserved (photos write-back, user-embed enrichment, in-memory pagination all verified correct in source and by 23 passing unit tests), BUT business-rule error *behavior* regresses: ownership/duplicate/timing rejections get HTTP 503 instead of 403/409/400. See gap CR-01 below. |
-| 4 | Delivery's `VerifyDeliveryOtp` RPC is served by a live, independently-deployed gRPC service; `RequestDelivery`/`AcceptDelivery`/`CompleteDelivery`/`DeliveryGateway` remain in-process; OTP verification behavior unchanged end-to-end (Roadmap SC #2) | ✓ VERIFIED | `delivery-otp-grpc.controller.ts` implements ONLY `VerifyDeliveryOtp` with explicit `RpcException` wrapping of `BadRequestException`→`INVALID_ARGUMENT` and `NotFoundException`→`NOT_FOUND`; `delivery-otp-client.service.ts`'s catch block inspects `err?.code` and re-throws the matching `BadRequestException`/`NotFoundException` with the original message, falling back to `ServiceUnavailableException` only for genuine transport failures. `app.module.ts` confirmed to NOT import `DeliveryModule`/`WalletModule`/`CommonModule`/`AuthModule`; `DeliveryGateway` is stubbed via provider-token override, never constructed as a real `@WebSocketGateway()`. `DeliveryController`'s other 7 handlers are textually unchanged. Tests pass (7+ cases including a non-business-rule numeric code test). This is the correct pattern the other two extractions should have mirrored but didn't. |
-| 5 | Every service extracted in this phase passes Phase 20's health-check-gated rollout (real `/healthz`, real Railway `healthcheckPath`) (Roadmap SC #3) | ✓ VERIFIED | All 4 `apps/*-service/src/health.controller.ts` are verbatim Terminus copies; all 4 `railway.toml`s set `healthcheckPath = "/healthz"`; all 4 `grpc-health.spec.ts`/`health.controller.spec.ts` pairs pass (8 suites green) |
-| 6 | Each of the 4 new services has its own independent `grpc.<service>_canary_enabled` PlatformConfig kill-switch (opt-out semantics) that short-circuits to 503 without any gRPC call when disabled | ✓ VERIFIED | All 4 `*-client.service.ts` files implement `isCanaryEnabled()` reading a distinct `CANARY_FLAG_KEY` (`grpc.news_service.canary_enabled`, `grpc.waitlist_service.canary_enabled`, `grpc.reviews_service.canary_enabled`, `grpc.delivery_otp_service.canary_enabled`) and every method checks it before calling `resilience.execute`/the gRPC client; canary-off unit tests pass for all 4 facades with explicit assertions that zero gRPC/Prisma calls occur |
-| 7 | Shared scaffolding (resilience vendors, nest-cli.json, build:services, .env.example, docker-compose.yml, blue-green runbook) covers all 4 new services consistently, with zero regression to the 8 pre-existing services | ✓ VERIFIED | `resilience.types.ts` has all 4 new Vendor keys with matching tuning; `nest-cli.json` has 4 new project entries; `.env.example`/`docker-compose.yml` have all 4 `*_SERVICE_URL` placeholders/service blocks; `docs/blue-green-cutover-runbook.md` has a new `## Phase 21 Extractions` section |
-| 8 | `ReviewsAdminController`'s 3 endpoints (`GET /admin/reviews/queue`, `GET /admin/reviews/flags/:id`, `POST /admin/reviews/flags/:id/resolve`) continue to work unchanged, isolated from the extracted `reviews-service` process (D-07) | ✓ VERIFIED | `reviews-admin.module.ts` created, imports `ReviewsModule` for DI, registers only `ReviewsAdminController`; `reviews-grpc.controller.ts` implements only `CreateReview`/`ListReviews`, no `ResolveReviewFlag`; `ReviewsClientService` has no `resolveFlag`/`getFlagQueue`/`getFlagById` methods (asserted by test 9 in reviews-client.service.spec.ts) |
-| 9 | `DeliveryController`'s other 7 handlers (`requestDelivery`, `acceptOrder`, `declineOrder`, `collectParcel`, `completeDelivery`, `rateDelivery`, `cancelOrder`) are untouched — only `verifyOtp`'s body changed | ✓ VERIFIED | Source read of `delivery.controller.ts` confirms only `verifyOtp` was rewired to `deliveryOtpClient.verifyOtp(id, dto.otp)`; all other handlers still call `this.deliveryService.*`; `delivery.service.spec.ts`/`delivery.gateway.spec.ts` pass with no regressions |
-| 10 | Full backend workspace still compiles and the phase's own test suites pass with zero regressions | ✓ VERIFIED | `cd backend && npx tsc --noEmit -p tsconfig.json` exits 0; `npx jest apps/news-service apps/waitlist-service apps/reviews-service apps/delivery-otp-service src/modules/news-client src/modules/waitlist-client src/modules/reviews-client src/modules/delivery-otp-client src/modules/reviews src/modules/delivery --silent` — 16 suites / 76 tests, all passing (independently re-run by this verifier, not taken from SUMMARY claims) |
+| 1 | News runs as its own Railway process, called exclusively via `ClientGrpc`, zero REST response-shape change | ✓ VERIFIED | Regression check: `apps/news-service` + `news-client.service.spec.ts` still pass (independently re-run); no files in this area touched by 21-08 |
+| 2 | Waitlist runs as its own Railway process, called exclusively via `ClientGrpc`, zero REST response-shape change | ✓ VERIFIED | **Gap closed.** `waitlist-grpc.controller.ts:20-40` now wraps `this.waitlistService.join(...)` in try/catch; `instanceof BadRequestException` → `RpcException({code: GrpcStatus.INVALID_ARGUMENT, message: err.message})`, any other error rethrown unwrapped. `waitlist-client.service.ts:83-94` catch block checks `err?.code === GrpcStatus.INVALID_ARGUMENT` → `BadRequestException(err.message)` before falling back to `ServiceUnavailableException`. Confirmed by direct source read (not SUMMARY claim). |
+| 3 | Reviews runs as its own Railway process, called exclusively via `ClientGrpc`, zero REST response-shape change | ✓ VERIFIED | **Gap closed.** `reviews-grpc.controller.ts:38-66` now wraps `this.reviewsService.createReview(...)` in try/catch; `instanceof` checks for `NotFoundException`→`NOT_FOUND`, `ForbiddenException`→`PERMISSION_DENIED`, `ConflictException`→`ALREADY_EXISTS`, `BadRequestException`→`INVALID_ARGUMENT`, all wrapped in `RpcException`; any other error rethrown unwrapped. `reviews-client.service.ts:110-129` catch block checks all 4 `err?.code` values before falling back to `ServiceUnavailableException`. Confirmed by direct source read. |
+| 4 | Delivery's `VerifyDeliveryOtp` RPC is served by a live, independently-deployed gRPC service; other Delivery RPCs + `DeliveryGateway` remain in-process; OTP verification behavior unchanged | ✓ VERIFIED | Regression check: `delivery-otp-grpc.controller.ts` / `delivery-otp-client.service.ts` untouched by 21-08 (confirmed via `git log`); tests still pass |
+| 5 | Every service extracted in this phase passes Phase 20's health-check-gated rollout (real `/healthz`, real Railway `healthcheckPath`) | ✓ VERIFIED | Regression check: all 4 `health.controller.spec.ts` / `grpc-health.spec.ts` pairs still pass (8 suites green) |
+| 6 | Each of the 4 new services has its own independent `grpc.<service>_canary_enabled` PlatformConfig kill-switch that short-circuits to 503 without any gRPC call when disabled | ✓ VERIFIED | Regression check: `isCanaryEnabled()` unchanged in both `reviews-client.service.ts` and `waitlist-client.service.ts`; canary-off tests (test 3/4 and test 4/3 respectively) still pass, asserting zero gRPC/Prisma calls |
+| 7 | Shared scaffolding (resilience vendors, nest-cli.json, build:services, .env.example, docker-compose.yml, blue-green runbook) covers all 4 new services consistently | ✓ VERIFIED | Regression check: not touched by 21-08; no reason to re-verify beyond prior pass, no build/config files in the 8-file diff (`git show --stat 3754039 29eb414`) |
+| 8 | `ReviewsAdminController`'s 3 endpoints continue to work unchanged, isolated from the extracted `reviews-service` process (D-07) | ✓ VERIFIED | Regression check: `git log` on `reviews-admin.module.ts` shows last commit is `09148a6` (21-04), untouched by 21-08; `reviews-client.service.spec.ts` test 9 (no `resolveFlag`/`getFlagQueue`/`getFlagById`) still passes |
+| 9 | `DeliveryController`'s other 7 handlers are untouched — only `verifyOtp`'s body changed | ✓ VERIFIED | Regression check: `git log` on `delivery.controller.ts` shows last commit is `f30c369` (21-07), untouched by 21-08 |
+| 10 | Full backend workspace still compiles and the phase's own test suites pass with zero regressions | ✓ VERIFIED | Independently re-run by this verifier: `cd backend && npx tsc --noEmit -p tsconfig.json` exits 0. `npx jest apps/{news,waitlist,reviews,delivery-otp}-service src/modules/{news,waitlist,reviews,delivery-otp}-client src/modules/reviews src/modules/delivery --silent` — **18 suites / 92 tests, all passing** (up from 16 suites/76 tests pre-fix; +2 new spec files, +9 new test cases across client specs) |
 
-**Score:** 8/10 truths verified (2 FAILED — both concern the same class of regression: business-rule exceptions downgraded to a generic 503 across the Reviews and Waitlist gRPC boundaries)
+**Score:** 10/10 truths verified — both previously-FAILED truths (Waitlist, Reviews) closed by plan 21-08; no regressions detected in the other 8.
 
 ### Required Artifacts
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `backend/apps/news-service/` | Independent hybrid HTTP+gRPC app | ✓ VERIFIED | Builds, tests pass, wired into monolith via `NewsClientModule` |
-| `backend/apps/waitlist-service/` | Independent hybrid HTTP+gRPC app, 2-method controller | ✓ VERIFIED (shape) / ✗ (exception mapping) | Scaffolding correct; `waitlist-grpc.controller.ts` missing `RpcException` wrapping (CR-02) |
-| `backend/apps/reviews-service/` | Independent hybrid HTTP+gRPC app, CreateReview+ListReviews only | ✓ VERIFIED (shape) / ✗ (exception mapping) | Scaffolding correct, `EventEmitterModule.forRoot()` present, `ListReviews` correctly bypasses the 50-row cap; `reviews-grpc.controller.ts` missing `RpcException` wrapping (CR-01) |
-| `backend/apps/delivery-otp-service/` | Independent hybrid HTTP+gRPC app, VerifyDeliveryOtp only, DeliveryGateway stubbed | ✓ VERIFIED | Correctly excludes DeliveryModule/WalletModule/CommonModule/AuthModule; DeliveryGateway stubbed; RpcException mapping present and tested |
-| `backend/src/modules/news-client/news-client.service.ts` | Canary+resilience-wrapped facade | ✓ VERIFIED | Correct, no business exceptions to map (pure read) |
-| `backend/src/modules/waitlist-client/waitlist-client.service.ts` | join shape reconstruction + stats fan-out | ⚠️ PARTIAL | Shape reconstruction correct; error-mapping catch block always throws generic 503 (CR-02) |
-| `backend/src/modules/reviews-client/reviews-client.service.ts` | photos write-back + user-embed enrichment + in-memory pagination | ⚠️ PARTIAL | Shape reconciliation correct (photos, user embed, pagination all verified); error-mapping catch block always throws generic 503 (CR-01) |
-| `backend/src/modules/delivery-otp-client/delivery-otp-client.service.ts` | canary+resilience+business/transport exception mapping | ✓ VERIFIED | Correctly maps INVALID_ARGUMENT/NOT_FOUND back to BadRequestException/NotFoundException with original message |
-| `backend/src/modules/reviews/reviews-admin.module.ts` | Isolated admin module | ✓ VERIFIED | Present, correctly wired |
-| `docs/blue-green-cutover-runbook.md` | 4 new per-service sections | ✓ VERIFIED | Present, existing notifications-service section unchanged |
+| `backend/apps/reviews-service/src/reviews-grpc.controller.ts` | `createReview()` wraps 4 business exception types in `RpcException` with correct `GrpcStatus` codes | ✓ VERIFIED | Confirmed by direct read: imports `RpcException` from `@nestjs/microservices`, `status as GrpcStatus` from `@grpc/grpc-js`; try/catch present with `instanceof NotFoundException/ForbiddenException/ConflictException/BadRequestException` checks in that exact order, `throw err` fallthrough |
+| `backend/src/modules/reviews-client/reviews-client.service.ts` | `createReview()` catch block maps `err.code` back to matching Nest HTTP exception | ✓ VERIFIED | Confirmed by direct read: 4 strict `===` checks (`NOT_FOUND`, `PERMISSION_DENIED`, `ALREADY_EXISTS`, `INVALID_ARGUMENT`) before `logger.error` + `ServiceUnavailableException` fallback |
+| `backend/apps/waitlist-service/src/waitlist-grpc.controller.ts` | `joinWaitlist()` wraps `BadRequestException` in `RpcException({code: INVALID_ARGUMENT})` | ✓ VERIFIED | Confirmed by direct read: try/catch present, `instanceof BadRequestException` check, `throw err` fallthrough; `getWaitlistStats()` correctly left untouched (no try/catch, matches plan's explicit scope) |
+| `backend/src/modules/waitlist-client/waitlist-client.service.ts` | `join()` catch block maps `err.code === INVALID_ARGUMENT` back to `BadRequestException` | ✓ VERIFIED | Confirmed by direct read: single strict `===` check before fallback; `stats()` correctly left untouched |
+| `backend/apps/reviews-service/src/__tests__/reviews-grpc.controller.spec.ts` | New spec, business-exception-shaped tests | ✓ VERIFIED | New file exists, 6 tests: success passthrough + 4 mapped-exception round-trips (asserting `getError()` equals exact `{code, message}`) + 1 unwrapped-rethrow test. All 6 pass. |
+| `backend/src/modules/reviews-client/__tests__/reviews-client.service.spec.ts` | Extended with business-exception-shaped gRPC error tests | ✓ VERIFIED | Contains tests 5-8, each using `throwError(() => ({code: GrpcStatus.X, message}))` (an object with `.code` set — not a generic `Error`), asserting the correct HTTP exception + message + that Prisma steps are skipped. Test 9 is the regression guard for codeless errors. All pass. |
+| `backend/apps/waitlist-service/src/__tests__/waitlist-grpc.controller.spec.ts` | New spec, business-exception-shaped tests | ✓ VERIFIED | New file exists, 3 tests: success + mapped `BadRequestException`→`INVALID_ARGUMENT` round-trip (asserting exact `getError()`) + unwrapped-rethrow. All pass. |
+| `backend/src/modules/waitlist-client/__tests__/waitlist-client.service.spec.ts` | Extended with business-exception-shaped gRPC error test | ✓ VERIFIED | Test 9 uses `throwError(() => ({code: GrpcStatus.INVALID_ARGUMENT, message}))`, asserting `BadRequestException` with preserved message and that `prisma.waitlistEntry.count` is skipped. Test 10 is the regression guard. Both pass. |
 
 ### Key Link Verification
 
 | From | To | Via | Status | Details |
 |------|-----|-----|--------|---------|
-| `news.controller.ts` | `NewsClientService` | constructor injection | ✓ WIRED | Confirmed by source read |
-| `waitlist.controller.ts` | `WaitlistClientService` | constructor injection | ✓ WIRED | Confirmed by source read; `RolesGuard(SUPER_ADMIN, STATE_ADMIN)` on `/waitlist/stats` unchanged |
-| `reviews.controller.ts` | `ReviewsClientService` | constructor injection | ✓ WIRED | Confirmed by source read |
-| `delivery.controller.ts` | `DeliveryOtpClientService` | second constructor param, only `verifyOtp` body changed | ✓ WIRED | Confirmed by source read |
-| `app.module.ts` | `{News,Waitlist,Reviews}ClientModule`, `ReviewsAdminModule` | imports array | ✓ WIRED | Confirmed; no bare `NewsModule`/`WaitlistModule`/`ReviewsModule` import remains |
-| `delivery.module.ts` | `DeliveryOtpClientModule` | imports array | ✓ WIRED | Confirmed; `DeliveryController` stays registered where it was |
-| `reviews-grpc.controller.ts` business exceptions | `RpcException` | try/catch wrap | ✗ NOT_WIRED | No try/catch present — CR-01 |
-| `waitlist-grpc.controller.ts` business exceptions | `RpcException` | try/catch wrap | ✗ NOT_WIRED | No try/catch present — CR-02 |
-| `delivery-otp-grpc.controller.ts` business exceptions | `RpcException` | try/catch wrap | ✓ WIRED | Correctly implemented, contrast case proving the pattern is known and achievable |
+| `reviews-grpc.controller.ts` business exceptions | `RpcException` | try/catch wrap in `createReview()` | ✓ WIRED | Confirmed present, all 4 exception types mapped, correct `GrpcStatus` codes |
+| `waitlist-grpc.controller.ts` business exceptions | `RpcException` | try/catch wrap in `joinWaitlist()` | ✓ WIRED | Confirmed present, `BadRequestException` mapped to `INVALID_ARGUMENT` |
+| `reviews-client.service.ts` `err?.code` | Nest HTTP exceptions | strict `===` checks in `createReview()` catch | ✓ WIRED | All 4 codes checked before `ServiceUnavailableException` fallback |
+| `waitlist-client.service.ts` `err?.code` | `BadRequestException` | strict `===` check in `join()` catch | ✓ WIRED | `INVALID_ARGUMENT` checked before `ServiceUnavailableException` fallback |
+| `delivery-otp-grpc.controller.ts` business exceptions (reference pattern) | `RpcException` | try/catch wrap | ✓ WIRED | Unaffected by 21-08, still correct (regression check) |
 
 ### Behavioral Spot-Checks
 
 | Behavior | Command | Result | Status |
 |----------|---------|--------|--------|
 | Backend type-checks cleanly | `cd backend && npx tsc --noEmit -p tsconfig.json` | exit 0 | ✓ PASS |
-| Phase 21 test suites pass | `cd backend && npx jest apps/{news,waitlist,reviews,delivery-otp}-service src/modules/{news,waitlist,reviews,delivery-otp}-client src/modules/reviews src/modules/delivery --silent` | 16 suites / 76 tests passed | ✓ PASS |
-| `docker compose config` validates modified YAML | not run this session (no live Docker daemon in this environment) | — | ? SKIP |
+| Phase 21 test suites pass (incl. delivery-otp, news for regression) | `cd backend && npx jest apps/{news,waitlist,reviews,delivery-otp}-service src/modules/{news,waitlist,reviews,delivery-otp}-client src/modules/reviews src/modules/delivery --silent` | 18 suites / 92 tests passed | ✓ PASS |
+| Only the 8 declared files were touched by 21-08 (no collateral edits to admin/delivery-controller code) | `git show --stat 3754039 29eb414` | 4 files per commit, 8 total, matching plan's `files_modified` exactly | ✓ PASS |
+| Both task commits present in git history | `git log --oneline` | `3754039` (Task 1, CR-01), `29eb414` (Task 2, CR-02) both present | ✓ PASS |
+| `docker compose config` validates modified YAML | not run this session (no live Docker daemon in this environment; no YAML touched by 21-08 anyway) | — | ? SKIP |
 
 ### Requirements Coverage
 
 | Requirement | Source Plan | Description | Status | Evidence |
 |-------------|-------------|--------------|--------|----------|
-| GRPC-07 | 21-06, 21-07 | Delivery's `VerifyDeliveryOtp` RPC extracted, zero REST behavior change; other Delivery RPCs + DeliveryGateway stay in-process | ✓ SATISFIED | Full RpcException business/transport exception mapping verified end-to-end (server + client), DeliveryGateway confirmed stubbed, other 7 DeliveryController handlers confirmed unchanged |
-| GRPC-08 | 21-01 through 21-05 | News/Waitlist/Reviews extracted, own proto contracts, own Railway process, `ClientGrpc`, zero REST behavior change | ✗ BLOCKED (partial) | News fully satisfies this (no business exceptions to map). Waitlist and Reviews satisfy the process/proto/ClientGrpc/shape-preservation parts but FAIL "zero REST behavior change" on their error paths — business-rule rejections downgrade from correct 400/403/404/409 to generic 503 (CR-01, CR-02) |
+| GRPC-07 | 21-06, 21-07 | Delivery's `VerifyDeliveryOtp` RPC extracted, zero REST behavior change; other Delivery RPCs + DeliveryGateway stay in-process | ✓ SATISFIED | Unchanged from prior verification — full RpcException business/transport exception mapping verified end-to-end, DeliveryGateway stubbed, other 7 handlers unchanged. Not affected by 21-08. |
+| GRPC-08 | 21-01 through 21-05, 21-08 | News/Waitlist/Reviews extracted, own proto contracts, own Railway process, `ClientGrpc`, zero REST behavior change | ✓ SATISFIED | **Upgraded from BLOCKED (partial) to SATISFIED.** News was already fully satisfied. Waitlist and Reviews now also satisfy "zero REST behavior change" on their error paths — business-rule rejections correctly map to their original HTTP status/message via the newly-verified `RpcException`/`err.code` round-trip, closing CR-01 and CR-02. |
 
-Both requirement IDs from the 7 plans' frontmatter (`requirements: [GRPC-07]` in 21-01/06/07, `requirements: [GRPC-08]` in 21-01/02/03/04/05) are accounted for against REQUIREMENTS.md — no orphaned requirement IDs found for this phase.
+Both requirement IDs (`GRPC-07` in 21-01/06/07 frontmatter, `GRPC-08` in 21-01/02/03/04/05/08 frontmatter) are accounted for against REQUIREMENTS.md (lines 15-16, 81-82). No orphaned requirement IDs found for this phase. Note: `.planning/REQUIREMENTS.md`'s checkbox markers for GRPC-07/GRPC-08 still show `[ ]` (unchecked) and the status table (lines 81-82) shows "Pending" — this is a tracking-doc bookkeeping item, not a code gap; it should be updated to reflect phase closure but does not block the phase goal, which is a codebase-behavior claim, not a tracking-doc claim.
 
 ### Anti-Patterns Found
 
-No `TBD`/`FIXME`/`XXX`/`TODO`/`HACK`/`PLACEHOLDER` markers found in any file created or modified by this phase (`backend/apps/{news,waitlist,reviews,delivery-otp}-service`, `backend/src/modules/{news,waitlist,reviews,delivery-otp}-client`, `backend/src/modules/{news,waitlist,reviews,delivery}`). The 2 CRITICAL findings (CR-01, CR-02) are not marker-based debt — they are a missing code path (absent try/catch + absent err.code inspection), confirmed by direct source reading and cross-referenced against the phase's own passing test suites, which do not exercise the missing path.
+No `TBD`/`FIXME`/`XXX`/`TODO`/`HACK`/`PLACEHOLDER` markers found in any of the 8 files modified by plan 21-08 (`reviews-grpc.controller.ts`, `reviews-grpc.controller.spec.ts`, `reviews-client.service.ts`, `reviews-client.service.spec.ts`, `waitlist-grpc.controller.ts`, `waitlist-grpc.controller.spec.ts`, `waitlist-client.service.ts`, `waitlist-client.service.spec.ts`). No empty-implementation or hardcoded-empty-data patterns found in the new exception-mapping code paths — each mapped branch constructs a real `RpcException`/Nest HTTP exception carrying the original message, and the "any other error rethrown unwrapped" branches are the deliberate, documented carve-out for genuine defects (matching the already-verified `delivery-otp-grpc.controller.ts` precedent).
 
 ### Human Verification Required
 
-1. **D-08 sizing gate verdicts (21-03 Task 3, 21-05 Task 4)**
+1. **D-08 sizing gate verdicts (21-03 Task 3, 21-05 Task 4)** — carried forward unchanged from the prior verification; unrelated to CR-01/CR-02 and not addressed by plan 21-08.
    **Test:** Independently re-run the SQL queries specified in each plan's checkpoint task against real production/staging data and confirm the recorded "PASS" verdicts.
    **Expected:** Both SUMMARY.md files narrate a PASS verdict but include no actual query output — only a claim that a human operator reviewed real data. A human with DB access should confirm this before the canary flags are ever flipped.
    **Why human:** Requires live database access this verifier does not have.
 
-2. **Live confirmation of the CR-01/CR-02 regression against a running deployment**
+2. **Live end-to-end confirmation of the CR-01/CR-02 fix against a running deployment**
    **Test:** With the reviews/waitlist canary flags enabled and the gRPC services live, submit a review for a booking the user doesn't own, and a waitlist join with neither email nor phone; observe the actual HTTP status returned.
-   **Expected:** Per this verifier's static analysis, both currently return 503 instead of 403/409 (reviews) or 400 (waitlist).
-   **Why human:** Requires a running server; this verifier's finding is based on source-level tracing, matching the same methodology 21-REVIEW.md itself used (confirmed via direct read of the exception-handling code paths, not dynamic execution).
+   **Expected:** Per plan 21-08's code fix and this verifier's independent source read plus unit tests, both should now return the correct business-rule HTTP status (403/409/400) with the original message, not 503.
+   **Why human:** This verifier's confirmation is via direct source reading (the fix code is present and structurally correct) and unit tests that mock the gRPC transport boundary (`throwError(() => ({code, message}))` simulating what a real gRPC error looks like client-side). It has not observed an actual network round-trip through a live `@GrpcMethod` handler and `BaseRpcExceptionFilter`. A live smoke test would remove the last residual doubt about runtime behavior in the exact deployed configuration.
 
 ### Gaps Summary
 
-The phase successfully lands the mechanical/structural side of all 4 extractions: independent Railway-deployable processes, correct proto wiring, canary kill-switches, health checks, and — critically — full response-*shape* preservation (including two genuinely hard shape gaps: Reviews' photos write-back and Waitlist's join-shape reconstruction). The backend compiles cleanly and all 16 phase-relevant test suites (76 tests) pass.
+No gaps remain. Both previously-FAILED truths (CR-01: Reviews business-exception mapping; CR-02: Waitlist business-exception mapping) are closed by plan 21-08, independently re-verified against the current codebase — not the SUMMARY's claims. Server-side `RpcException` wrapping and client-side `err.code` inspection are both present and structurally correct in `reviews-grpc.controller.ts`/`reviews-client.service.ts` and `waitlist-grpc.controller.ts`/`waitlist-client.service.ts`, mirroring the already-verified `delivery-otp-grpc.controller.ts`/`delivery-otp-client.service.ts` pattern exactly. New tests exercise business-exception-shaped gRPC errors (objects with `.code` set, e.g. `{code: GrpcStatus.NOT_FOUND, message: 'Booking not found'}`) — not just generic transport-error tests — closing the exact test gap the prior verification identified. All 18 phase-relevant test suites (92 tests) pass; `tsc --noEmit` is clean; `git log`/`git show --stat` confirm only the 8 files declared in the plan's frontmatter were touched, with zero collateral changes to the other 8 already-passing truths' supporting files.
 
-However, two of the four extractions — Reviews and Waitlist — have a real, independently-confirmed functional regression against the phase goal's explicit "zero client-visible behavior change" bar and against GRPC-08's "zero REST behavior change" requirement text: their gRPC controllers never wrap business exceptions (`NotFoundException`/`ForbiddenException`/`BadRequestException`/`ConflictException`) in `RpcException`, so NestJS's default exception filter silently downgrades every legitimate 4xx rejection to a generic 503 once the canary flag is enabled. The fourth extraction (Delivery OTP) demonstrates the correct pattern exists and was known to the phase's own authors — it just wasn't carried over to the other two. This is the same finding as 21-REVIEW.md's CR-01 and CR-02, independently reproduced here via direct source reading, exception-throw-site tracing in the underlying domain services, and confirmation that the phase's own test suites do not exercise the missing path (only generic transport errors are tested, never a business-exception-shaped gRPC error).
-
-Both gaps are narrowly scoped (one method's catch-handling on each side of two facades) and have a proven fix pattern already in the same codebase (`delivery-otp-grpc.controller.ts` / `delivery-otp-client.service.ts`). This does not require new architecture — it requires applying the pattern that's already been built and tested once in this same phase.
+Status is `human_needed` rather than `passed` solely because of the 2 pre-existing human-verification items (D-08 sizing gate, live end-to-end smoke test) — both are process/environment checks that this verifier cannot perform from source code alone, not code-level gaps.
 
 ---
 
-_Verified: 2026-07-20T19:15:00Z_
+_Verified: 2026-07-21T01:02:34Z_
 _Verifier: Claude (gsd-verifier)_
