@@ -123,3 +123,15 @@ None - no external service configuration required. `SENDGRID_API_KEY` behavior i
 ---
 *Phase: 22-scheduled-ministry-exports-lga-heatmap*
 *Completed: 2026-07-21*
+
+## Self-Check: PASSED
+
+All claimed files verified present on disk:
+- `backend/prisma/schema.prisma`
+- `backend/prisma/migrations/20260721131842_add_ministry_export_subscription/migration.sql`
+- `backend/src/common/services/sendgrid.service.ts`
+- `backend/src/common/services/__tests__/sendgrid.service.spec.ts`
+- `.planning/phases/22-scheduled-ministry-exports-lga-heatmap/22-01-SUMMARY.md`
+
+All claimed commit hashes verified present in git history:
+- `a1a8915`, `16183cf`, `e004460`, `41ea154`, `15a221d`
