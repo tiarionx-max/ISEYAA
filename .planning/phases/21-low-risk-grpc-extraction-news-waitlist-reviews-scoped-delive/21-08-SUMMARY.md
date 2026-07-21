@@ -107,3 +107,7 @@ None - no external service configuration required.
 ---
 *Phase: 21-low-risk-grpc-extraction-news-waitlist-reviews-scoped-delive*
 *Completed: 2026-07-21*
+
+## Self-Check: PASSED
+
+All 9 claimed files verified present on disk; all 2 task commits (`3754039`, `29eb414`) plus the SUMMARY docs commit verified present in git history.
