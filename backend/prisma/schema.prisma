@@ -719,6 +719,33 @@ model SettlementSplitTier {
   @@map("settlement_split_tiers")
 }
 
+enum ExportCadence {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+}
+
+enum ExportDeliveryStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+model MinistryExportSubscription {
+  id          String               @id @default(uuid())
+  recipients  String[] // D-11: free-text emails, not FK to User
+  cadence     ExportCadence
+  isActive    Boolean              @default(true)
+  lastSentAt  DateTime? // D-04: rolling-window anchor; null until first successful send
+  lastStatus  ExportDeliveryStatus @default(PENDING)
+  lastError   String? // D-12; truncated to <=500 chars before persisting (22-03)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@index([isActive])
+  @@map("ministry_export_subscriptions")
+}
+
 model ShadowSettlementComparison {
   id              String   @id @default(uuid())
   module          String // 'transport' | 'delivery'
