@@ -83,15 +83,13 @@ function buildSubscription(o: Partial<{ id: string; lastSentAt: Date | null; cad
   };
 }
 
-let realDateNow: () => number;
-
 beforeEach(() => {
-  realDateNow = Date.now;
-  Date.now = jest.fn(() => NOW.getTime());
+  jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+  jest.setSystemTime(NOW);
 });
 
 afterEach(() => {
-  Date.now = realDateNow;
+  jest.useRealTimers();
   jest.restoreAllMocks();
 });
 
@@ -144,5 +142,160 @@ describe('MinistryExportSchedulerService.checkSubscriptionsDue', () => {
     expect(processSpy).toHaveBeenCalledWith(dueSub);
     expect(mockMinistryService.getVisitorEntriesByLgaAndMonth).not.toHaveBeenCalled();
     expect(mockSendgrid.sendMinistryDigest).not.toHaveBeenCalled();
+  });
+});
+
+describe('MinistryExportSchedulerService.processSubscription', () => {
+  it('fetches each report with a from/to window scoped to lastSentAt ?? createdAt, and gives two due subscriptions their own distinct windows', async () => {
+    const service = await makeService();
+
+    const subA = buildSubscription({
+      id: 'SUB-A',
+      lastSentAt: null,
+      createdAt: new Date('2026-07-01T00:00:00.000Z'),
+    });
+    const subB = buildSubscription({
+      id: 'SUB-B',
+      lastSentAt: new Date('2026-07-10T00:00:00.000Z'),
+      createdAt: new Date('2026-06-01T00:00:00.000Z'),
+    });
+
+    await (service as any).processSubscription(subA);
+    await (service as any).processSubscription(subB);
+
+    const nowIso = NOW.toISOString();
+
+    expect(mockMinistryService.getVisitorEntriesByLgaAndMonth).toHaveBeenNthCalledWith(
+      1,
+      new Date('2026-07-01T00:00:00.000Z').toISOString(),
+      nowIso,
+    );
+    expect(mockMinistryService.getPurposeBreakdown).toHaveBeenNthCalledWith(
+      1,
+      new Date('2026-07-01T00:00:00.000Z').toISOString(),
+      nowIso,
+    );
+    expect(mockMinistryService.getRevenueToGovernment).toHaveBeenNthCalledWith(
+      1,
+      new Date('2026-07-01T00:00:00.000Z').toISOString(),
+      nowIso,
+    );
+
+    expect(mockMinistryService.getVisitorEntriesByLgaAndMonth).toHaveBeenNthCalledWith(
+      2,
+      new Date('2026-07-10T00:00:00.000Z').toISOString(),
+      nowIso,
+    );
+    expect(mockMinistryService.getPurposeBreakdown).toHaveBeenNthCalledWith(
+      2,
+      new Date('2026-07-10T00:00:00.000Z').toISOString(),
+      nowIso,
+    );
+    expect(mockMinistryService.getRevenueToGovernment).toHaveBeenNthCalledWith(
+      2,
+      new Date('2026-07-10T00:00:00.000Z').toISOString(),
+      nowIso,
+    );
+  });
+
+  it('sends the digest with 2 attachments (PDF + CSV) via resilience.execute("sendgrid", ...) and marks the subscription SUCCESS', async () => {
+    const service = await makeService();
+    mockMinistryService.getVisitorEntriesByLgaAndMonth.mockResolvedValue([
+      { lgaId: 'L1', lgaName: 'Abeokuta', month: '2026-07', userRole: 'TOURIST', count: 5 },
+    ]);
+    mockCsv.toCsv.mockResolvedValue('a,b,c\n1,2,3');
+    mockPdf.renderPdf.mockResolvedValue(Buffer.from('small-pdf'));
+
+    const sub = buildSubscription({ id: 'SUB-OK' });
+
+    await (service as any).processSubscription(sub);
+
+    expect(mockResilience.execute).toHaveBeenCalledWith('sendgrid', expect.any(Function));
+    expect(mockSendgrid.sendMinistryDigest).toHaveBeenCalledTimes(1);
+    const sendArgs = mockSendgrid.sendMinistryDigest.mock.calls[0][0];
+    expect(sendArgs.attachments).toHaveLength(2);
+    expect(sendArgs.attachments[0].filename).toBe('ministry-digest.pdf');
+    expect(sendArgs.attachments[1].filename).toBe('ministry-digest.csv');
+
+    expect(mockPrisma.ministryExportSubscription.update).toHaveBeenCalledWith({
+      where: { id: 'SUB-OK' },
+      data: { lastSentAt: NOW, lastStatus: 'SUCCESS', lastError: null },
+    });
+  });
+
+  it('degrades gracefully when combined raw byte size exceeds the 8MB threshold: sends without attachments, warns, still marks SUCCESS', async () => {
+    const service = await makeService();
+    const warnSpy = jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
+
+    mockPdf.renderPdf.mockResolvedValue(Buffer.alloc(9 * 1024 * 1024, 'a')); // 9MB > 8MB threshold
+    mockCsv.toCsv.mockResolvedValue('small-csv');
+
+    const sub = buildSubscription({ id: 'SUB-BIG' });
+
+    await (service as any).processSubscription(sub);
+
+    expect(mockSendgrid.sendMinistryDigest).toHaveBeenCalledTimes(1);
+    const sendArgs = mockSendgrid.sendMinistryDigest.mock.calls[0][0];
+    expect(sendArgs.attachments).toBeUndefined();
+    expect(warnSpy).toHaveBeenCalled();
+
+    expect(mockPrisma.ministryExportSubscription.update).toHaveBeenCalledWith({
+      where: { id: 'SUB-BIG' },
+      data: { lastSentAt: NOW, lastStatus: 'SUCCESS', lastError: null },
+    });
+  });
+
+  it('marks the subscription FAILED with a truncated error and leaves lastSentAt untouched when resilience.execute rejects', async () => {
+    const service = await makeService();
+    mockResilience.execute.mockRejectedValue(new Error('SendGrid outage: 503 Service Unavailable'));
+
+    const sub = buildSubscription({ id: 'SUB-FAIL' });
+
+    await (service as any).processSubscription(sub);
+
+    expect(mockPrisma.ministryExportSubscription.update).toHaveBeenCalledTimes(1);
+    const updateArgs = mockPrisma.ministryExportSubscription.update.mock.calls[0][0];
+    expect(updateArgs.where).toEqual({ id: 'SUB-FAIL' });
+    expect(updateArgs.data.lastStatus).toBe('FAILED');
+    expect(updateArgs.data.lastError).toBe('SendGrid outage: 503 Service Unavailable');
+    expect(updateArgs.data).not.toHaveProperty('lastSentAt');
+  });
+
+  it('truncates a lastError longer than 500 characters to exactly 500 characters', async () => {
+    const service = await makeService();
+    const longMessage = 'x'.repeat(600);
+    mockResilience.execute.mockRejectedValue(new Error(longMessage));
+
+    const sub = buildSubscription({ id: 'SUB-LONGERR' });
+
+    await (service as any).processSubscription(sub);
+
+    const updateArgs = mockPrisma.ministryExportSubscription.update.mock.calls[0][0];
+    expect(updateArgs.data.lastError).toHaveLength(500);
+  });
+
+  it('isolates one subscription failure from the next — the second due subscription is still processed and updated', async () => {
+    const service = await makeService();
+
+    const subFail = buildSubscription({ id: 'SUB-ONE-FAILS' });
+    const subOk = buildSubscription({ id: 'SUB-TWO-OK' });
+
+    mockMinistryService.getVisitorEntriesByLgaAndMonth
+      .mockRejectedValueOnce(new Error('DB blew up'))
+      .mockResolvedValue([]);
+
+    mockPrisma.ministryExportSubscription.findMany.mockResolvedValue([subFail, subOk]);
+
+    await service.checkSubscriptionsDue();
+
+    expect(mockPrisma.ministryExportSubscription.update).toHaveBeenCalledTimes(2);
+    expect(mockPrisma.ministryExportSubscription.update).toHaveBeenNthCalledWith(1, {
+      where: { id: 'SUB-ONE-FAILS' },
+      data: { lastStatus: 'FAILED', lastError: 'DB blew up' },
+    });
+    expect(mockPrisma.ministryExportSubscription.update).toHaveBeenNthCalledWith(2, {
+      where: { id: 'SUB-TWO-OK' },
+      data: { lastSentAt: NOW, lastStatus: 'SUCCESS', lastError: null },
+    });
   });
 });
