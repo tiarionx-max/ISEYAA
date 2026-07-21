@@ -6,19 +6,27 @@
 
 ```
 ISEYAA/
-├── backend/          NestJS API (TypeScript, Prisma, PostgreSQL 16, Redis)
+├── backend/          NestJS monolith (TypeScript, Prisma, PostgreSQL 16, Redis) + gRPC microservices in backend/apps/
 ├── web/              Next.js 14 frontend (App Router, Tailwind, Framer Motion)
-└── mobile/           Expo SDK 51 React Native app
+├── mobile/           Expo SDK 51 React Native app
+├── shared/           TypeScript types/DTOs/constants shared by web + mobile (npm workspace)
+├── packages/proto/   Shared gRPC/protobuf definitions (npm workspace)
+├── docs/             Runbooks (e.g. blue-green-cutover-runbook.md)
+├── monitoring/       Observability configuration
+└── load-tests/       Load/performance test scripts
 ```
+
+`backend/src/` is a NestJS monolith that still serves most domains in-process: auth, wallet, events, stays, marketplace, studio, admin, ai, tourism, transport, delivery, users, settlement-disputes, ministry, lgas, webhooks. `backend/apps/` additionally contains 12 independently-buildable/deployable gRPC microservice scaffolds, each with its own `railway.toml` + `Dockerfile`. Of those 12, only 5 are actually live-wired into local dev today via `docker-compose.yml` and called from the monolith over gRPC through thin client modules (`notifications-client`, `news-client`, `waitlist-client`, `reviews-client`, `delivery-otp-client`): `notifications-service`, `news-service`, `waitlist-service`, `reviews-service`, and `delivery-otp-service` (the last scoped to the single `VerifyDeliveryOtp` RPC — the rest of the delivery flow stays in-process). The other 7 (`admin-service`, `ai-service`, `auth-service`, `events-service`, `marketplace-service`, `stays-service`, `wallet-service`) are Railway-deployable scaffolds for future extraction — their domains are still served entirely in-process by the monolith today, not "extracted". See `docs/blue-green-cutover-runbook.md` for the blue-green canary cutover process used when shifting live traffic to a newly-extracted service.
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js 20 LTS
 - PostgreSQL 16
 - Redis 7
-- AWS S3 (or compatible)
+- Cloudflare R2 (or AWS S3 — `S3Service` auto-detects based on which env vars are set)
 - Paystack account
 - SendGrid account
+- Docker + Docker Compose (recommended — boots Postgres, Redis, backend, web, and the 5 live-wired gRPC services together; see `docker-compose.yml`)
 
 ## Local Setup
 
@@ -27,39 +35,87 @@ ISEYAA/
 ```bash
 git clone <repo>
 cd ISEYAA
-npm install -g pnpm   # optional
-
-# Backend
-cd backend && npm install
-
-# Web
-cd ../web && npm install
-
-# Mobile
-cd ../mobile && npm install
+npm install
 ```
+
+Root `package.json` declares npm workspaces (`backend`, `web`, `mobile`, `shared`, `packages/proto`), so a single `npm install` from the repo root installs every workspace. To install a single workspace only, use `npm install --workspace=<name>` (e.g. `npm install --workspace=backend`).
 
 ### 2. Environment variables
 
-Copy and fill in each `.env`:
+The backend (and Docker Compose) reads a single root `.env` file — copy it from `.env.example`, not `backend/.env`:
 
-**`backend/.env`**
+```bash
+cp .env.example .env
+```
+
+`ConfigModule` in `backend/src/app.module.ts` resolves `envFilePath` to the repo root, and every service in `docker-compose.yml` uses `env_file: .env` (repo root).
+
+**`.env`** (repo root — grouped below by section; see `.env.example` for the full list)
 ```env
+# Application
+APP_ENV=development
+PORT=3001
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:19006
+
+# Database
 DATABASE_URL="postgresql://user:password@localhost:5432/iseyaa"
+
+# Redis
 REDIS_URL="redis://localhost:6379"
+
+# Auth
 JWT_SECRET="change-me-in-production"
-JWT_EXPIRES_IN="7d"
+JWT_REFRESH_SECRET="change-me-in-production"
+
+# Payments — Paystack (primary) / Flutterwave (fallback)
 PAYSTACK_SECRET_KEY="sk_test_..."
+PAYSTACK_PUBLIC_KEY="pk_test_..."
 PAYSTACK_WEBHOOK_SECRET="whsec_..."
-AWS_REGION="eu-west-1"
-AWS_ACCESS_KEY_ID="AKIA..."
-AWS_SECRET_ACCESS_KEY="..."
-S3_BUCKET_NAME="iseyaa-media"
-CDN_BASE_URL="https://cdn.iseyaa.gov.ng"
+FLUTTERWAVE_SECRET_KEY="FLWSECK_TEST-..."
+
+# Messaging
 SENDGRID_API_KEY="SG...."
 SENDGRID_FROM_EMAIL="noreply@iseyaa.gov.ng"
-APP_URL="http://localhost:3001"
-PORT=3001
+TERMII_API_KEY="TL..."
+TERMII_SENDER_ID="ISEYAA"
+
+# Maps
+GOOGLE_MAPS_API_KEY="AIza..."
+
+# AI
+ANTHROPIC_API_KEY="sk-ant-..."
+
+# Object storage — Cloudflare R2 (primary; replaces AWS S3 + CloudFront, zero egress fees)
+CF_ACCOUNT_ID="..."
+R2_ACCESS_KEY_ID="..."
+R2_SECRET_ACCESS_KEY="..."
+R2_BUCKET="iseyaa-media"
+R2_PUBLIC_URL="https://cdn.iseyaa.gov.ng"
+# — or set AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_S3_BUCKET / AWS_CLOUDFRONT_URL / AWS_REGION
+#   instead; S3Service auto-detects AWS mode whenever AWS_ACCESS_KEY_ID is set
+
+# Search
+TYPESENSE_HOST=localhost
+TYPESENSE_API_KEY="..."
+TYPESENSE_PROTOCOL=http
+TYPESENSE_PORT=8108
+
+# Push
+FIREBASE_SERVER_KEY="AAAA..."
+
+# gRPC service URLs — only these 5 are consumed today (docker-compose service names in dev);
+# the other *_SERVICE_URL vars in .env.example are unused placeholders for future extractions
+NOTIFICATIONS_SERVICE_URL="notifications-service:5008"
+NEWS_SERVICE_URL="news-service:5009"
+WAITLIST_SERVICE_URL="waitlist-service:5010"
+REVIEWS_SERVICE_URL="reviews-service:5011"
+DELIVERY_OTP_SERVICE_URL="delivery-otp-service:5012"
+
+# Observability
+SENTRY_DSN="..."
+OTEL_EXPORTER_OTLP_ENDPOINT="..."
+OTEL_SERVICE_NAME="iseyaa-api"
+
 NODE_ENV="development"
 ```
 
@@ -68,7 +124,6 @@ NODE_ENV="development"
 NEXT_PUBLIC_API_URL="http://localhost:3001/api/v1"
 NEXTAUTH_URL="http://localhost:3000"
 NEXTAUTH_SECRET="change-me-in-production"
-NEXT_PUBLIC_GOOGLE_MAPS_KEY="AIza..."
 ```
 
 **`mobile/.env`**
@@ -101,6 +156,8 @@ cd mobile && npm start
 - Swagger UI: http://localhost:3001/api/docs
 - Web: http://localhost:3000
 - Mobile: scan QR with Expo Go
+
+Recommended: `docker-compose up -d` from the repo root instead of running the backend manually — it also boots the 5 live-wired gRPC services (`notifications-service`, `news-service`, `waitlist-service`, `reviews-service`, `delivery-otp-service`) that the monolith calls over gRPC. Running `npm run start:dev` on its own, without those 5 services running, means any code path touching notifications, news, waitlist, reviews, or delivery-OTP verification will fail to reach its gRPC dependency.
 
 ## API Overview
 
