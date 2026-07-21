@@ -47,6 +47,47 @@
 
 ---
 
+## Milestone: v2.1 — Extraction Backlog Clearance & Settlement Flexibility
+
+**Shipped:** 2026-07-21
+**Phases:** 5 (18-22) | **Plans:** 27 | **Timeline:** 2026-07-19 → 2026-07-21 (3 days)
+
+### What Was Built
+- A single validated, effective-dated `SettlementSplitTier` resolver (`SettlementService.resolveSplit()`) replacing 6 duplicated inline `PlatformConfig` reads, with a `Number.isFinite()` guard rejecting NaN-corrupted config before any wallet mutation
+- A `SUPER_ADMIN`-only dispute/adjustment workflow (`OPEN → IN_REVIEW → RESOLVED/DISMISSED`) over a new `SettlementDispute` model, with `SettlementService.adjust()` as an append-only compensating-transaction primitive
+- A real `grpc.health.v1.Health` endpoint on every extracted gRPC service gating Railway rollout, `setNx()` distributed-lock guards on all 6 named `@Cron` jobs, and a documented blue-green cutover/rollback runbook
+- Four more services extracted to live, independently-deployed gRPC processes (News, Waitlist, Reviews, Delivery's `VerifyDeliveryOtp`) following the `notifications-service` hybrid HTTP+gRPC pattern
+- Scheduled Ministry export digests (CSV + branded PDF, DB-configurable cadence/recipients) and an LGA×month visitor heatmap on the Ministry dashboard, both built with zero new npm dependencies
+
+### What Worked
+- Sequencing Phase 18 (split centralization) strictly before Phase 19 (disputes) meant the dispute/adjustment resolver had exactly one source of truth for "what split should have applied" — zero rework needed when Phase 19 built on top
+- Sequencing Phase 20 (healthcheck retrofit) strictly before Phase 21 (new extractions) meant every one of the 4 new services shipped with a real health endpoint from day one, instead of retrofitting it after they were already live
+- Risk-ascending rollout order within Phase 21 (News → Waitlist → Reviews → Delivery OTP, each with its own canary flag and bake period) meant the riskiest extraction (Delivery OTP) benefited from 3 prior successful cutovers' worth of confidence before it shipped
+- Gap-closure rounds caught real defects a single verification pass missed: Phase 18 caught a unique-constraint violation in the audit-trail update path pre-verification; Phase 19's two gap-closure rounds (19-05, 19-06) fixed a recurring money-conservation bug class in `computeAdjustmentLines()`; Phase 21's gap closure (21-08) caught a business-exception-to-503 downgrade bug that would have silently turned every 4xx business rejection into a generic 503 once canary was live
+
+### What Was Inefficient
+- The same money-conservation bug class in `computeAdjustmentLines()` (Phase 19) took two separate gap-closure rounds to fully close, plus a residual code-unreachable variant that was risk-accepted rather than fixed — a more thorough first-pass design review of the compensating-transaction math might have caught both at once
+- Phase 20's D-09 circular-dependency fix in `NotificationsClientModule` blocked Wave 2 (`test:e2e:tours` bootstraps the full `AppModule`) — a dependency that wasn't visible until execution, not planning
+- The Reviews/Waitlist gRPC controllers' business-exception-to-503 bug (Phase 21, CR-01/CR-02) was a pattern that `delivery-otp-grpc.controller.ts` had already gotten right earlier in the same phase — the correct pattern existed in the codebase but wasn't propagated to the later controllers until gap closure caught the divergence
+
+### Patterns Established
+- Centralize-before-extend: build the single source of truth (split resolver) before adding a workflow that depends on it (disputes), rather than the reverse
+- Retrofit-before-repeat: prove the safety mechanism (health-gated blue-green) on the existing extraction before using it to gate new extractions, rather than extracting first and retrofitting safety after
+- Risk-ascending staggered rollout with per-service canary flags and bake periods as the standard pattern for any batch of independent service extractions
+- When one controller in a batch gets an exception-mapping pattern right, explicitly diff the other controllers in the same phase against it before considering the phase done — don't assume correctness propagates by copy-paste
+
+### Key Lessons
+1. A compensating-transaction / adjustment primitive touching money needs its balancing math reviewed as thoroughly as the original transaction primitive was — `computeAdjustmentLines()` took two gap-closure rounds where the original `settle()` needed none, suggesting the adjustment path deserves the same TDD rigor established for settlements in v2.0.
+2. When multiple controllers in one phase implement the same integration pattern (e.g., wrapping business exceptions for gRPC), verify all of them against the first-correct one explicitly — don't rely on the pattern "obviously" propagating.
+3. Sequencing a safety/infrastructure phase (healthcheck retrofit, split centralization) strictly before the phases that depend on it continues to pay off, exactly as v2.0's resilience-before-extraction sequencing did.
+
+### Cost Observations
+- Model mix: not tracked this milestone
+- Sessions: not tracked this milestone
+- Notable: 3 phases (18, 19, 21) each needed at least one gap-closure round before verification passed clean — consistent with v2.0's finding that re-verification catches real BLOCKER-severity gaps a single pass misses, at a cost small relative to shipping a money-conservation or exception-mapping defect live
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -55,6 +96,7 @@
 |-----------|----------|--------|------------|
 | v1.0 | - | 9 | Initial MVP; several human-verification checkpoints left unfiled at milestone boundary (carried forward as deferred debt) |
 | v2.0 | - | 8 (10-17) | First milestone run through `/gsd-complete-milestone`; introduced re-verification-after-gap-closure as a standard step, shadow-mode verification before live cutovers |
+| v2.1 | - | 5 (18-22) | 3 of 5 phases needed a gap-closure round before clean verification (18, 19, 21) — re-verification-after-gap-closure held as standard; risk-ascending staggered rollout (per-service canary + bake period) introduced for batched independent extractions |
 
 ### Cumulative Quality
 
@@ -62,8 +104,10 @@
 |-----------|-------|----------|-------------------|
 | v1.0 | 153 | - | - |
 | v2.0 | 619 (backend) + mobile smoke tests | - | `cockatiel` (resilience) |
+| v2.1 | 800 (backend) | - | LGA×month heatmap (custom CSS-grid, no mapping dep) |
 
 ### Top Lessons (Verified Across Milestones)
 
-1. Unfiled human-verification checkpoints accumulate as debt across milestones (8 from v1.0 still open; v2.0 added 2 more via Phase 15's WhatsApp template/visual checks) — worth a dedicated cleanup pass rather than perpetual carry-forward.
-2. Documentation bookkeeping (REQUIREMENTS.md checkboxes, STATE.md narrative sections) needs to be updated at the same time as the underlying verification, not reconciled retroactively — this pattern repeated across both v1.0 and v2.0.
+1. Unfiled human-verification checkpoints accumulate as debt across milestones (8 from v1.0 still open; v2.0 added 2 more via Phase 15's WhatsApp template/visual checks; v2.1 added 7 more across Phases 19-21, all live-deployment-gated) — worth a dedicated cleanup pass rather than perpetual carry-forward.
+2. Documentation bookkeeping (REQUIREMENTS.md checkboxes, STATE.md narrative sections) needs to be updated at the same time as the underlying verification, not reconciled retroactively — this pattern repeated across v1.0, v2.0, and v2.1 (STATE.md's Current Status/Performance Metrics sections were still found stale at v2.1's milestone close).
+3. Money-moving compensating-transaction logic (v2.1's `computeAdjustmentLines()`) needs the same TDD rigor as the primary transaction path it corrects — it took two gap-closure rounds where the original `settle()` (v2.0) needed none.
