@@ -121,9 +121,174 @@ export class MinistryExportSchedulerService {
     }
   }
 
-  // Task 1 stub — Task 2 replaces this body with the full
-  // gather/render/send/status-update sequence.
+  // D-04: per-subscription rolling window — gather/render/send one digest
+  // covering [lastSentAt ?? createdAt, now). Wrapped in a per-row try/catch
+  // so one bad subscription never aborts checkSubscriptionsDue()'s loop for
+  // the others (T-22-07 repudiation mitigation: every attempt is logged and
+  // persisted, success or failure).
   private async processSubscription(subscription: MinistryExportSubscription): Promise<void> {
-    await Promise.resolve();
+    try {
+      const from = (subscription.lastSentAt ?? subscription.createdAt).toISOString();
+      const to = new Date().toISOString();
+
+      const [visitorEntries, purposeBreakdown, revenue] = await Promise.all([
+        this.ministryService.getVisitorEntriesByLgaAndMonth(from, to),
+        this.ministryService.getPurposeBreakdown(from, to),
+        this.ministryService.getRevenueToGovernment(from, to),
+      ]);
+
+      const pdfBuffer = await this.ministryPdfService.renderPdf({
+        title: 'Ministry Export Digest',
+        sections: [
+          {
+            heading: 'Visitor Entries',
+            columns: VISITOR_ENTRIES_PDF_COLUMNS,
+            rows: visitorEntries as unknown as Record<string, unknown>[],
+          },
+          {
+            heading: 'Purpose of Visit',
+            columns: PURPOSE_BREAKDOWN_COLUMNS,
+            rows: purposeBreakdown as unknown as Record<string, unknown>[],
+          },
+          {
+            heading: 'Revenue by Module',
+            columns: REVENUE_MODULE_COLUMNS,
+            rows: revenue.byModule as unknown as Record<string, unknown>[],
+          },
+          {
+            heading: 'Revenue by Month',
+            columns: REVENUE_MONTH_COLUMNS,
+            rows: revenue.byMonth as unknown as Record<string, unknown>[],
+          },
+          {
+            heading: 'Revenue by LGA',
+            columns: REVENUE_LGA_COLUMNS,
+            rows: revenue.byModuleLga as unknown as Record<string, unknown>[],
+          },
+        ],
+      });
+
+      // D-01/Open Question 2 resolution: one combined CSV unions all 3
+      // report types, each row tagged by `report` and populated only with
+      // its applicable columns (mirrors ministry.controller.ts's
+      // exportRevenue `breakdown`-discriminator-column technique).
+      const combinedRows: Record<string, unknown>[] = [
+        ...visitorEntries.map((r) => ({
+          report: 'Visitor Entries',
+          lgaId: r.lgaId ?? '',
+          lgaName: r.lgaName ?? '',
+          month: r.month,
+          userRole: r.userRole,
+          purpose: '',
+          count: r.count,
+          module: '',
+          total: '',
+        })),
+        ...purposeBreakdown.map((r) => ({
+          report: 'Purpose of Visit',
+          lgaId: '',
+          lgaName: '',
+          month: r.month,
+          userRole: '',
+          purpose: r.purpose,
+          count: r.count,
+          module: '',
+          total: '',
+        })),
+        ...revenue.byModule.map((r) => ({
+          report: 'Revenue by Module',
+          lgaId: '',
+          lgaName: '',
+          month: '',
+          userRole: '',
+          purpose: '',
+          count: '',
+          module: r.module,
+          total: r.total,
+        })),
+        ...revenue.byMonth.map((r) => ({
+          report: 'Revenue by Month',
+          lgaId: '',
+          lgaName: '',
+          month: r.month,
+          userRole: '',
+          purpose: '',
+          count: '',
+          module: '',
+          total: r.total,
+        })),
+        ...revenue.byModuleLga.map((r) => ({
+          report: 'Revenue by LGA',
+          lgaId: r.lgaId ?? '',
+          lgaName: r.lgaName ?? '',
+          month: '',
+          userRole: '',
+          purpose: '',
+          count: '',
+          module: r.module,
+          total: r.total,
+        })),
+      ];
+
+      const csv = await this.csvExportService.toCsv(combinedRows, MINISTRY_DIGEST_CSV_COLUMNS);
+
+      const rawBytes = pdfBuffer.length + Buffer.byteLength(csv, 'utf-8');
+
+      let attachments:
+        | Array<{ content: string; filename: string; type: string; disposition: string }>
+        | undefined;
+
+      if (rawBytes > SIZE_GUARD_THRESHOLD_BYTES) {
+        this.logger.warn(
+          `processSubscription: digest for subscription ${subscription.id} is ${rawBytes} bytes (over the ${SIZE_GUARD_THRESHOLD_BYTES}-byte threshold) — sending without attachments (D-15)`,
+        );
+        attachments = undefined;
+      } else {
+        attachments = [
+          {
+            content: pdfBuffer.toString('base64'),
+            filename: 'ministry-digest.pdf',
+            type: 'application/pdf',
+            disposition: 'attachment',
+          },
+          {
+            content: Buffer.from(csv, 'utf-8').toString('base64'),
+            filename: 'ministry-digest.csv',
+            type: 'text/csv',
+            disposition: 'attachment',
+          },
+        ];
+      }
+
+      await this.resilience.execute('sendgrid', () =>
+        this.sendgrid.sendMinistryDigest({
+          to: subscription.recipients,
+          subject: 'Ministry Export Digest',
+          html: `<p>Your scheduled Ministry Export Digest for the period ${from} to ${to} is attached.</p>`,
+          attachments,
+        }),
+      );
+
+      await this.prisma.ministryExportSubscription.update({
+        where: { id: subscription.id },
+        data: { lastSentAt: new Date(), lastStatus: 'SUCCESS', lastError: null },
+      });
+
+      this.logger.log(`processSubscription: digest sent successfully for subscription ${subscription.id}`);
+    } catch (err: any) {
+      this.logger.error(`processSubscription failed for subscription ${subscription.id}: ${err?.message}`);
+      await this.prisma.ministryExportSubscription.update({
+        where: { id: subscription.id },
+        data: { lastStatus: 'FAILED', lastError: this.truncateError(err) },
+      });
+    }
+  }
+
+  // Local equivalent of resilience.service.ts's non-exported
+  // summarizeVendorError() intent (T-22-05): message-only, never
+  // err.response.body/headers, truncated to <=500 chars before persisting.
+  private truncateError(err: unknown): string {
+    const message = (err as Error)?.message ?? 'Unknown error';
+    return message.slice(0, 500);
   }
 }
