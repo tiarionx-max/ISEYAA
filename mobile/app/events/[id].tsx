@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  ActivityIndicator, Alert, Platform, Share,
+  ActivityIndicator, Alert, Platform, Share, TextInput,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
+import * as WebBrowser from 'expo-web-browser';
 import { fetcher, api } from '../../lib/api';
 import { ChevronLeft, Heart, Share2, MapPin } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -59,7 +60,8 @@ function formatWeekdayTime(iso: string) {
 export default function EventDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
-  const [selectedTier, setSelectedTier] = useState(0);
+  const [selectedTicketTypeId, setSelectedTicketTypeId] = useState<string | null>(null);
+  const [email, setEmail] = useState('');
   const [isLiked, setIsLiked] = useState(false);
 
   const { data, isLoading } = useQuery({
@@ -68,12 +70,44 @@ export default function EventDetailScreen() {
     enabled: !!id,
   });
 
+  const { data: me } = useQuery<{ email?: string }>({
+    queryKey: ['me'],
+    queryFn: () => fetcher('/users/me'),
+  });
+
+  useEffect(() => {
+    if (!email && me?.email) setEmail(me.email);
+  }, [me?.email, email]);
+
   const event = data?.data ?? data;
+  const ticketTypes: Array<{ id: string; name: string; price: number | string; quantity: number; sold: number }> =
+    event?.ticketTypes ?? [];
+
+  useEffect(() => {
+    if (!selectedTicketTypeId && ticketTypes.length > 0) {
+      const firstAvailable = ticketTypes.find((tt) => tt.sold < tt.quantity) ?? ticketTypes[0];
+      setSelectedTicketTypeId(firstAvailable.id);
+    }
+  }, [ticketTypes, selectedTicketTypeId]);
 
   const purchaseMutation = useMutation({
-    mutationFn: () => api.post(`/events/${id}/purchase`, { quantity: 1 }),
-    onSuccess: () => Alert.alert('Ticket Purchased!', 'Your QR code is waiting in your profile.'),
-    onError: (e: any) => Alert.alert('Purchase Failed', e?.response?.data?.message ?? 'Please try again.'),
+    mutationFn: () => {
+      if (!selectedTicketTypeId) return Promise.reject(new Error('Select a ticket type'));
+      if (!email) return Promise.reject(new Error('Enter an email address for your receipt'));
+      return api.post(`/events/${id}/purchase`, { ticketTypeId: selectedTicketTypeId, email }).then((r) => r.data);
+    },
+    onSuccess: async (data: any) => {
+      const url = data?.payment?.authorizationUrl;
+      if (url) {
+        try {
+          await WebBrowser.openAuthSessionAsync(url, 'iseyaa://ticket-callback');
+        } catch {
+          // Payment page failed to open — the Paystack webhook is still the source of truth.
+        }
+      }
+      Alert.alert('Ticket Purchased!', 'Your QR code is waiting in your profile.');
+    },
+    onError: (e: any) => Alert.alert('Purchase Failed', e?.response?.data?.message ?? e?.message ?? 'Please try again.'),
   });
 
   if (isLoading) {
@@ -92,29 +126,26 @@ export default function EventDetailScreen() {
     );
   }
 
-  const isFree = !event.ticketPrice || Number(event.ticketPrice) === 0;
   const dateStr = event.startDate ?? event.date;
   const displayDate = dateStr ? formatDate(dateStr) : 'Date TBD';
   const displaySub = dateStr ? formatWeekdayTime(dateStr) : '';
   const venue = event.location ?? event.venue ?? 'Venue TBD';
 
-  const tiers = [
-    {
-      tier: 'General',
-      price: isFree ? 'Free' : formatCurrency(Number(event.ticketPrice)),
-      perks: 'General admission',
-    },
-    ...((!isFree && Number(event.ticketPrice) > 0)
-      ? [{
-          tier: 'VIP',
-          price: formatCurrency(Math.round(Number(event.ticketPrice) * 2.5)),
-          perks: 'Priority entry · Lounge access',
-        }]
-      : []),
-  ];
+  const tiers = ticketTypes.map((tt) => {
+    const soldOut = tt.sold >= tt.quantity;
+    return {
+      id: tt.id,
+      tier: tt.name,
+      price: Number(tt.price) === 0 ? 'Free' : formatCurrency(Number(tt.price)),
+      perks: soldOut ? 'Sold out' : `${tt.quantity - tt.sold} left`,
+      soldOut,
+    };
+  });
 
-  const selectedPrice = tiers[selectedTier]?.price ?? 'Free';
-  const selectedTierName = tiers[selectedTier]?.tier ?? 'General';
+  const selectedTierData = tiers.find((t) => t.id === selectedTicketTypeId);
+  const selectedPrice = selectedTierData?.price ?? '—';
+  const selectedTierName = selectedTierData?.tier ?? 'Select a tier';
+  const canPurchase = !!selectedTierData && !selectedTierData.soldOut && !!email;
 
   return (
     <View style={[s.root, { backgroundColor: SURFACE_DEEP }]}>
@@ -234,34 +265,57 @@ export default function EventDetailScreen() {
             <Text style={s.tiersSectionTitle}>Available tiers</Text>
           </View>
 
-          <View style={s.tiersList}>
-            {tiers.map((tier, idx) => {
-              const isSelected = selectedTier === idx;
-              return (
-                <TouchableOpacity
-                  key={tier.tier}
-                  style={[s.tierCard, isSelected && s.tierCardSelected]}
-                  onPress={() => setSelectedTier(idx)}
-                  activeOpacity={0.8}
-                >
-                  {/* Radio */}
-                  <View style={[s.radio, isSelected && s.radioSelected]} />
+          {tiers.length === 0 ? (
+            <View style={s.section}>
+              <Text style={s.body}>Tickets for this event aren't on sale yet — check back soon.</Text>
+            </View>
+          ) : (
+            <View style={s.tiersList}>
+              {tiers.map((tier) => {
+                const isSelected = selectedTicketTypeId === tier.id;
+                return (
+                  <TouchableOpacity
+                    key={tier.id}
+                    style={[s.tierCard, isSelected && s.tierCardSelected, tier.soldOut && { opacity: 0.5 }]}
+                    onPress={() => !tier.soldOut && setSelectedTicketTypeId(tier.id)}
+                    activeOpacity={0.8}
+                    disabled={tier.soldOut}
+                  >
+                    {/* Radio */}
+                    <View style={[s.radio, isSelected && s.radioSelected]} />
 
-                  {/* Info */}
-                  <View style={s.tierInfo}>
-                    <Text style={s.tierName}>{tier.tier}</Text>
-                    <Text style={s.tierPerks}>{tier.perks}</Text>
-                  </View>
+                    {/* Info */}
+                    <View style={s.tierInfo}>
+                      <Text style={s.tierName}>{tier.tier}</Text>
+                      <Text style={s.tierPerks}>{tier.perks}</Text>
+                    </View>
 
-                  {/* Price */}
-                  <Text style={[s.tierPrice, isSelected && s.tierPriceSelected]}>
-                    {tier.price}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+                    {/* Price */}
+                    <Text style={[s.tierPrice, isSelected && s.tierPriceSelected]}>
+                      {tier.price}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
         </View>
+
+        {/* ── RECEIPT EMAIL ── */}
+        {tiers.length > 0 && (
+          <View style={s.section}>
+            <Text style={s.kicker}>RECEIPT EMAIL</Text>
+            <TextInput
+              style={s.emailInput}
+              value={email}
+              onChangeText={setEmail}
+              placeholder="you@example.com"
+              placeholderTextColor={INK_FAINT}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+          </View>
+        )}
       </ScrollView>
 
       {/* ── STICKY CTA BAR ── */}
@@ -279,9 +333,9 @@ export default function EventDetailScreen() {
             <Text style={s.ctaPrice}>{selectedPrice}</Text>
           </View>
           <TouchableOpacity
-            style={[s.ctaButton, purchaseMutation.isPending && s.ctaButtonDisabled]}
+            style={[s.ctaButton, (!canPurchase || purchaseMutation.isPending) && s.ctaButtonDisabled]}
             onPress={() => purchaseMutation.mutate()}
-            disabled={purchaseMutation.isPending}
+            disabled={!canPurchase || purchaseMutation.isPending}
             activeOpacity={0.85}
           >
             <Text style={s.ctaButtonText}>
@@ -457,6 +511,16 @@ const s = StyleSheet.create({
     fontSize: 13.5,
     color: INK_MID,
     lineHeight: 13.5 * 1.55,
+  },
+  emailInput: {
+    backgroundColor: SURFACE_MID,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: INK,
   },
 
   // Ticket tiers

@@ -265,6 +265,7 @@ model User {
   mediaContents        MediaContent[]
   auditLogs            AuditLog[]
   attractionBookmarks  AttractionBookmark[]
+  notifications        Notification[]
   driverProfile        Driver?
   riderTrips           Trip[]               @relation("RiderTrips")
   deliveryRiderProfile DeliveryRider?
@@ -791,6 +792,20 @@ model AttractionBookmark {
 
   @@unique([userId, attractionId])
   @@map("attraction_bookmarks")
+}
+
+model Notification {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  title     String
+  body      String
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+  @@map("notifications")
 }
 
 model Driver {

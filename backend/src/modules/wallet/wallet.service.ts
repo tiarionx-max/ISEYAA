@@ -246,6 +246,25 @@ export class WalletService {
     }
   }
 
+  // ── resolveRecipient ───────────────────────────────────────────────────────
+
+  /**
+   * Resolves a Nigerian phone number to a display name before a transfer is sent,
+   * so the sender can confirm who they're paying. Returns only firstName + phone —
+   * never exposes full profile data (NDPA minimal-disclosure).
+   */
+  async resolveRecipient(requesterId: string, phone: string) {
+    const recipientUser = await this.prisma.user.findFirst({
+      where: { phone, deletedAt: null },
+      select: { id: true, firstName: true },
+    });
+    if (!recipientUser) throw new NotFoundException('No ISEYAA user found with that phone number');
+    if (recipientUser.id === requesterId) {
+      throw new BadRequestException('Cannot transfer to yourself');
+    }
+    return { userId: recipientUser.id, firstName: recipientUser.firstName, phone };
+  }
+
   // ── transfer ───────────────────────────────────────────────────────────────
 
   async transfer(senderUserId: string, dto: TransferDto) {

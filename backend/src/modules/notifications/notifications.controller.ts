@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, UseGuards, Req } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { NotificationsClientService } from '../notifications-client/notifications-client.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -26,5 +26,17 @@ export class NotificationsController {
   @ApiOperation({ summary: 'Send push notification (admin)' })
   send(@Body() body: { userId: string; title: string; message: string; data?: any }) {
     return this.notificationsService.sendPush(body.userId, body.title, body.message, body.data);
+  }
+
+  @Patch(':id/read')
+  @ApiOperation({ summary: 'Mark a single notification as read' })
+  markRead(@Req() req: any, @Param('id') id: string) {
+    return this.notificationsService.markRead(req.user.userId, id);
+  }
+
+  @Patch('read-all')
+  @ApiOperation({ summary: 'Mark all of the current user’s notifications as read' })
+  markAllRead(@Req() req: any) {
+    return this.notificationsService.markAllRead(req.user.userId);
   }
 }

@@ -11,7 +11,8 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { type LucideIcon, CreditCard, Smartphone, MapPin, Shield } from 'lucide-react-native';
+import { Shield } from 'lucide-react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { api, fetcher } from '../lib/api';
 import {
   SURFACE_DEEP,
@@ -29,33 +30,15 @@ import {
   FONT_MONO,
 } from '../lib/tokens';
 
-// ── Types ──────────────────────────────────────────────────────────────────────
-
-interface PaymentMethod {
-  id: string;
-  title: string;
-  sub: string;
-  icon: LucideIcon;
-  tag?: string;
-}
-
 // ── Data ───────────────────────────────────────────────────────────────────────
 
 const QUICK_AMOUNTS = ['5,000', '10,000', '25,000', '50,000'] as const;
 type QuickAmount = (typeof QUICK_AMOUNTS)[number];
 
-const PAYMENT_METHODS: PaymentMethod[] = [
-  { id: 'gtb', title: 'GTBank · 0123••6789', sub: 'Instant transfer · free', icon: CreditCard, tag: 'Saved' },
-  { id: 'zen', title: 'Zenith · 2245••1102', sub: 'Instant transfer · free', icon: CreditCard },
-  { id: 'ussd', title: 'USSD code', sub: 'Works without internet', icon: Smartphone },
-  { id: 'cash', title: 'Cash agent', sub: '24 nearby in Abeokuta', icon: MapPin },
-];
-
 // ── Screen ─────────────────────────────────────────────────────────────────────
 
 export default function TopUpScreen() {
   const [selectedAmount, setSelectedAmount] = useState<QuickAmount>('25,000');
-  const [selectedMethod, setSelectedMethod] = useState<string>('gtb');
   const queryClient = useQueryClient();
 
   const numericAmount = parseInt(selectedAmount.replace(/,/g, ''), 10);
@@ -72,9 +55,16 @@ export default function TopUpScreen() {
         return Promise.reject(new Error('Email not available. Please try again in a moment.'));
       }
       return api.post('/wallet/topup', { amount: numericAmount, email: userEmail })
-        .then((r) => r.data);
+        .then((r) => r.data as { reference: string; authorizationUrl?: string });
     },
-    onSuccess: () => {
+    onSuccess: async (data) => {
+      if (data.authorizationUrl) {
+        try {
+          await WebBrowser.openAuthSessionAsync(data.authorizationUrl, 'iseyaa://topup-callback');
+        } catch {
+          // Payment page failed to open — the Paystack webhook is still the source of truth.
+        }
+      }
       queryClient.invalidateQueries({ queryKey: ['wallet'] });
       Alert.alert(
         'Top-up initiated',
@@ -145,43 +135,6 @@ export default function TopUpScreen() {
                 </TouchableOpacity>
               );
             })}
-          </View>
-
-          {/* ── Payment methods ─────────────────────────────────────────────── */}
-          <View style={styles.methodsSection}>
-            <Text style={styles.methodsLabel}>PAY WITH</Text>
-            <View style={styles.methodsList}>
-              {PAYMENT_METHODS.map((method) => {
-                const isActive = method.id === selectedMethod;
-                const IconComp = method.icon;
-                return (
-                  <TouchableOpacity
-                    key={method.id}
-                    style={[styles.methodRow, isActive && styles.methodRowActive]}
-                    onPress={() => setSelectedMethod(method.id)}
-                    activeOpacity={0.7}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: isActive }}
-                  >
-                    <View style={[styles.methodIconBox, isActive && styles.methodIconBoxActive]}>
-                      <IconComp size={17} color={isActive ? '#050E0E' : GOLD} />
-                    </View>
-                    <View style={styles.methodContent}>
-                      <View style={styles.methodTitleRow}>
-                        <Text style={styles.methodTitle}>{method.title}</Text>
-                        {method.tag && (
-                          <View style={styles.savedTag}>
-                            <Text style={styles.savedTagText}>{method.tag}</Text>
-                          </View>
-                        )}
-                      </View>
-                      <Text style={styles.methodSub}>{method.sub}</Text>
-                    </View>
-                    <View style={[styles.radio, isActive && styles.radioActive]} />
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
           </View>
 
           {/* ── CTA button ──────────────────────────────────────────────────── */}
@@ -266,27 +219,6 @@ const styles = StyleSheet.create({
   quickChipActive: { backgroundColor: GOLD_DIM, borderColor: GOLD_LINE },
   quickChipText: { fontFamily: FONT_MONO, fontSize: 12, fontWeight: '600', color: INK },
   quickChipTextActive: { color: GOLD },
-
-  // Payment methods
-  methodsSection: { paddingTop: 20, paddingHorizontal: 24 },
-  methodsLabel: { fontFamily: FONT_MONO, fontSize: 9, fontWeight: '600', letterSpacing: 1.8, color: GOLD, textTransform: 'uppercase', marginBottom: 10 },
-  methodsList: { gap: 8 },
-  methodRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    padding: 12, paddingHorizontal: 14, borderRadius: 14,
-    backgroundColor: SURFACE_ELEV, borderWidth: 1, borderColor: BORDER,
-  },
-  methodRowActive: { backgroundColor: GOLD_DIM, borderWidth: 1.5, borderColor: GOLD },
-  methodIconBox: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.06)', alignItems: 'center', justifyContent: 'center' },
-  methodIconBoxActive: { backgroundColor: GOLD },
-  methodContent: { flex: 1, gap: 2 },
-  methodTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  methodTitle: { fontSize: 13, fontWeight: '700', color: INK },
-  methodSub: { fontSize: 10.5, color: INK_MID },
-  savedTag: { backgroundColor: 'rgba(26,107,60,0.18)', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 0 },
-  savedTagText: { fontSize: 8.5, color: '#7DD49E', fontWeight: '600' },
-  radio: { width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: INK_FAINT, backgroundColor: 'transparent' },
-  radioActive: { borderWidth: 5, borderColor: GOLD },
 
   // CTA
   ctaSection: { paddingTop: 24, paddingHorizontal: 24, gap: 10 },

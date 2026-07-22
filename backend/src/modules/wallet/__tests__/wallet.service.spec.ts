@@ -47,7 +47,7 @@ const mockUserSmileVerified = {
 
 const mockPrisma = {
   wallet: { findUnique: jest.fn(), update: jest.fn() },
-  user: { findUnique: jest.fn() },
+  user: { findUnique: jest.fn(), findFirst: jest.fn() },
   booking: { aggregate: jest.fn() },
   transaction: { findMany: jest.fn(), aggregate: jest.fn(), create: jest.fn(), update: jest.fn() },
   platformConfig: { findMany: jest.fn() },
@@ -314,6 +314,34 @@ describe('WalletService', () => {
       const result = await service.getBalance(USER_ID);
       expect(result.daily_limit_ngn).toBe(50000);
       expect(result.kyc_tier).toBe(1);
+    });
+  });
+
+  // ── resolveRecipient ─────────────────────────────────────────────────────────
+
+  describe('resolveRecipient', () => {
+    it('returns userId + firstName for a phone that matches a real user', async () => {
+      mockPrisma.user.findFirst.mockResolvedValue({ id: 'user-002', firstName: 'Ada' });
+
+      const result = await service.resolveRecipient(USER_ID, '+2348012345678');
+
+      expect(mockPrisma.user.findFirst).toHaveBeenCalledWith({
+        where: { phone: '+2348012345678', deletedAt: null },
+        select: { id: true, firstName: true },
+      });
+      expect(result).toEqual({ userId: 'user-002', firstName: 'Ada', phone: '+2348012345678' });
+    });
+
+    it('throws NotFoundException when no user has that phone number', async () => {
+      mockPrisma.user.findFirst.mockResolvedValue(null);
+
+      await expect(service.resolveRecipient(USER_ID, '+2348099999999')).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws BadRequestException when resolving to your own phone number', async () => {
+      mockPrisma.user.findFirst.mockResolvedValue({ id: USER_ID, firstName: 'Self' });
+
+      await expect(service.resolveRecipient(USER_ID, '+2348012345678')).rejects.toThrow(BadRequestException);
     });
   });
 });

@@ -8,8 +8,8 @@ import {
   StatusBar,
 } from 'react-native';
 import { router } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
-import { fetcher } from '../lib/api';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { api, fetcher } from '../lib/api';
 import {
   type LucideIcon,
   ArrowLeft,
@@ -44,6 +44,7 @@ import {
 type Tone = 'gold' | 'forest' | 'success';
 
 interface NotificationItem {
+  id: string;
   icon: LucideIcon;
   tone: Tone;
   title: string;
@@ -92,12 +93,13 @@ function formatTimeAgo(dateStr: string): string {
 function toNotifItem(n: any): NotificationItem {
   const cfg = TYPE_CONFIG[n.type] ?? { icon: Sparkles, tone: 'gold' as Tone };
   return {
+    id:     n.id,
     icon:   cfg.icon,
     tone:   cfg.tone,
     title:  n.title   ?? 'Notification',
     sub:    n.body    ?? n.message ?? '',
     time:   n.createdAt ? formatTimeAgo(n.createdAt) : '',
-    unread: !n.read,
+    unread: !n.readAt,
   };
 }
 
@@ -106,9 +108,9 @@ function buildSections(items: any[]): Section[] {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
 
-  const newItems     = items.filter((n) => !n.read);
-  const todayRead    = items.filter((n) => n.read && new Date(n.createdAt) >= todayStart);
-  const earlierRead  = items.filter((n) => n.read && new Date(n.createdAt) < todayStart);
+  const newItems     = items.filter((n) => !n.readAt);
+  const todayRead    = items.filter((n) => n.readAt && new Date(n.createdAt) >= todayStart);
+  const earlierRead  = items.filter((n) => n.readAt && new Date(n.createdAt) < todayStart);
 
   const sections: Section[] = [];
   if (newItems.length)    sections.push({ label: 'New',     items: newItems.map(toNotifItem)    });
@@ -133,12 +135,13 @@ const TONE_ICON: Record<Tone, string> = {
 
 // ── Components ─────────────────────────────────────────────────────────────────
 
-function NotificationRow({ item }: { item: NotificationItem }) {
+function NotificationRow({ item, onPress }: { item: NotificationItem; onPress: () => void }) {
   const IconComp = item.icon;
   return (
     <TouchableOpacity
       style={[styles.notifRow, item.unread && styles.notifRowUnread]}
       activeOpacity={0.7}
+      onPress={onPress}
       accessibilityRole="button"
     >
       <View style={[styles.notifIconBox, { backgroundColor: TONE_BG[item.tone] }]}>
@@ -184,6 +187,7 @@ function EmptyState() {
 
 export default function NotificationsScreen() {
   const [activeFilter, setActiveFilter] = useState<FilterChip>('All');
+  const queryClient = useQueryClient();
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['notifications'],
@@ -193,7 +197,17 @@ export default function NotificationsScreen() {
 
   const rawItems: any[] = Array.isArray(data?.data ?? data) ? (data?.data ?? data) : [];
   const sections = buildSections(rawItems);
-  const unreadCount = rawItems.filter((n) => !n.read).length;
+  const unreadCount = rawItems.filter((n) => !n.readAt).length;
+
+  const markReadMutation = useMutation({
+    mutationFn: (id: string) => api.patch(`/notifications/${id}/read`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+
+  const markAllReadMutation = useMutation({
+    mutationFn: () => api.patch('/notifications/read-all'),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+  });
 
   return (
     <View style={styles.root}>
@@ -212,9 +226,18 @@ export default function NotificationsScreen() {
               {unreadCount > 0 && <Text style={styles.titleCount}> · {unreadCount}</Text>}
             </Text>
           </View>
-          <TouchableOpacity style={styles.markAllBtn} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Mark all as read">
-            <Text style={styles.markAllText}>Mark all</Text>
-          </TouchableOpacity>
+          {unreadCount > 0 && (
+            <TouchableOpacity
+              style={styles.markAllBtn}
+              activeOpacity={0.7}
+              onPress={() => markAllReadMutation.mutate()}
+              disabled={markAllReadMutation.isPending}
+              accessibilityRole="button"
+              accessibilityLabel="Mark all as read"
+            >
+              <Text style={styles.markAllText}>Mark all</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* ── Filter chips ──────────────────────────────────────────────────── */}
@@ -259,8 +282,11 @@ export default function NotificationsScreen() {
                 <Text style={styles.sectionLabel}>{section.label}</Text>
                 <View style={styles.sectionCard}>
                   {section.items.map((item, idx) => (
-                    <View key={`${section.label}-${idx}`} style={idx < section.items.length - 1 ? styles.notifDivider : undefined}>
-                      <NotificationRow item={item} />
+                    <View key={item.id} style={idx < section.items.length - 1 ? styles.notifDivider : undefined}>
+                      <NotificationRow
+                        item={item}
+                        onPress={() => item.unread && markReadMutation.mutate(item.id)}
+                      />
                     </View>
                   ))}
                 </View>

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { GoogleAuth, JWT } from 'google-auth-library';
@@ -48,10 +48,12 @@ export class NotificationsService {
     }
   }
 
-  // TODO: persistence not yet wired — no Notification model in the Prisma schema.
-  // Returning an empty array so the mobile screen has a stable route.
-  async listForUser(_userId: string): Promise<any[]> {
-    return [];
+  async listForUser(userId: string) {
+    return this.prisma.notification.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
   }
 
   async registerToken(userId: string, token: string) {
@@ -65,6 +67,12 @@ export class NotificationsService {
   }
 
   async sendPush(userId: string, title: string, body: string, data?: Record<string, string>) {
+    // Persist regardless of push-delivery outcome — the in-app notification list is a
+    // record of what happened, not a proxy for whether the FCM push itself was delivered.
+    await this.prisma.notification.create({ data: { userId, title, body, data } }).catch((err) => {
+      this.logger.error(`Failed to persist notification for user ${userId}: ${err?.message ?? err}`);
+    });
+
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     const meta = user?.metadata as any;
     const token = meta?.fcmToken;
@@ -117,5 +125,24 @@ export class NotificationsService {
       this.logger.error('FCM v1 send failed', JSON.stringify(detail));
       return { sent: false, reason: 'send_failed' as const };
     }
+  }
+
+  async markRead(userId: string, notificationId: string) {
+    const notification = await this.prisma.notification.findFirst({
+      where: { id: notificationId, userId },
+    });
+    if (!notification) throw new NotFoundException('Notification not found');
+    return this.prisma.notification.update({
+      where: { id: notificationId },
+      data: { readAt: new Date() },
+    });
+  }
+
+  async markAllRead(userId: string) {
+    const { count } = await this.prisma.notification.updateMany({
+      where: { userId, readAt: null },
+      data: { readAt: new Date() },
+    });
+    return { updated: count };
   }
 }
