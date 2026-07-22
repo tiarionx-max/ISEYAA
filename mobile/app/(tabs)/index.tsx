@@ -23,7 +23,6 @@ import {
   Bell,
   Search,
   Mic,
-  Sun,
   Car,
   Home,
   Ticket,
@@ -499,9 +498,6 @@ export default function DiscoverScreen() {
             <View style={styles.locationPill}>
               <MapPin size={13} color={GOLD} />
               <Text style={styles.locationPillText}>Abeokuta, Ogun</Text>
-              <View style={styles.locationPillDivider} />
-              <Sun size={12} color={INK_MID} />
-              <Text style={styles.locationPillTemp}>29°</Text>
             </View>
 
             {/* Bell button */}
@@ -694,18 +690,6 @@ const styles = StyleSheet.create({
     fontWeight: '600' as const,
     color: INK,
     letterSpacing: 0.2,
-    marginLeft: 2,
-  },
-  locationPillDivider: {
-    width: 1,
-    height: 12,
-    backgroundColor: BORDER_MID,
-    marginHorizontal: SPACE_1,
-  },
-  locationPillTemp: {
-    fontFamily: FONT_MONO,
-    fontSize: 12,
-    color: INK_MID,
     marginLeft: 2,
   },
   bellBtn: {

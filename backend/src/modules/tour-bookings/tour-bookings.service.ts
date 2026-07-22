@@ -74,6 +74,51 @@ export class TourBookingService {
     private readonly tourPackages: TourPackageService,
   ) {}
 
+  // ── resolveBulkDiscountTiers ─────────────────────────────────────────────
+
+  private async resolveBulkDiscountTiers(): Promise<{ t1: number; t2: number }> {
+    const [t1Row, t2Row] = await Promise.all([
+      this.prisma.platformConfig.findUnique({ where: { key: 'tour.bulk_discount_t1' } }),
+      this.prisma.platformConfig.findUnique({ where: { key: 'tour.bulk_discount_t2' } }),
+    ]);
+    let t1 = 0.1;
+    let t2 = 0.2;
+    if (!t1Row) {
+      this.logger.warn('PlatformConfig "tour.bulk_discount_t1" missing — using default 0.10');
+    } else {
+      t1 = Number(t1Row.value);
+    }
+    if (!t2Row) {
+      this.logger.warn('PlatformConfig "tour.bulk_discount_t2" missing — using default 0.20');
+    } else {
+      t2 = Number(t2Row.value);
+    }
+    return { t1, t2 };
+  }
+
+  // ── getQuote ─────────────────────────────────────────────────────────────
+
+  /**
+   * Real-time price preview for the booking form — mirrors createTourBooking's
+   * pricing step exactly (same applyBulkDiscount + PlatformConfig-sourced tiers)
+   * so the UI never has to duplicate/hardcode the discount percentages.
+   */
+  async getQuote(tourPackageId: string, passengerCount: number) {
+    const pkg = await this.tourPackages.findByIdInternal(tourPackageId);
+    if (!pkg || pkg.status !== 'APPROVED') {
+      throw new NotFoundException('Package not available');
+    }
+    const { t1, t2 } = await this.resolveBulkDiscountTiers();
+    const unitPrice = applyBulkDiscount(Number(pkg.price), passengerCount, t1, t2);
+    const totalAmount = Math.round(unitPrice * passengerCount * 100) / 100;
+    return {
+      unitPrice,
+      totalAmount,
+      passengerCount,
+      discountApplied: unitPrice < Number(pkg.price),
+    };
+  }
+
   // ── createTourBooking ────────────────────────────────────────────────────
 
   /**
@@ -162,26 +207,7 @@ export class TourBookingService {
     }
 
     // 8. Resolve bulk discount tiers from PlatformConfig (fallback to defaults)
-    const [t1Row, t2Row] = await Promise.all([
-      this.prisma.platformConfig.findUnique({ where: { key: 'tour.bulk_discount_t1' } }),
-      this.prisma.platformConfig.findUnique({ where: { key: 'tour.bulk_discount_t2' } }),
-    ]);
-    let t1 = 0.1;
-    let t2 = 0.2;
-    if (!t1Row) {
-      this.logger.warn(
-        'PlatformConfig "tour.bulk_discount_t1" missing — using default 0.10',
-      );
-    } else {
-      t1 = Number(t1Row.value);
-    }
-    if (!t2Row) {
-      this.logger.warn(
-        'PlatformConfig "tour.bulk_discount_t2" missing — using default 0.20',
-      );
-    } else {
-      t2 = Number(t2Row.value);
-    }
+    const { t1, t2 } = await this.resolveBulkDiscountTiers();
 
     // 9. Compute pricing
     const unitPrice = applyBulkDiscount(Number(pkg.price), dto.passengerCount, t1, t2);

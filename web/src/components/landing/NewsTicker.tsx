@@ -13,14 +13,6 @@ type NewsItem = {
   url?: string | null;
 };
 
-/* Static fallback so the strip never looks empty on cold start. */
-const FALLBACK: NewsItem[] = [
-  { id: 'f1', headline: 'Ogun State unveils Iṣẹ́yáá — Africa\'s most ambitious citizen super-platform.', source: 'Ogun State Govt' },
-  { id: 'f2', headline: 'Tourism revenue doubles year-on-year as new attractions go live.',                 source: 'Iṣẹ́yáá Pulse' },
-  { id: 'f3', headline: 'Vendor onboarding opens across all 20 LGAs — 0% fees for first 90 days.',          source: 'Marketplace' },
-  { id: 'f4', headline: 'Eco-resort partnerships expand into Ogun Waterside and Ijebu.',                    source: 'Stays Desk' },
-];
-
 export function NewsTicker() {
   const { data } = useQuery<NewsItem[]>({
     queryKey: ['news-ticker'],
@@ -28,7 +20,10 @@ export function NewsTicker() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const items = (Array.isArray(data) && data.length > 0 ? data : FALLBACK).slice(0, 20);
+  // No fabricated fallback headlines under a "LIVE" badge — if there's no real news yet,
+  // don't render the strip at all rather than claim invented facts are live.
+  if (!Array.isArray(data) || data.length === 0) return null;
+  const items = data.slice(0, 20);
 
   // Duplicate so the marquee loops seamlessly (translateX(-50%) returns to start)
   const looped = [...items, ...items];

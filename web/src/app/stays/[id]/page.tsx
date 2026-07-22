@@ -119,10 +119,11 @@ function NightlyForm({
     return Math.max(0, Math.round(diff));
   }, [checkIn, checkOut]);
 
+  // Booking charges exactly pricePerNight × nights — the Ministry levy split is deducted
+  // from the host's payout server-side (stays.service.ts resolveSplit/releaseEscrow),
+  // never added on top of what the guest pays. No fee line here would be real.
   const subtotal = nights * Number(property.pricePerNight ?? 0);
-  const serviceFee = Math.round(subtotal * 0.05);
-  const tourismLevy = Math.round(subtotal * 0.02);
-  const total = subtotal + serviceFee + tourismLevy;
+  const total = subtotal;
 
   return (
     <>
@@ -166,8 +167,6 @@ function NightlyForm({
       {nights > 0 && (
         <div className="mt-4 pt-4 border-t border-white/8 space-y-2 text-sm">
           <Row label={`${fmtNGN(property.pricePerNight)} × ${nights} night${nights !== 1 ? 's' : ''}`} value={fmtNGN(subtotal)} />
-          <Row label="Service fee (5%)" value={fmtNGN(serviceFee)} />
-          <Row label="Tourism levy (2%)" value={fmtNGN(tourismLevy)} />
           <div className="flex items-center justify-between pt-3 mt-2 border-t border-white/8">
             <span className="text-white font-bold">Total</span>
             <span className="text-gold font-black text-lg">{fmtNGN(total)}</span>
