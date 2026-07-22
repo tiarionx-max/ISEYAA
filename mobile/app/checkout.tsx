@@ -13,8 +13,9 @@
  *   This screen intentionally does NOT collect a shipping address. A future phase will
  *   add address handling once the backend DTO is extended.
  *
- * Response shape:
- *   { orderId, payment?: { authorizationUrl, reference }, authorizationUrl? }
+ * Response shape (marketplace.service.ts createOrder() returns `{ order, payment }` —
+ * NOT a top-level `orderId`; kept here only for the (currently unused) order.id field):
+ *   { order: { id }, payment?: { authorizationUrl, reference }, authorizationUrl? }
  *
  * Read defensively (mirror web pattern at web/src/app/checkout/page.tsx):
  *   const url = data.payment?.authorizationUrl ?? data.authorizationUrl;
@@ -73,7 +74,7 @@ import {
 type Me = { email?: string };
 
 type OrderResponse = {
-  orderId: string;
+  order: { id: string };
   payment?: {
     authorizationUrl: string;
     reference: string;

@@ -12,6 +12,14 @@ export class SearchIndexerService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    if (!this.searchService.isEnabled()) {
+      // TYPESENSE_API_KEY not configured — every indexDocument()/getCollectionCount()
+      // call below silently no-ops. Skip the bulk-index pass entirely rather than
+      // logging "Bulk index complete" for a run that indexed nothing.
+      this.logger.warn('Typesense is disabled — skipping bulk index on startup');
+      return;
+    }
+
     try {
       await this.searchService.initCollections();
 

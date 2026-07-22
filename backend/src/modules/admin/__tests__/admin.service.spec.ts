@@ -2,6 +2,7 @@ import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AdminService } from '../admin.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { SettlementService } from '../../../common/services/settlement.service';
 
 const mockPrisma = {
   user: { count: jest.fn(), findMany: jest.fn(), update: jest.fn() },
@@ -17,6 +18,10 @@ const mockPrisma = {
   $transaction: jest.fn(),
 };
 
+const mockSettlementService = {
+  resolveMinistryWallet: jest.fn(),
+};
+
 describe('AdminService', () => {
   let service: AdminService;
 
@@ -26,6 +31,7 @@ describe('AdminService', () => {
       providers: [
         AdminService,
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: SettlementService, useValue: mockSettlementService },
       ],
     }).compile();
     service = module.get<AdminService>(AdminService);
@@ -34,7 +40,7 @@ describe('AdminService', () => {
   // ── getDashboard ───────────────────────────────────────────────────────────
 
   describe('getDashboard', () => {
-    it('returns all dashboard metrics', async () => {
+    it('returns all dashboard metrics, sourcing revenue from the Ministry wallet ledger', async () => {
       mockPrisma.user.count
         .mockResolvedValueOnce(500)   // total_users
         .mockResolvedValueOnce(42);   // dau
@@ -42,8 +48,9 @@ describe('AdminService', () => {
         .mockResolvedValueOnce(20)    // active_events
         .mockResolvedValueOnce(3);    // pending events
       mockPrisma.vendor.count.mockResolvedValue(2); // pending vendors
-      mockPrisma.order.aggregate.mockResolvedValue({ _sum: { totalAmount: 2500000 } });
-      mockPrisma.transaction.aggregate.mockResolvedValue({ _sum: { amount: 1800000 } });
+      mockSettlementService.resolveMinistryWallet.mockResolvedValue({ id: 'ministry-wallet-1' });
+      mockPrisma.transaction.aggregate.mockResolvedValue({ _sum: { amount: 2500000 } });
+      mockPrisma.$queryRaw.mockResolvedValue([{ total: 1800000 }]);
 
       const result = await service.getDashboard();
 
@@ -53,17 +60,23 @@ describe('AdminService', () => {
       expect(result.pending_approvals).toBe(5); // 2 vendors + 3 events
       expect(result.total_revenue).toBe(2500000);
       expect(result.wallet_gtv).toBe(1800000);
+      expect(mockPrisma.transaction.aggregate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ walletId: 'ministry-wallet-1', type: 'CREDIT', status: 'SUCCESS' }),
+        }),
+      );
     });
 
-    it('handles null sums gracefully', async () => {
+    it('degrades to zero revenue when no Ministry wallet is configured, without throwing', async () => {
       mockPrisma.user.count.mockResolvedValue(0);
       mockPrisma.event.count.mockResolvedValue(0);
       mockPrisma.vendor.count.mockResolvedValue(0);
-      mockPrisma.order.aggregate.mockResolvedValue({ _sum: { totalAmount: null } });
-      mockPrisma.transaction.aggregate.mockResolvedValue({ _sum: { amount: null } });
+      mockSettlementService.resolveMinistryWallet.mockResolvedValue(null);
+      mockPrisma.$queryRaw.mockResolvedValue([{ total: null }]);
 
       const result = await service.getDashboard();
       expect(result.total_revenue).toBe(0);
+      expect(mockPrisma.transaction.aggregate).not.toHaveBeenCalled();
       expect(result.wallet_gtv).toBe(0);
     });
   });
@@ -85,6 +98,13 @@ describe('AdminService', () => {
       expect(result.by_lga[0].total).toBe(80000);
       expect(result.by_vendor_status[0].status).toBe('ACTIVE');
       expect(result.by_month[0].month).toBe('2026-04');
+      // Unpaid (PENDING) and reversed (CANCELLED/REFUNDED) orders must never
+      // count toward collected govt levy — only paid statuses are aggregated.
+      expect(mockPrisma.order.aggregate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ status: { in: ['PROCESSING', 'SHIPPED', 'DELIVERED'] } }),
+        }),
+      );
     });
   });
 

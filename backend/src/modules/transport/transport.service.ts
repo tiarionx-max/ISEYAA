@@ -94,10 +94,17 @@ export class TransportService {
       const maxAttempts = maxAttemptsCfg ? Number(maxAttemptsCfg.value) : 3;
 
       if (trip.matchAttempts >= maxAttempts) {
-        await this.prisma.trip.update({
-          where: { id: tripId },
+        // CAS guard: WHERE matchAttempts = trip.matchAttempts makes this update a no-op
+        // if a concurrent invocation (cron sweep vs. an immediate decline-triggered call)
+        // already advanced the trip first — only the winner expires/emits.
+        const expired = await this.prisma.trip.updateMany({
+          where: { id: tripId, status: 'SEARCHING' as any, matchAttempts: trip.matchAttempts },
           data: { status: 'EXPIRED' as any },
         });
+        if (expired.count === 0) {
+          this.logger.debug(`attemptMatchTrip: trip ${tripId} already advanced concurrently — skipping expire`);
+          return;
+        }
         await this.prisma.tripEvent.create({
           data: {
             tripId,
@@ -127,24 +134,28 @@ export class TransportService {
       const nextAttempts = trip.matchAttempts + 1;
       const nextDeadline = new Date(Date.now() + 60_000);
 
+      // CAS guard on every branch below: WHERE matchAttempts = trip.matchAttempts (the
+      // value we read at the top of this call) means a concurrent attemptMatchTrip call
+      // that already won the race makes this updateMany a no-op (count 0) — we then skip
+      // the event log / emit entirely rather than double-offering the same driver or
+      // silently losing one call's increment to a last-write-wins clobber.
+      const updated = await this.prisma.trip.updateMany({
+        where: { id: tripId, status: 'SEARCHING' as any, matchAttempts: trip.matchAttempts },
+        data: candidate
+          ? { matchAttempts: nextAttempts, matchDeadlineAt: nextDeadline, excludedDriverIds: { push: candidate } }
+          : { matchAttempts: nextAttempts, matchDeadlineAt: nextDeadline },
+      });
+      if (updated.count === 0) {
+        this.logger.debug(`attemptMatchTrip: trip ${tripId} already advanced concurrently — skipping this attempt`);
+        return;
+      }
+
       if (candidate) {
-        await this.prisma.trip.update({
-          where: { id: tripId },
-          data: {
-            matchAttempts: nextAttempts,
-            matchDeadlineAt: nextDeadline,
-            excludedDriverIds: { push: candidate },
-          },
-        });
         await this.prisma.tripEvent.create({
           data: { tripId, event: 'DRIVER_OFFERED', metadata: { driverId: candidate, attempt: nextAttempts } },
         });
         this.gateway.server.to(`driver:${candidate}`).emit('ride:request', trip);
       } else {
-        await this.prisma.trip.update({
-          where: { id: tripId },
-          data: { matchAttempts: nextAttempts, matchDeadlineAt: nextDeadline },
-        });
         await this.prisma.tripEvent.create({
           data: { tripId, event: 'NO_DRIVERS_AVAILABLE', metadata: { attempt: nextAttempts } },
         });

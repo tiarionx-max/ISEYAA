@@ -1,10 +1,11 @@
 import {
-  Controller, Get, Patch, Body, Param, Query, UseGuards,
+  Controller, Get, Patch, Post, Body, Param, Query, UseGuards,
   ParseIntPipe, DefaultValuePipe,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
 import { UpdateSplitTierDto } from './dto/update-split-tier.dto';
+import { CreateSplitTierDto } from './dto/create-split-tier.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -104,6 +105,13 @@ export class AdminController {
   @ApiOperation({ summary: 'List settlement split tiers, optionally filtered by module' })
   listSplitTiers(@Query('module') module?: string) {
     return this.adminService.listSplitTiers(module);
+  }
+
+  @Post('settlement-splits')
+  @Roles(UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Bootstrap the first active settlement split tier for a module (fails if one is already active)' })
+  createSplitTier(@Body() dto: CreateSplitTierDto) {
+    return this.adminService.createSplitTier(dto);
   }
 
   @Patch('settlement-splits/:id')

@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   NotFoundException, ForbiddenException, BadRequestException,
-  ConflictException,
+  ConflictException, ServiceUnavailableException,
 } from '@nestjs/common';
 import { StaysService } from '../stays.service';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -80,11 +80,15 @@ const mockPrisma = {
   transaction: { create: jest.fn() },
   user: { findUnique: jest.fn() },
   platformConfig: { findUnique: jest.fn() },
+  membership: {
+    findFirst: jest.fn(), findMany: jest.fn(), findUnique: jest.fn(),
+    create: jest.fn(), update: jest.fn(), delete: jest.fn(),
+  },
   $transaction: jest.fn(),
   $queryRaw: jest.fn(),
 };
 
-const mockPaystack = { initiatePayment: jest.fn() };
+const mockPaystack = { initiatePayment: jest.fn(), chargeAuthorization: jest.fn() };
 const mockS3 = { upload: jest.fn() };
 const mockSendgrid = { sendBookingConfirmation: jest.fn() };
 const mockImage = { validateEventImage: jest.fn(), resizeEventCover: jest.fn() };
@@ -518,6 +522,185 @@ describe('StaysService', () => {
 
       expect(mockRedis.setNx).toHaveBeenCalledWith('cron-lock:releaseEscrow', '1', 3300);
       expect(mockPrisma.booking.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── Memberships ────────────────────────────────────────────────────────────
+
+  const membershipProperty = {
+    ...mockProperty,
+    bookingMode: 'MEMBERSHIP',
+    membershipMonthlyPrice: 5000,
+  };
+  const MEMBERSHIP_ID = 'membership-uuid-001';
+  const mockMembership = {
+    id: MEMBERSHIP_ID,
+    propertyId: PROP_ID,
+    userId: USER_ID,
+    monthlyPriceNgn: 5000,
+    govtLevyPct: 0.05,
+    status: 'PENDING',
+    paystackRef: 'ISY-MEM-ABCDEF123456',
+    paystackAuthCode: null,
+    paystackEmail: 'member@example.com',
+    currentPeriodEnd: null,
+    deletedAt: null,
+    property: { name: 'Abeokuta Villa', hostId: HOST_ID },
+    user: { email: 'member@example.com', firstName: 'Ade' },
+  };
+
+  describe('createMembership', () => {
+    it('rejects properties that are not MEMBERSHIP mode', async () => {
+      mockPrisma.property.findFirst.mockResolvedValue(mockProperty);
+      await expect(
+        service.createMembership(USER_ID, PROP_ID, { email: 'member@example.com' }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects a duplicate active membership for the same property', async () => {
+      mockPrisma.property.findFirst.mockResolvedValue(membershipProperty);
+      mockPrisma.membership.findFirst.mockResolvedValue(mockMembership);
+      await expect(
+        service.createMembership(USER_ID, PROP_ID, { email: 'member@example.com' }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('creates a PENDING membership and initiates Paystack payment for the monthly price', async () => {
+      mockPrisma.property.findFirst.mockResolvedValue(membershipProperty);
+      mockPrisma.membership.findFirst.mockResolvedValue(null);
+      mockPrisma.membership.create.mockResolvedValue(mockMembership);
+      mockPaystack.initiatePayment.mockResolvedValue({ authorizationUrl: 'https://paystack/pay', accessCode: 'ac', reference: mockMembership.paystackRef });
+
+      const result = await service.createMembership(USER_ID, PROP_ID, { email: 'member@example.com' });
+
+      expect(mockSettlement.resolveSplit).toHaveBeenCalledWith('stays', 5000);
+      expect(mockPaystack.initiatePayment).toHaveBeenCalledWith(
+        expect.objectContaining({ amountKobo: 500000, metadata: expect.objectContaining({ type: 'membership_signup' }) }),
+      );
+      expect(result.membership).toEqual(mockMembership);
+    });
+
+    it('rolls back the membership row if Paystack init fails', async () => {
+      mockPrisma.property.findFirst.mockResolvedValue(membershipProperty);
+      mockPrisma.membership.findFirst.mockResolvedValue(null);
+      mockPrisma.membership.create.mockResolvedValue(mockMembership);
+      mockPrisma.membership.delete.mockResolvedValue(mockMembership);
+      mockPaystack.initiatePayment.mockRejectedValue(new Error('Paystack down'));
+
+      await expect(
+        service.createMembership(USER_ID, PROP_ID, { email: 'member@example.com' }),
+      ).rejects.toThrow(ServiceUnavailableException);
+      expect(mockPrisma.membership.delete).toHaveBeenCalledWith({ where: { id: MEMBERSHIP_ID } });
+    });
+  });
+
+  describe('handleMembershipSignup', () => {
+    it('activates a PENDING membership, stores the authorization code, and settles the first period', async () => {
+      mockPrisma.membership.findUnique.mockResolvedValue(mockMembership);
+      mockPrisma.wallet.findUnique.mockResolvedValue({ id: 'wallet-host-001' });
+
+      await service.handleMembershipSignup({
+        reference: mockMembership.paystackRef,
+        authorization: { authorization_code: 'AUTH_abc123' },
+      });
+
+      expect(mockPrisma.membership.update).toHaveBeenCalledWith({
+        where: { id: MEMBERSHIP_ID },
+        data: expect.objectContaining({ status: 'ACTIVE', paystackAuthCode: 'AUTH_abc123' }),
+      });
+      expect(mockSettlement.settle).toHaveBeenCalledTimes(1);
+      const call = mockSettlement.settle.mock.calls[0][0];
+      const hostRecipient = call.recipients.find((r: any) => r.tag === 'HOST');
+      expect(hostRecipient.amountNgn).toBe(4750);
+    });
+
+    it('is a no-op for an already-processed (non-PENDING) membership', async () => {
+      mockPrisma.membership.findUnique.mockResolvedValue({ ...mockMembership, status: 'ACTIVE' });
+      await service.handleMembershipSignup({ reference: mockMembership.paystackRef });
+      expect(mockPrisma.membership.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('cancelMembership', () => {
+    it('cancels an ACTIVE membership owned by the caller', async () => {
+      mockPrisma.membership.findFirst.mockResolvedValue({ ...mockMembership, status: 'ACTIVE' });
+      mockPrisma.membership.update.mockResolvedValue({ ...mockMembership, status: 'CANCELLED' });
+
+      await service.cancelMembership(MEMBERSHIP_ID, USER_ID);
+
+      expect(mockPrisma.membership.update).toHaveBeenCalledWith({
+        where: { id: MEMBERSHIP_ID },
+        data: { status: 'CANCELLED', cancelledAt: expect.any(Date) },
+      });
+    });
+
+    it('rejects cancellation by a user who does not own the membership', async () => {
+      mockPrisma.membership.findFirst.mockResolvedValue({ ...mockMembership, status: 'ACTIVE', userId: 'someone-else' });
+      await expect(service.cancelMembership(MEMBERSHIP_ID, USER_ID)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('rejects cancelling an already-inactive membership', async () => {
+      mockPrisma.membership.findFirst.mockResolvedValue({ ...mockMembership, status: 'EXPIRED' });
+      await expect(service.cancelMembership(MEMBERSHIP_ID, USER_ID)).rejects.toThrow(ConflictException);
+    });
+  });
+
+  describe('renewMemberships', () => {
+    const activeMembership = {
+      ...mockMembership,
+      status: 'ACTIVE',
+      paystackAuthCode: 'AUTH_abc123',
+      currentPeriodEnd: new Date(Date.now() - 60_000),
+      property: { hostId: HOST_ID },
+    };
+
+    it('expires a due membership with no saved authorization code, without attempting a charge', async () => {
+      mockPrisma.membership.findMany.mockResolvedValue([{ ...activeMembership, paystackAuthCode: null }]);
+
+      await service.renewMemberships();
+
+      expect(mockPaystack.chargeAuthorization).not.toHaveBeenCalled();
+      expect(mockPrisma.membership.update).toHaveBeenCalledWith({ where: { id: MEMBERSHIP_ID }, data: { status: 'EXPIRED' } });
+    });
+
+    it('renews on a successful charge, extends currentPeriodEnd by 30 days, and settles the host/ministry split', async () => {
+      mockPrisma.membership.findMany.mockResolvedValue([activeMembership]);
+      mockPaystack.chargeAuthorization.mockResolvedValue({ status: 'success', reference: 'x' });
+      mockPrisma.wallet.findUnique.mockResolvedValue({ id: 'wallet-host-001' });
+
+      await service.renewMemberships();
+
+      expect(mockPrisma.membership.update).toHaveBeenCalledWith({
+        where: { id: MEMBERSHIP_ID },
+        data: { status: 'ACTIVE', currentPeriodEnd: expect.any(Date) },
+      });
+      expect(mockSettlement.settle).toHaveBeenCalledTimes(1);
+    });
+
+    it('marks an ACTIVE membership PAST_DUE on its first failed renewal charge', async () => {
+      mockPrisma.membership.findMany.mockResolvedValue([activeMembership]);
+      mockPaystack.chargeAuthorization.mockResolvedValue({ status: 'failed', reference: 'x' });
+
+      await service.renewMemberships();
+
+      expect(mockPrisma.membership.update).toHaveBeenCalledWith({ where: { id: MEMBERSHIP_ID }, data: { status: 'PAST_DUE' } });
+      expect(mockSettlement.settle).not.toHaveBeenCalled();
+    });
+
+    it('expires a PAST_DUE membership on a second consecutive failed renewal charge', async () => {
+      mockPrisma.membership.findMany.mockResolvedValue([{ ...activeMembership, status: 'PAST_DUE' }]);
+      mockPaystack.chargeAuthorization.mockResolvedValue({ status: 'failed', reference: 'x' });
+
+      await service.renewMemberships();
+
+      expect(mockPrisma.membership.update).toHaveBeenCalledWith({ where: { id: MEMBERSHIP_ID }, data: { status: 'EXPIRED' } });
+    });
+
+    it('acquires cron-lock:renewMemberships and skips the tick when the lock is held by another replica', async () => {
+      mockRedis.setNx.mockResolvedValueOnce(false);
+      await service.renewMemberships();
+      expect(mockRedis.setNx).toHaveBeenCalledWith('cron-lock:renewMemberships', '1', 3300);
+      expect(mockPrisma.membership.findMany).not.toHaveBeenCalled();
     });
   });
 

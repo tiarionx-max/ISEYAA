@@ -182,6 +182,9 @@ describe('TransportService', () => {
     mockSettlement.resolveSplit.mockResolvedValue({ earnerPct: 0.85, ministryPct: 0.05, platformPct: 0.1 });
     mockConfigDefaults();
     mockPrisma.trip.count.mockResolvedValue(0);
+    // Default: the CAS-guarded updateMany in attemptMatchTrip "wins the race" unless a
+    // specific test overrides this to simulate a concurrent call already advancing state.
+    mockPrisma.trip.updateMany.mockResolvedValue({ count: 1 });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -526,8 +529,8 @@ describe('TransportService', () => {
       const result = await service.requestRide('rider-uuid-001', dto as any);
 
       expect(result?.status).toBe('SEARCHING');
-      expect(mockPrisma.trip.update).toHaveBeenCalledWith({
-        where: { id: TRIP_ID },
+      expect(mockPrisma.trip.updateMany).toHaveBeenCalledWith({
+        where: { id: TRIP_ID, status: 'SEARCHING', matchAttempts: 0 },
         data: { matchAttempts: 1, matchDeadlineAt: expect.any(Date) },
       });
       expect(mockPrisma.tripEvent.create).toHaveBeenCalledWith({
@@ -544,13 +547,28 @@ describe('TransportService', () => {
       await service.requestRide('rider-uuid-001', dto as any);
 
       expect(mockGateway.server.to).toHaveBeenCalledWith(`driver:${DRIVER_ID}`);
-      expect(mockPrisma.trip.update).toHaveBeenCalledWith({
-        where: { id: TRIP_ID },
+      expect(mockPrisma.trip.updateMany).toHaveBeenCalledWith({
+        where: { id: TRIP_ID, status: 'SEARCHING', matchAttempts: 0 },
         data: { matchAttempts: 1, matchDeadlineAt: expect.any(Date), excludedDriverIds: { push: DRIVER_ID } },
       });
       expect(mockPrisma.tripEvent.create).toHaveBeenCalledWith({
         data: { tripId: TRIP_ID, event: 'DRIVER_OFFERED', metadata: { driverId: DRIVER_ID, attempt: 1 } },
       });
+    });
+
+    it('does not double-offer when a concurrent call already advanced the trip (CAS guard loses the race)', async () => {
+      mockRedis.geosearch.mockResolvedValue([DRIVER_ID]);
+      const created = mockCreatedTrip();
+      mockPrisma.trip.create.mockResolvedValue(created);
+      mockPrisma.trip.findFirst.mockResolvedValue(created);
+      mockPrisma.trip.updateMany.mockResolvedValueOnce({ count: 0 });
+
+      await service.requestRide('rider-uuid-001', dto as any);
+
+      expect(mockGateway.server.to).not.toHaveBeenCalledWith(`driver:${DRIVER_ID}`);
+      expect(mockPrisma.tripEvent.create).not.toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ event: 'DRIVER_OFFERED' }) }),
+      );
     });
 
     it('does not offer to a driver already in excludedDriverIds (re-match skips previously-tried drivers)', async () => {
@@ -638,8 +656,14 @@ describe('TransportService', () => {
         select: { id: true },
       });
       // Both due trips exhausted their retry budget (matchAttempts=3 >= default max 3) — both expire.
-      expect(mockPrisma.trip.update).toHaveBeenCalledWith({ where: { id: 'trip-a' }, data: { status: 'EXPIRED' } });
-      expect(mockPrisma.trip.update).toHaveBeenCalledWith({ where: { id: 'trip-b' }, data: { status: 'EXPIRED' } });
+      expect(mockPrisma.trip.updateMany).toHaveBeenCalledWith({
+        where: { id: 'trip-a', status: 'SEARCHING', matchAttempts: 3 },
+        data: { status: 'EXPIRED' },
+      });
+      expect(mockPrisma.trip.updateMany).toHaveBeenCalledWith({
+        where: { id: 'trip-b', status: 'SEARCHING', matchAttempts: 3 },
+        data: { status: 'EXPIRED' },
+      });
     });
   });
 

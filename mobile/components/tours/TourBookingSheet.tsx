@@ -68,7 +68,9 @@ export type TourBookingArgs = {
   tourDate: string;
   passengerCount: number;
   email: string;
-  splitBill: boolean;
+  // Field name must match CreateTourBookingDto.splitBillEnabled exactly — the global
+  // ValidationPipe runs with forbidNonWhitelisted:true, so any other key here 400s.
+  splitBillEnabled: boolean;
 };
 
 export type TourPackageForSheet = {
@@ -160,7 +162,7 @@ export function TourBookingSheet({
       tourDate: isoDate(tourDate),
       passengerCount,
       email: email.trim(),
-      splitBill,
+      splitBillEnabled: splitBill,
     });
   };
 

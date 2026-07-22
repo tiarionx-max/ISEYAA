@@ -81,6 +81,11 @@ export class SearchService {
     });
   }
 
+  /** True when Typesense is actually configured and queries/indexing will do real work. */
+  isEnabled(): boolean {
+    return !this.disabled;
+  }
+
   async initCollections(): Promise<void> {
     if (this.disabled) return;
     for (const schema of Object.values(SearchService.COLLECTION_SCHEMAS)) {
@@ -125,7 +130,7 @@ export class SearchService {
     }
   }
 
-  async search(query: string, lat?: number, lng?: number): Promise<any> {
+  async search(query: string, lat?: number, lng?: number, perPage = 5): Promise<any> {
     if (this.disabled) return { results: [] };
     try {
       if (lat !== undefined && lng !== undefined) {
@@ -136,12 +141,14 @@ export class SearchService {
               query_by: 'name,description',
               filter_by: `location:(${lat}, ${lng}, 50 km)`,
               sort_by: `location(${lat}, ${lng}):asc`,
+              per_page: perPage,
             }),
             this.client.collections('properties').documents().search({
               q: query || '*',
               query_by: 'name,description',
               filter_by: `location:(${lat}, ${lng}, 50 km)`,
               sort_by: `location(${lat}, ${lng}):asc`,
+              per_page: perPage,
             }),
             this.client.multiSearch.perform(
               {
@@ -149,7 +156,7 @@ export class SearchService {
                   { collection: 'events', q: query, query_by: 'title,description' },
                 ],
               },
-              { per_page: 5 },
+              { per_page: perPage },
             ),
             this.client.multiSearch.perform(
               {
@@ -157,7 +164,7 @@ export class SearchService {
                   { collection: 'products', q: query, query_by: 'name,description' },
                 ],
               },
-              { per_page: 5 },
+              { per_page: perPage },
             ),
           ]);
 
@@ -180,7 +187,7 @@ export class SearchService {
             { collection: 'products', q: query, query_by: 'name,description' },
           ],
         },
-        { per_page: 5 },
+        { per_page: perPage },
       );
     } catch (err: any) {
       this.logger.error(`Search failed: ${err?.message}`);

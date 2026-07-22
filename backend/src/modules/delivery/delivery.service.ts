@@ -105,10 +105,17 @@ export class DeliveryService {
       const maxAttempts = maxAttemptsCfg ? Number(maxAttemptsCfg.value) : 3;
 
       if (order.matchAttempts >= maxAttempts) {
-        await this.prisma.deliveryOrder.update({
-          where: { id: orderId },
+        // CAS guard: WHERE matchAttempts = order.matchAttempts makes this update a no-op
+        // if a concurrent invocation (cron sweep vs. an immediate decline-triggered call)
+        // already advanced the order first — only the winner expires/emits.
+        const expired = await this.prisma.deliveryOrder.updateMany({
+          where: { id: orderId, status: 'SEARCHING' as any, matchAttempts: order.matchAttempts },
           data: { status: 'EXPIRED' as any },
         });
+        if (expired.count === 0) {
+          this.logger.debug(`attemptMatchOrder: order ${orderId} already advanced concurrently — skipping expire`);
+          return;
+        }
         await this.prisma.deliveryEvent.create({
           data: {
             orderId,
@@ -141,15 +148,23 @@ export class DeliveryService {
       const nextAttempts = order.matchAttempts + 1;
       const nextDeadline = new Date(Date.now() + 60_000);
 
+      // CAS guard on every branch below: WHERE matchAttempts = order.matchAttempts (the
+      // value we read at the top of this call) means a concurrent attemptMatchOrder call
+      // that already won the race makes this updateMany a no-op (count 0) — we then skip
+      // the event log / emit entirely rather than double-offering the same rider or
+      // silently losing one call's increment to a last-write-wins clobber.
+      const updated = await this.prisma.deliveryOrder.updateMany({
+        where: { id: orderId, status: 'SEARCHING' as any, matchAttempts: order.matchAttempts },
+        data: candidate
+          ? { matchAttempts: nextAttempts, matchDeadlineAt: nextDeadline, excludedRiderIds: { push: candidate } }
+          : { matchAttempts: nextAttempts, matchDeadlineAt: nextDeadline },
+      });
+      if (updated.count === 0) {
+        this.logger.debug(`attemptMatchOrder: order ${orderId} already advanced concurrently — skipping this attempt`);
+        return;
+      }
+
       if (candidate) {
-        await this.prisma.deliveryOrder.update({
-          where: { id: orderId },
-          data: {
-            matchAttempts: nextAttempts,
-            matchDeadlineAt: nextDeadline,
-            excludedRiderIds: { push: candidate },
-          },
-        });
         await this.prisma.deliveryEvent.create({
           data: { orderId, event: 'RIDER_OFFERED', metadata: { riderId: candidate, attempt: nextAttempts } },
         });
@@ -157,10 +172,6 @@ export class DeliveryService {
           this.gateway.server.to(`rider:${candidate}`).emit('delivery:request', order);
         }
       } else {
-        await this.prisma.deliveryOrder.update({
-          where: { id: orderId },
-          data: { matchAttempts: nextAttempts, matchDeadlineAt: nextDeadline },
-        });
         await this.prisma.deliveryEvent.create({
           data: { orderId, event: 'NO_RIDERS_AVAILABLE', metadata: { attempt: nextAttempts } },
         });

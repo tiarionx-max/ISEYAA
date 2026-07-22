@@ -62,6 +62,51 @@ export class PaystackService {
     }
   }
 
+  /**
+   * Silently re-charge a previously-saved card via its `authorization_code` —
+   * used for recurring billing (e.g. monthly memberships) with no customer
+   * interaction. Wraps `POST /transaction/charge_authorization`.
+   */
+  async chargeAuthorization(params: {
+    authorizationCode: string;
+    email: string;
+    amountKobo: number;
+    reference: string;
+    metadata?: Record<string, any>;
+  }): Promise<{ status: string; reference: string }> {
+    const { authorizationCode, email, amountKobo, reference, metadata } = params;
+    const secretKey = this.config.get<string>('PAYSTACK_SECRET_KEY', '');
+
+    if (!secretKey) {
+      this.logger.error('Paystack charge_authorization skipped — PAYSTACK_SECRET_KEY is not set in env');
+      throw new Error('PAYSTACK_SECRET_KEY not configured');
+    }
+
+    try {
+      const response = await this.resilience.execute('paystack', ({ signal }) =>
+        axios.post(
+          `${this.baseUrl}/transaction/charge_authorization`,
+          {
+            authorization_code: authorizationCode,
+            email,
+            amount: amountKobo,
+            reference,
+            metadata,
+          },
+          { headers: { Authorization: `Bearer ${secretKey}` }, signal },
+        ),
+      );
+
+      const { status, reference: ref } = response.data.data;
+      return { status, reference: ref };
+    } catch (err) {
+      const status = (err as any)?.response?.status;
+      const body = (err as any)?.response?.data;
+      this.logger.error(`Paystack charge_authorization failed (HTTP ${status}): ${JSON.stringify(body) ?? (err as Error).message}`);
+      throw new ServiceUnavailableException('Paystack is temporarily unavailable, please try again shortly');
+    }
+  }
+
   async resolveBvn(bvn: string): Promise<{ verified: boolean; firstName: string; lastName: string; dob?: string }> {
     const secretKey = this.config.get<string>('PAYSTACK_SECRET_KEY');
 

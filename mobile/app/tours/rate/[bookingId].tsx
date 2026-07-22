@@ -51,9 +51,11 @@ type TourBookingDetail = {
   tourPackage?: {
     id: string;
     name?: string | null;
-    guideProfile?: {
+    // Backend relation is `tourGuide`, not `guideProfile` — see
+    // TourBookingService.findById() (backend/src/modules/tour-bookings/tour-bookings.service.ts).
+    tourGuide?: {
       id: string;
-      name?: string | null;
+      user?: { firstName?: string | null; lastName?: string | null } | null;
     } | null;
     attractionIds?: string[];
     attractionNames?: string[];
@@ -125,6 +127,10 @@ export default function TourRateScreen(): JSX.Element {
     });
   }
 
+  const guideUser = booking.tourPackage?.tourGuide?.user;
+  const guideName =
+    [guideUser?.firstName, guideUser?.lastName].filter(Boolean).join(' ') || null;
+
   return (
     <View style={s.root}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
@@ -133,8 +139,8 @@ export default function TourRateScreen(): JSX.Element {
         visible={modalVisible}
         onClose={handleClose}
         tourBookingId={booking.id}
-        guideId={booking.tourPackage?.guideProfile?.id ?? null}
-        guideName={booking.tourPackage?.guideProfile?.name ?? null}
+        guideId={booking.tourPackage?.tourGuide?.id ?? null}
+        guideName={guideName}
         tourPackageId={booking.tourPackageId}
         packageName={booking.tourPackage?.name ?? null}
         venues={venues}

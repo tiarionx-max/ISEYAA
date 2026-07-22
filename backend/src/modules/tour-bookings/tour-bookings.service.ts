@@ -479,6 +479,8 @@ export class TourBookingService {
             name: true,
             slug: true,
             coverImageUrl: true,
+            attractionIds: true,
+            propertyId: true,
             tourGuide: {
               select: {
                 id: true,
@@ -493,7 +495,36 @@ export class TourBookingService {
     if (booking.buyerUserId !== actorUserId) {
       throw new ForbiddenException('Not your booking');
     }
-    return booking;
+
+    // Hydrate attraction / property display names for the mobile rating
+    // screen's venue-target picker (mirrors TourPackageService.findBySlug()).
+    const attractionIds = booking.tourPackage?.attractionIds ?? [];
+    const propertyId = booking.tourPackage?.propertyId ?? null;
+    const [attractions, property] = await Promise.all([
+      attractionIds.length
+        ? this.prisma.attraction.findMany({
+            where: { id: { in: attractionIds }, deletedAt: null },
+            select: { id: true, name: true },
+          })
+        : [],
+      propertyId
+        ? this.prisma.property.findUnique({
+            where: { id: propertyId },
+            select: { id: true, name: true },
+          })
+        : null,
+    ]);
+
+    return {
+      ...booking,
+      tourPackage: booking.tourPackage
+        ? {
+            ...booking.tourPackage,
+            attractionNames: attractions.map((a) => a.name),
+            propertyName: property?.name ?? null,
+          }
+        : booking.tourPackage,
+    };
   }
 
   // ── Cancel ──────────────────────────────────────────────────────────────

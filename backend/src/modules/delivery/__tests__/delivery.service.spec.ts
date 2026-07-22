@@ -197,6 +197,9 @@ describe('DeliveryService', () => {
     mockSettlement.resolveMinistryWallet.mockResolvedValue({ id: 'WAL-MINISTRY' });
     mockSettlement.resolveSplit.mockResolvedValue({ earnerPct: 0.8, ministryPct: 0.05, platformPct: 0.15 });
     mockConfigDefaults();
+    // Default: the CAS-guarded updateMany in attemptMatchOrder "wins the race" unless a
+    // specific test overrides this to simulate a concurrent call already advancing state.
+    mockPrisma.deliveryOrder.updateMany.mockResolvedValue({ count: 1 });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -275,10 +278,25 @@ describe('DeliveryService', () => {
       expect(mockGateway.server.to).toHaveBeenCalledWith(`rider:${RIDER_ID}`);
       const toReturn = mockGateway.server.to.mock.results[0]?.value;
       expect(toReturn?.emit).toHaveBeenCalledWith('delivery:request', expect.anything());
-      expect(mockPrisma.deliveryOrder.update).toHaveBeenCalledWith({
-        where: { id: ORDER_ID },
+      expect(mockPrisma.deliveryOrder.updateMany).toHaveBeenCalledWith({
+        where: { id: ORDER_ID, status: 'SEARCHING', matchAttempts: 0 },
         data: { matchAttempts: 1, matchDeadlineAt: expect.any(Date), excludedRiderIds: { push: RIDER_ID } },
       });
+    });
+
+    it('does not double-offer when a concurrent call already advanced the order (CAS guard loses the race)', async () => {
+      mockRedis.geosearch.mockResolvedValue([RIDER_ID]);
+      const created = mockCreatedOrder();
+      mockPrisma.deliveryOrder.create.mockResolvedValue(created);
+      mockPrisma.deliveryOrder.findFirst.mockResolvedValue(created);
+      mockPrisma.deliveryOrder.updateMany.mockResolvedValueOnce({ count: 0 });
+
+      await service.requestDelivery(USER_ID, dto as any);
+
+      expect(mockGateway.server.to).not.toHaveBeenCalledWith(`rider:${RIDER_ID}`);
+      expect(mockPrisma.deliveryEvent.create).not.toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ event: 'RIDER_OFFERED' }) }),
+      );
     });
 
     it('respects a configured delivery.otp_ttl_seconds instead of a hardcoded value', async () => {
@@ -348,8 +366,8 @@ describe('DeliveryService', () => {
         where: { status: 'SEARCHING', matchDeadlineAt: { lte: expect.any(Date) } },
         select: { id: true },
       });
-      expect(mockPrisma.deliveryOrder.update).toHaveBeenCalledWith({
-        where: { id: 'order-a' },
+      expect(mockPrisma.deliveryOrder.updateMany).toHaveBeenCalledWith({
+        where: { id: 'order-a', status: 'SEARCHING', matchAttempts: 3 },
         data: { status: 'EXPIRED' },
       });
     });

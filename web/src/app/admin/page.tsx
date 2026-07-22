@@ -164,9 +164,13 @@ export default function AdminPage() {
   const pendingApprovals = dash?.pending_approvals ?? 0;
   const pendingCount = (vendors ?? []).length;
 
+  // Backend (`AdminService.getRevenue()`) returns `by_month` rows shaped
+  // `{ month, total }` — this previously read `m.revenue`, a field that never
+  // existed, so RevenueChart always received all-zero data and silently
+  // rendered its "Revenue will appear here" empty state regardless of real data.
   const chartData = (revenue?.by_month ?? []).map((m: any) => ({
     month: formatMonth(m.month),
-    revenue: Number(m.revenue ?? 0),
+    revenue: Number(m.total ?? 0),
   }));
 
   return (
