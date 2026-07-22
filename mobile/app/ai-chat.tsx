@@ -28,7 +28,7 @@ import {
   FONT_DISPLAY, FONT_MONO,
 } from '../lib/tokens';
 
-const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1';
+import { API_BASE } from '../lib/api';
 const CHAT_STORAGE_KEY = 'ai_chat_history';
 const MAX_STORED_MESSAGES = 100;
 
