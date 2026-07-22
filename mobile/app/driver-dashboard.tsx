@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   ActivityIndicator, Alert, StatusBar,
@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import * as Location from 'expo-location';
 import { fetcher, api } from '../lib/api';
 import { ChevronLeft, Car, TrendingUp, Clock, CheckCircle2, MapPin } from 'lucide-react-native';
 import {
@@ -28,26 +29,51 @@ export default function DriverDashboardScreen() {
   const queryClient = useQueryClient();
   const [isOnline, setIsOnline] = useState(false);
 
-  const { data: earningsData, isLoading } = useQuery({
-    queryKey: ['driver-earnings'],
-    queryFn: () => fetcher('/transport/drivers/earnings'),
+  const { data: driverProfile } = useQuery({
+    queryKey: ['driver-me'],
+    queryFn: () => fetcher('/transport/drivers/me'),
+  });
+
+  useEffect(() => {
+    if (driverProfile) setIsOnline(!!(driverProfile?.data ?? driverProfile)?.isOnline);
+  }, [driverProfile]);
+
+  // EarningsResponse is { totalEarnings, tripCount, acceptanceRate, avgRating } —
+  // fetch 'today' and 'week' separately since the backend only returns one period per call.
+  const { data: todayData, isLoading: todayLoading } = useQuery({
+    queryKey: ['driver-earnings', 'today'],
+    queryFn: () => fetcher('/transport/drivers/earnings?period=today'),
+    refetchInterval: 30_000,
+  });
+  const { data: weekData, isLoading: weekLoading } = useQuery({
+    queryKey: ['driver-earnings', 'week'],
+    queryFn: () => fetcher('/transport/drivers/earnings?period=week'),
     refetchInterval: 30_000,
   });
 
   const toggleMutation = useMutation({
-    mutationFn: () => api.post(isOnline ? '/transport/go-offline' : '/transport/go-online'),
+    mutationFn: async () => {
+      if (isOnline) return api.post('/transport/go-offline');
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') throw new Error('Location permission is required to go online');
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      return api.post('/transport/go-online', { lat: pos.coords.latitude, lng: pos.coords.longitude });
+    },
     onSuccess: () => {
       setIsOnline(v => !v);
       queryClient.invalidateQueries({ queryKey: ['driver-earnings'] });
+      queryClient.invalidateQueries({ queryKey: ['driver-me'] });
     },
-    onError: (e: any) => Alert.alert('Error', e?.response?.data?.message ?? 'Please try again.'),
+    onError: (e: any) => Alert.alert('Error', e?.response?.data?.message ?? e?.message ?? 'Please try again.'),
   });
 
-  const earnings = earningsData?.data ?? earningsData ?? {};
-  const todayEarnings = Number(earnings.todayEarnings ?? 0);
-  const weekEarnings = Number(earnings.weekEarnings ?? 0);
-  const totalTrips = Number(earnings.tripCount ?? 0);
-  const rating = Number(earnings.rating ?? 0);
+  const isLoading = todayLoading || weekLoading;
+  const today = todayData?.data ?? todayData ?? {};
+  const week = weekData?.data ?? weekData ?? {};
+  const todayEarnings = Number(today.totalEarnings ?? 0);
+  const weekEarnings = Number(week.totalEarnings ?? 0);
+  const totalTrips = Number(week.tripCount ?? 0);
+  const rating = Number(week.avgRating ?? 0);
 
   const stats = [
     { label: "Today's Earnings", value: fmt(todayEarnings), Icon: TrendingUp, accent: GOLD },

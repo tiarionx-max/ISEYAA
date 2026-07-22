@@ -479,7 +479,7 @@ export class DeliveryService {
 
     const updatedOrder = await this.prisma.deliveryOrder.findFirst({ where: { id: orderId } });
 
-    this.gateway.server.to(`delivery:${order.senderId}`).emit('delivery:collecting', { orderId });
+    this.gateway.server.to(`delivery:${orderId}`).emit('delivery:collecting', { orderId });
 
     return updatedOrder;
   }

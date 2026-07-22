@@ -107,6 +107,24 @@ export class TransportService {
     }
   }
 
+  // ── findMine ──────────────────────────────────────────────────────────────
+
+  /** The current rider's trips, most recent first — active (non-terminal) trip surfaces first. */
+  async findMine(riderId: string) {
+    const trips = await this.prisma.trip.findMany({
+      where: { riderId, deletedAt: null },
+      include: { driver: { select: { id: true, licenceNumber: true } } },
+      orderBy: { requestedAt: 'desc' },
+      take: 20,
+    });
+    const activeStatuses = ['SEARCHING', 'MATCHED', 'ARRIVED', 'IN_PROGRESS'];
+    return trips.sort((a, b) => {
+      const aActive = activeStatuses.includes(a.status) ? 0 : 1;
+      const bActive = activeStatuses.includes(b.status) ? 0 : 1;
+      return aActive - bActive;
+    });
+  }
+
   // ── getMyDriverProfile ────────────────────────────────────────────────────
 
   async getMyDriverProfile(userId: string) {

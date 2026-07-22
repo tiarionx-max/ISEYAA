@@ -186,6 +186,29 @@ describe('TransportService', () => {
     service = module.get<TransportService>(TransportService);
   });
 
+  // ── findMine ─────────────────────────────────────────────────────────────
+
+  describe('findMine', () => {
+    it('returns the rider’s trips with active trips surfaced first', async () => {
+      const searching = { id: 't-1', status: 'SEARCHING', requestedAt: new Date('2026-01-03') };
+      const completed = { id: 't-2', status: 'COMPLETED', requestedAt: new Date('2026-01-02') };
+      const inProgress = { id: 't-3', status: 'IN_PROGRESS', requestedAt: new Date('2026-01-01') };
+      mockPrisma.trip.findMany.mockResolvedValue([searching, completed, inProgress]);
+
+      const result = await service.findMine('rider-1');
+
+      expect(mockPrisma.trip.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { riderId: 'rider-1', deletedAt: null } }),
+      );
+      expect(result.map((t: any) => t.id)).toEqual(['t-1', 't-3', 't-2']);
+    });
+
+    it('returns an empty array when the rider has no trips', async () => {
+      mockPrisma.trip.findMany.mockResolvedValue([]);
+      await expect(service.findMine('rider-1')).resolves.toEqual([]);
+    });
+  });
+
   // ── createDriver ───────────────────────────────────────────────────────────
 
   describe('createDriver', () => {
