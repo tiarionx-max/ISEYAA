@@ -75,6 +75,12 @@ const TYPE_CONFIG: Record<string, { icon: LucideIcon; tone: Tone }> = {
   SOCIAL:        { icon: Heart,      tone: 'gold'    },
   TICKET:        { icon: Ticket,     tone: 'gold'    },
   STAY:          { icon: Building2,  tone: 'forest'  },
+  // Real push types currently sent by TourNotificationsService
+  // (backend/src/modules/tour-bookings/tour-notifications.service.ts) — these
+  // live in Notification.data.type, not a top-level `type` column.
+  tour_t_minus_24h: { icon: Car,      tone: 'gold'   },
+  tour_t_minus_2h:  { icon: Car,      tone: 'gold'   },
+  tour_post_rating: { icon: Heart,    tone: 'gold'   },
 };
 
 function formatTimeAgo(dateStr: string): string {
@@ -91,7 +97,12 @@ function formatTimeAgo(dateStr: string): string {
 }
 
 function toNotifItem(n: any): NotificationItem {
-  const cfg = TYPE_CONFIG[n.type] ?? { icon: Sparkles, tone: 'gold' as Tone };
+  // Notification (backend/prisma/schema.prisma model Notification) has no
+  // top-level `type` column — the category string real callers set (e.g.
+  // TourNotificationsService) lives inside the `data` JSON field instead.
+  // Reading `n.type` here always resolved to undefined, so every notification
+  // silently fell back to the generic Sparkles/gold icon regardless of kind.
+  const cfg = TYPE_CONFIG[n.data?.type ?? n.type] ?? { icon: Sparkles, tone: 'gold' as Tone };
   return {
     id:     n.id,
     icon:   cfg.icon,

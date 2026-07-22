@@ -18,7 +18,7 @@ interface ReviewFlag {
     comment?: string;
     targetType: string;
     targetId: string;
-    reviewer?: { firstName: string; lastName: string };
+    user?: { firstName: string; lastName: string };
   };
   createdAt: string;
 }
@@ -93,7 +93,7 @@ export default function ReviewsQueuePage() {
     enabled: status === 'authenticated',
   });
 
-  const items: ReviewFlag[] = data?.items ?? data ?? [];
+  const items: ReviewFlag[] = data?.data ?? [];
 
   const resolveMutation = useMutation({
     mutationFn: ({
@@ -159,8 +159,8 @@ export default function ReviewsQueuePage() {
             </div>
             {items.map((flag) => {
               const review = flag.review;
-              const reviewerName = review?.reviewer
-                ? `${review.reviewer.firstName} ${review.reviewer.lastName}`
+              const reviewerName = review?.user
+                ? `${review.user.firstName} ${review.user.lastName}`
                 : 'Unknown';
               const rating = review?.rating ?? 0;
               const isLow = rating <= 2;

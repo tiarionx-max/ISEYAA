@@ -71,17 +71,13 @@ import {
 
 interface UserProfile {
   id: string;
-  name?: string;
+  firstName?: string;
+  lastName?: string;
   phone?: string;
   role: string;
-  kyc_tier?: number;
-  kyc_verified?: boolean;
-  created_at?: string;
-  trips_count?: number;
-  stays_count?: number;
+  createdAt?: string;
   // 08-07: host detection — backend GET /users/me returns these.
   registeredRoles?: string[];
-  isHost?: boolean;
   otpChannel?: 'SMS' | 'WHATSAPP' | 'EMAIL';
 }
 
@@ -376,6 +372,12 @@ export default function ProfileScreen() {
     ['PENDING', 'PROCESSING', 'SHIPPED'].includes(o.status),
   ).length;
 
+  const { data: myStays } = useQuery({
+    queryKey: ['bookings-mine'],
+    queryFn: () => fetcher('/bookings/mine'),
+  });
+  const staysList: any[] = myStays?.data ?? myStays ?? [];
+
   const [savedCount, setSavedCount] = useState(0);
   useFocusEffect(
     useCallback(() => {
@@ -407,21 +409,21 @@ export default function ProfileScreen() {
     );
   }
 
-  const tier = balance?.kyc_tier ?? user?.kyc_tier ?? 0;
-  const initials = getInitials(user?.name, user?.phone);
-  const displayName = user?.name ?? user?.phone ?? 'Damiola A.';
-  const handle = getHandle(user?.name, user?.phone);
-  const memberSince = getMemberSince(user?.created_at);
+  const tier = balance?.kyc_tier ?? 0;
+  const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(' ');
+  const initials = getInitials(fullName, user?.phone);
+  const displayName = fullName || user?.phone || 'Damiola A.';
+  const handle = getHandle(fullName, user?.phone);
+  const memberSince = getMemberSince(user?.createdAt);
   const role = user?.role ?? 'CITIZEN';
   const isDriverOrAdmin = role === 'DRIVER' || role === 'ADMIN';
 
   // 08-07: Host onboarding entry point — hide once user is already a HOST.
-  const alreadyHost =
-    (user?.registeredRoles ?? []).includes('HOST') || user?.isHost === true;
+  const alreadyHost = (user?.registeredRoles ?? []).includes('HOST');
 
-  // Stats
-  const tripsCount = user?.trips_count ?? 0;
-  const staysCount = user?.stays_count ?? 0;
+  // Stats — "Trips" = tour bookings (/tour-bookings/me), "Stays" = property bookings (/bookings/mine)
+  const tripsCount = bookingsList.length;
+  const staysCount = staysList.length;
 
   // KYC tier data
   const tierData = [

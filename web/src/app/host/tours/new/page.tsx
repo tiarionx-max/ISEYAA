@@ -2,13 +2,13 @@
 
 import { useState } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Navbar } from '@/components/layout/Navbar';
 import { PageTransition } from '@/components/ui/PageTransition';
-import { api } from '@/lib/api';
+import { api, fetcher } from '@/lib/api';
 import { toast } from 'sonner';
 import { TOUR_CATEGORIES } from '@/lib/tour-categories';
 import {
@@ -125,6 +125,15 @@ export default function NewTourPage() {
   const [step, setStep] = useState(0);
   const [createdId, setCreatedId] = useState<string | null>(null);
 
+  // Every TourPackage must be tied to the actor's own TourGuide profile
+  // (CreateTourPackageDto.tourGuideId is a required @IsUUID field).
+  const { data: tourGuide, isLoading: isLoadingGuide, isError: guideError } = useQuery<{ id: string }>({
+    queryKey: ['tour-guide-me'],
+    queryFn: () => fetcher('/tour-guides/me'),
+    enabled: !!session,
+    retry: false,
+  });
+
   const {
     register,
     control,
@@ -214,6 +223,7 @@ export default function NewTourPage() {
       description: values.description,
       category: values.category,
       lgaId: values.lgaId || undefined,
+      tourGuideId: tourGuide?.id,
       price: Number(values.price),
       durationHours: Number(values.durationHours),
       maxGroupSize: Number(values.maxGroupSize),
@@ -226,8 +236,12 @@ export default function NewTourPage() {
         ? values.eventIds.split(',').map((s) => s.trim()).filter(Boolean)
         : [],
       transportNote: values.transportNote || undefined,
-      itinerary: values.itinerary.filter((r) => r.title),
-      settlementSplits: values.splits.filter((r) => r.vendorId),
+      itineraryTemplate: values.itinerary
+        .filter((r) => r.title)
+        .map((r) => ({ ...r, hour: Number(r.hour) })),
+      settlementSplit: values.splits
+        .filter((r) => r.vendorId)
+        .map((r) => ({ ...r, percentage: Number(r.percentage) })),
     };
   }
 
@@ -265,6 +279,34 @@ export default function NewTourPage() {
             className="inline-flex items-center gap-2 px-6 py-3 btn-forest rounded-xl text-sm font-bold min-h-[44px]"
           >
             Sign in <ArrowRight size={14} />
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoadingGuide) {
+    return (
+      <div className="min-h-screen bg-jungle flex items-center justify-center">
+        <div className="h-8 w-48 skeleton rounded-xl" />
+      </div>
+    );
+  }
+
+  if (guideError || !tourGuide?.id) {
+    return (
+      <div className="min-h-screen bg-jungle text-white">
+        <Navbar />
+        <div className="max-w-md mx-auto px-4 pt-28 text-center">
+          <h2 className="text-2xl font-black mb-3">Tour guide profile required</h2>
+          <p className="text-white/50 text-sm mb-6">
+            You need an approved tour guide profile before you can create a tour package.
+          </p>
+          <Link
+            href="/become-a-guide"
+            className="inline-flex items-center gap-2 px-6 py-3 btn-forest rounded-xl text-sm font-bold min-h-[44px]"
+          >
+            Become a guide <ArrowRight size={14} />
           </Link>
         </div>
       </div>
@@ -625,8 +667,8 @@ export default function NewTourPage() {
                                 className={INPUT_CLS + ' cursor-pointer'}
                               >
                                 <option value="ATTRACTION">Attraction</option>
-                                <option value="PROPERTY">Property</option>
-                                <option value="EVENT">Event</option>
+                                <option value="HOST">Host (property)</option>
+                                <option value="ORGANISER">Organiser (event)</option>
                                 <option value="GUIDE">Guide</option>
                               </select>
                             </Field>

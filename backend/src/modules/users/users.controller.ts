@@ -23,6 +23,7 @@ import { KycService } from './kyc.service';
 import { VerifyBvnDto } from './dto/verify-bvn.dto';
 import { VerifyNinDto } from './dto/verify-nin.dto';
 import { ChangeOtpChannelDto } from './dto/change-otp-channel.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserRole } from '../../common/enums/user-role.enum';
@@ -114,7 +115,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Update current user profile' })
   updateMe(
     @CurrentUser() user: { userId: string },
-    @Body() body: { firstName?: string; lastName?: string; avatarUrl?: string; lgaId?: string },
+    @Body() body: UpdateUserDto,
   ) {
     return this.usersService.update(user.userId, body);
   }

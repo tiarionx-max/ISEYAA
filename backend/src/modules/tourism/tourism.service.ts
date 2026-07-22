@@ -20,6 +20,7 @@ interface FindAllFilters {
   lat?: number;
   lng?: number;
   radius?: number;
+  limit?: number;
 }
 
 @Injectable()
@@ -27,7 +28,7 @@ export class TourismService {
   constructor(private prisma: PrismaService) {}
 
   async findAll(filters: FindAllFilters) {
-    const { lgaId, category, freeEntryOnly, lat, lng, radius = NEARBY_RADIUS_KM } = filters;
+    const { lgaId, category, freeEntryOnly, lat, lng, radius = NEARBY_RADIUS_KM, limit } = filters;
     const isNearSearch = lat !== undefined && lng !== undefined;
 
     const latDiff = radius / 111.0;
@@ -49,11 +50,16 @@ export class TourismService {
       },
       include: { lga: { select: { name: true, slug: true } } },
       orderBy: { name: 'asc' },
+      // Only safe to cap in the DB query for the non-proximity path — the near-search
+      // path below over-fetches the bounding box then re-sorts/filters by exact
+      // haversine distance, so `limit` there must apply after that re-sort instead
+      // (applying it here would truncate before the true nearest-N are known).
+      ...(!isNearSearch && limit ? { take: limit } : {}),
     });
 
     if (!isNearSearch) return attractions;
 
-    return attractions
+    const sorted = attractions
       .map((a) => ({
         ...a,
         distanceKm:
@@ -63,6 +69,8 @@ export class TourismService {
       }))
       .filter((a) => a.distanceKm !== null && a.distanceKm <= radius)
       .sort((a, b) => (a.distanceKm ?? 999) - (b.distanceKm ?? 999));
+
+    return limit ? sorted.slice(0, limit) : sorted;
   }
 
   async findById(id: string) {

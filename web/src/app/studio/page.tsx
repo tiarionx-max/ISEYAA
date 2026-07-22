@@ -198,7 +198,7 @@ export default function StudioPage() {
     queryFn: () => fetcher('/studio/feed?limit=6'),
   });
 
-  const feedItems = Array.isArray(feed) ? feed : [];
+  const feedItems = Array.isArray((feed as any)?.data) ? (feed as any).data : [];
 
   return (
     <div className="min-h-screen bg-jungle text-white">

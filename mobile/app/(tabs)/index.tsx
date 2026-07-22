@@ -412,7 +412,7 @@ export default function DiscoverScreen() {
     retry: 1,
     staleTime: 5 * 60_000,
   });
-  const firstName = getFirstName(meData?.name) || getFirstName(meData?.data?.name);
+  const firstName = getFirstName(meData?.firstName);
 
   // Load cached attractions + bookmarks on mount
   useEffect(() => {
@@ -445,7 +445,7 @@ export default function DiscoverScreen() {
     queryFn: () => fetcher('/events?limit=10'),
   });
 
-  const events: any[] = eventsData?.data ?? [];
+  const events: any[] = Array.isArray(eventsData) ? eventsData : (eventsData?.data ?? []);
 
   const filteredAttractions = attractions.filter(
     (a) => !search || a.name.toLowerCase().includes(search.toLowerCase())

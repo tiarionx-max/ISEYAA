@@ -141,29 +141,54 @@ export default function SearchScreen() {
   const topAttraction = nearbyAttractions[0];
   const suggestionAttractions = nearbyAttractions.slice(1, 5);
 
+  // NOTE: /events, /attractions and /properties have no server-side `search`/`q`
+  // query param (see their controllers) — passing one is silently ignored, so the
+  // API always returns the first page regardless of query text. We fetch a wider
+  // page and filter client-side by name/title so results actually reflect the query.
+  function matchesQuery(item: any, q: string): boolean {
+    const haystack = `${item.name ?? ''} ${item.title ?? ''}`.toLowerCase();
+    return haystack.includes(q.toLowerCase());
+  }
+
   const { data: searchData, isLoading: searchLoading } = useQuery({
     queryKey: ['search', debouncedQuery, activeScope],
     queryFn: async () => {
-      const q = encodeURIComponent(debouncedQuery);
       if (scope === 'events') {
-        const res = await fetcher(`/events?search=${q}&limit=8`);
-        return { data: (res?.data ?? res ?? []).map((x: any) => ({ ...x, _type: 'event' })) };
+        const res = await fetcher(`/events?limit=50`);
+        const items = (Array.isArray(res) ? res : (res?.data ?? []))
+          .filter((x: any) => matchesQuery(x, debouncedQuery))
+          .slice(0, 8);
+        return { data: items.map((x: any) => ({ ...x, _type: 'event' })) };
       }
       if (scope === 'stays') {
-        const res = await fetcher(`/properties?search=${q}&limit=8`);
-        return { data: (res?.data ?? res ?? []).map((x: any) => ({ ...x, _type: 'stay' })) };
+        const res = await fetcher(`/properties?limit=50`);
+        const items = (Array.isArray(res) ? res : (res?.data ?? []))
+          .filter((x: any) => matchesQuery(x, debouncedQuery))
+          .slice(0, 8);
+        return { data: items.map((x: any) => ({ ...x, _type: 'stay' })) };
       }
       if (scope === 'places') {
-        const res = await fetcher(`/attractions?search=${q}&limit=8`);
-        return { data: (res?.data ?? res ?? []).map((x: any) => ({ ...x, _type: 'place' })) };
+        const res = await fetcher(`/attractions?limit=50`);
+        const items = (Array.isArray(res) ? res : (res?.data ?? []))
+          .filter((x: any) => matchesQuery(x, debouncedQuery))
+          .slice(0, 8);
+        return { data: items.map((x: any) => ({ ...x, _type: 'place' })) };
       }
       const [atts, evts] = await Promise.allSettled([
-        fetcher(`/attractions?search=${q}&limit=4`),
-        fetcher(`/events?search=${q}&limit=4`),
+        fetcher(`/attractions?limit=50`),
+        fetcher(`/events?limit=50`),
       ]);
+      const attItems = (atts.status === 'fulfilled'
+        ? (Array.isArray(atts.value) ? atts.value : (atts.value?.data ?? []))
+        : []
+      ).filter((x: any) => matchesQuery(x, debouncedQuery)).slice(0, 4);
+      const evtItems = (evts.status === 'fulfilled'
+        ? (Array.isArray(evts.value) ? evts.value : (evts.value?.data ?? []))
+        : []
+      ).filter((x: any) => matchesQuery(x, debouncedQuery)).slice(0, 4);
       const items = [
-        ...((atts.status === 'fulfilled' ? atts.value?.data : null) ?? []).map((x: any) => ({ ...x, _type: 'place' })),
-        ...((evts.status === 'fulfilled' ? evts.value?.data : null) ?? []).map((x: any) => ({ ...x, _type: 'event' })),
+        ...attItems.map((x: any) => ({ ...x, _type: 'place' })),
+        ...evtItems.map((x: any) => ({ ...x, _type: 'event' })),
       ];
       return { data: items };
     },

@@ -1,4 +1,4 @@
-import { IsMobilePhone, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsMobilePhone, IsNumber, IsOptional, IsString, Length, MaxLength, Min } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class TransferDto {
@@ -16,4 +16,15 @@ export class TransferDto {
   @IsString()
   @MaxLength(120)
   narration?: string;
+
+  @ApiProperty({
+    example: 'e4b1c8b2-7a1a-4c2e-9c2a-1f9f2b0a5b21',
+    description:
+      'Client-generated unique key (per submit attempt). Required so a retried/duplicated ' +
+      'request (network timeout, double-tap) cannot double-debit the sender — CLAUDE.md ' +
+      'requires an idempotency key on all wallet mutations.',
+  })
+  @IsString()
+  @Length(8, 64)
+  idempotencyKey: string;
 }

@@ -129,7 +129,7 @@ export default function SendScreen() {
     queryKey: ['wallet'],
     queryFn: () => fetcher('/wallet/balance'),
   });
-  const balance: number = walletData?.data?.balance ?? walletData?.balance ?? 0;
+  const balance: number = Number(walletData?.balance_ngn ?? 0);
 
   // ── Recent recipients — derived from real outgoing transfer history ────────
   const { data: transferHistory } = useQuery({
@@ -179,8 +179,11 @@ export default function SendScreen() {
   }, [lookupData]);
 
   const transferMutation = useMutation({
-    mutationFn: (payload: { recipientPhone: string; amount: number; narration?: string }) =>
-      api.post('/wallet/transfer', payload).then((r) => r.data),
+    mutationFn: (payload: {
+      recipientPhone: string;
+      amount: number;
+      narration?: string;
+    }) => api.post('/wallet/transfer', payload).then((r) => r.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['wallet'] });
       queryClient.invalidateQueries({ queryKey: ['wallet-transfers-out'] });

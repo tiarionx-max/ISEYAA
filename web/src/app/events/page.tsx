@@ -24,6 +24,8 @@ function EventSkeleton() {
 }
 
 function EventCard({ event, index }: { event: any; index: number }) {
+  const prices: number[] = (event.ticketTypes ?? []).map((tt: any) => Number(tt.price ?? 0));
+  const fromPrice = prices.length ? Math.min(...prices) : null;
   return (
     <motion.div
       initial={{ opacity: 0, y: 24 }}
@@ -53,7 +55,7 @@ function EventCard({ event, index }: { event: any; index: number }) {
             </span>
           )}
           <div className="absolute bottom-3 right-3 bg-black/70 backdrop-blur-sm text-white text-xs font-bold px-2.5 py-1 rounded-xl border border-white/10">
-            ₦{Number(event.ticketPrice ?? 0).toLocaleString()}
+            {fromPrice === null ? 'Free' : fromPrice === 0 ? 'Free' : `From ₦${fromPrice.toLocaleString()}`}
           </div>
         </div>
 
