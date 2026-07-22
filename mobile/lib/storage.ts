@@ -48,3 +48,21 @@ export async function getBookmarks(): Promise<string[]> {
   const raw = await AsyncStorage.getItem('bookmarks');
   return raw ? JSON.parse(raw) : [];
 }
+
+// Recent search terms — most-recent-first, capped at 8 entries.
+const MAX_RECENT_SEARCHES = 8;
+
+export async function getRecentSearches(): Promise<string[]> {
+  const raw = await AsyncStorage.getItem('recent_searches');
+  return raw ? JSON.parse(raw) : [];
+}
+
+export async function addRecentSearch(term: string): Promise<string[]> {
+  const trimmed = term.trim();
+  if (!trimmed) return getRecentSearches();
+  const existing = await getRecentSearches();
+  const deduped = [trimmed, ...existing.filter((t) => t.toLowerCase() !== trimmed.toLowerCase())];
+  const capped = deduped.slice(0, MAX_RECENT_SEARCHES);
+  await AsyncStorage.setItem('recent_searches', JSON.stringify(capped));
+  return capped;
+}

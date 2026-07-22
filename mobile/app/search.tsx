@@ -10,17 +10,17 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useFocusEffect } from 'expo-router';
 import { fetcher } from '../lib/api';
+import { getRecentSearches, addRecentSearch } from '../lib/storage';
 import Svg, { Rect, Line, Circle } from 'react-native-svg';
 import {
   Search,
   Mic,
   ArrowLeft,
   MapPin,
-  ShoppingBag,
-  Music,
   Clock,
 } from 'lucide-react-native';
 import {
@@ -105,23 +105,19 @@ const SCOPE_CHIPS = ['All', 'Places', 'Events', 'Stays', 'Studio', 'Market', 'Pe
 
 type ScopeChip = (typeof SCOPE_CHIPS)[number];
 
-const SUGGESTIONS = [
-  { title: 'Olumo Rock', sub: 'attraction', Icon: MapPin },
-  { title: 'Olumo Heritage Lodge', sub: 'stay · 1.4 km', Icon: MapPin },
-  { title: 'Olumo Arts Market', sub: 'market', Icon: ShoppingBag },
-  { title: 'Olumo Festival Grounds', sub: 'event venue', Icon: Music },
-] as const;
-
-const RECENT_SEARCHES = ['adire workshop', 'Abeokuta hotels', 'Lisabi Festival', 'suya spots'] as const;
-
-const KEYBOARD_SUGGESTIONS = ['adire', 'adire wrap', 'adire workshop'] as const;
-
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 export default function SearchScreen() {
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [activeScope, setActiveScope] = useState<ScopeChip>('All');
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
+
+  useFocusEffect(
+    useCallback(() => {
+      getRecentSearches().then(setRecentSearches);
+    }, []),
+  );
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(query.trim()), 400);
@@ -131,13 +127,36 @@ export default function SearchScreen() {
   const shouldSearch = debouncedQuery.length >= 2;
   const scope = activeScope.toLowerCase();
 
+  // Persist every executed search term to the real recent-searches list.
+  useEffect(() => {
+    if (shouldSearch) addRecentSearch(debouncedQuery).then(setRecentSearches);
+  }, [shouldSearch, debouncedQuery]);
+
+  const { data: nearbyData, isLoading: nearbyLoading } = useQuery({
+    queryKey: ['attractions-nearby-preview'],
+    queryFn: () => fetcher('/attractions?limit=5'),
+    enabled: !shouldSearch,
+  });
+  const nearbyAttractions: any[] = nearbyData?.data ?? nearbyData ?? [];
+  const topAttraction = nearbyAttractions[0];
+  const suggestionAttractions = nearbyAttractions.slice(1, 5);
+
   const { data: searchData, isLoading: searchLoading } = useQuery({
     queryKey: ['search', debouncedQuery, activeScope],
     queryFn: async () => {
       const q = encodeURIComponent(debouncedQuery);
-      if (scope === 'events') return fetcher(`/events?search=${q}&limit=8`);
-      if (scope === 'stays') return fetcher(`/properties?search=${q}&limit=8`);
-      if (scope === 'places') return fetcher(`/attractions?search=${q}&limit=8`);
+      if (scope === 'events') {
+        const res = await fetcher(`/events?search=${q}&limit=8`);
+        return { data: (res?.data ?? res ?? []).map((x: any) => ({ ...x, _type: 'event' })) };
+      }
+      if (scope === 'stays') {
+        const res = await fetcher(`/properties?search=${q}&limit=8`);
+        return { data: (res?.data ?? res ?? []).map((x: any) => ({ ...x, _type: 'stay' })) };
+      }
+      if (scope === 'places') {
+        const res = await fetcher(`/attractions?search=${q}&limit=8`);
+        return { data: (res?.data ?? res ?? []).map((x: any) => ({ ...x, _type: 'place' })) };
+      }
       const [atts, evts] = await Promise.allSettled([
         fetcher(`/attractions?search=${q}&limit=4`),
         fetcher(`/events?search=${q}&limit=4`),
@@ -247,6 +266,7 @@ export default function SearchScreen() {
                     onPress={() => {
                       if (item._type === 'event') router.push(`/events/${item.id}`);
                       else if (item._type === 'stay') router.push(`/stays/${item.id}`);
+                      else router.push({ pathname: '/ai-chat', params: { prompt: `Tell me about ${item.name} attraction` } } as any);
                     }}
                   >
                     <View style={styles.suggestionIconBox}>
@@ -266,95 +286,103 @@ export default function SearchScreen() {
         {/* ── Discovery sections (shown only when not searching) ──────────── */}
         {!shouldSearch && (
           <>
-            <View style={styles.topResultSection}>
-              <SectionHeader kicker="TOP RESULT" title="Near you" />
-
-              {/* Hero card */}
-              <View style={styles.heroCard}>
-                <LinearGradient
-                  colors={['#2A1A2A', '#100810']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.heroCardGradient}
-                >
-                  {/* Adire ornament top-right */}
-                  <View style={styles.heroAdire} pointerEvents="none">
-                    <AdireOrnament size={80} opacity={0.22} />
-                  </View>
-
-                  {/* Bottom-left content */}
-                  <View style={styles.heroCardBottom}>
-                    <Text style={styles.heroKicker}>2.1 km away</Text>
-                    <Text style={styles.heroCardTitle}>Olumo Rock Tourist Centre</Text>
-                    <View style={styles.heroTagChip}>
-                      <Text style={styles.heroTagText}>Attraction</Text>
-                    </View>
-                  </View>
-                </LinearGradient>
+            {nearbyLoading ? (
+              <View style={{ alignItems: 'center', paddingVertical: 30 }}>
+                <ActivityIndicator color={GOLD} />
               </View>
-            </View>
+            ) : (
+              <>
+                {topAttraction && (
+                  <View style={styles.topResultSection}>
+                    <SectionHeader kicker="NEARBY" title="Attractions" />
 
-            {/* ── Suggestions list ───────────────────────────────────────────── */}
-            <View style={styles.suggestionsList}>
-              {SUGGESTIONS.map((item, index) => {
-                const IconComp = item.Icon;
-                const isFirst = item.title.startsWith('Olumo');
-                return (
-                  <TouchableOpacity
-                    key={item.title}
-                    style={[
-                      styles.suggestionRow,
-                      index < SUGGESTIONS.length - 1 && styles.suggestionRowBorder,
-                    ]}
-                    activeOpacity={0.7}
-                    accessibilityRole="button"
-                  >
-                    <View style={styles.suggestionIconBox}>
-                      <IconComp size={16} color={GOLD} />
-                    </View>
-                    <View style={styles.suggestionTextBlock}>
-                      {isFirst ? (
-                        <Text style={styles.suggestionTitle} numberOfLines={1}>
-                          <Text style={styles.suggestionTitleGold}>Olumo</Text>
-                          {item.title.slice(5)}
-                        </Text>
-                      ) : (
-                        <Text style={styles.suggestionTitle} numberOfLines={1}>
-                          {item.title}
-                        </Text>
-                      )}
-                    </View>
-                    <Text style={styles.suggestionSub}>{item.sub}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+                    {/* Hero card */}
+                    <TouchableOpacity
+                      style={styles.heroCard}
+                      activeOpacity={0.85}
+                      onPress={() => router.push({ pathname: '/ai-chat', params: { prompt: `Tell me about ${topAttraction.name} attraction` } } as any)}
+                    >
+                      <LinearGradient
+                        colors={['#2A1A2A', '#100810']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={styles.heroCardGradient}
+                      >
+                        {/* Adire ornament top-right */}
+                        <View style={styles.heroAdire} pointerEvents="none">
+                          <AdireOrnament size={80} opacity={0.22} />
+                        </View>
+
+                        {/* Bottom-left content */}
+                        <View style={styles.heroCardBottom}>
+                          <Text style={styles.heroCardTitle}>{topAttraction.name}</Text>
+                          <View style={styles.heroTagChip}>
+                            <Text style={styles.heroTagText}>
+                              {(topAttraction.category ?? 'Attraction').toString().toLowerCase()}
+                            </Text>
+                          </View>
+                        </View>
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {/* ── Suggestions list ───────────────────────────────────────────── */}
+                {suggestionAttractions.length > 0 && (
+                  <View style={styles.suggestionsList}>
+                    {suggestionAttractions.map((item, index) => (
+                      <TouchableOpacity
+                        key={item.id}
+                        style={[
+                          styles.suggestionRow,
+                          index < suggestionAttractions.length - 1 && styles.suggestionRowBorder,
+                        ]}
+                        activeOpacity={0.7}
+                        accessibilityRole="button"
+                        onPress={() => router.push({ pathname: '/ai-chat', params: { prompt: `Tell me about ${item.name} attraction` } } as any)}
+                      >
+                        <View style={styles.suggestionIconBox}>
+                          <MapPin size={16} color={GOLD} />
+                        </View>
+                        <View style={styles.suggestionTextBlock}>
+                          <Text style={styles.suggestionTitle} numberOfLines={1}>{item.name}</Text>
+                        </View>
+                        <Text style={styles.suggestionSub}>{(item.category ?? '').toString()}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </>
+            )}
 
             {/* ── Recent searches ────────────────────────────────────────────── */}
-            <View style={styles.recentSection}>
-              <SectionHeader kicker="RECENT" title="Searches" />
-              <View style={styles.recentChipsRow}>
-                {RECENT_SEARCHES.map((term) => (
-                  <TouchableOpacity
-                    key={term}
-                    style={styles.recentChip}
-                    onPress={() => setQuery(term)}
-                    activeOpacity={0.7}
-                    accessibilityRole="button"
-                  >
-                    <Clock size={11} color={INK_FAINT} />
-                    <Text style={styles.recentChipText}>{term}</Text>
-                  </TouchableOpacity>
-                ))}
+            {recentSearches.length > 0 && (
+              <View style={styles.recentSection}>
+                <SectionHeader kicker="RECENT" title="Searches" />
+                <View style={styles.recentChipsRow}>
+                  {recentSearches.map((term) => (
+                    <TouchableOpacity
+                      key={term}
+                      style={styles.recentChip}
+                      onPress={() => setQuery(term)}
+                      activeOpacity={0.7}
+                      accessibilityRole="button"
+                    >
+                      <Clock size={11} color={INK_FAINT} />
+                      <Text style={styles.recentChipText}>{term}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </View>
-            </View>
+            )}
           </>
         )}
       </ScrollView>
 
-      {/* ── Keyboard suggestion bar ──────────────────────────────────────────── */}
+      {/* ── Keyboard suggestion bar — real recent searches, not fixed terms ──── */}
+      {recentSearches.length > 0 && (
       <View style={styles.keyboardBar}>
-        {KEYBOARD_SUGGESTIONS.map((term) => (
+        {recentSearches.slice(0, 3).map((term) => (
           <TouchableOpacity
             key={term}
             style={styles.keyboardChip}
@@ -365,6 +393,7 @@ export default function SearchScreen() {
           </TouchableOpacity>
         ))}
       </View>
+      )}
     </View>
   );
 }

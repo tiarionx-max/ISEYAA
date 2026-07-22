@@ -445,6 +445,7 @@ model Property {
   maxGuests              Int
   amenities              String[]
   highlights             String[] // 3-5 key selling points shown on detail page
+  timeSlots              Json? // TIMED_EVENT only: [{label, startHour, startMin, endHour, endMin}]; null = mobile/web fall back to a default 3-slot day
   rating                 Decimal? // average review rating, populated by webhook/cron
   reviewCount            Int          @default(0)
   isActive               Boolean      @default(true)
