@@ -885,6 +885,9 @@ model Trip {
   riderRating     Int?
   driverRating    Int?
   cancelReason    String?
+  matchAttempts     Int       @default(0)
+  matchDeadlineAt   DateTime?
+  excludedDriverIds String[]  @default([])
   metadata        Json?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
@@ -958,6 +961,9 @@ model DeliveryOrder {
   completedAt     DateTime?
   cancelReason    String?
   senderRating    Int?
+  matchAttempts     Int       @default(0)
+  matchDeadlineAt   DateTime?
+  excludedRiderIds  String[]  @default([])
   metadata        Json?
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt

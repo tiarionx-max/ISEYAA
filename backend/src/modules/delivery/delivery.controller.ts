@@ -164,6 +164,16 @@ export class DeliveryController {
     return this.deliveryService.collectParcel(id, user.userId);
   }
 
+  @Patch('orders/:id/depart')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.DRIVER)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Depart for dropoff — transitions COLLECTING → IN_TRANSIT (DRIVER)' })
+  startTransit(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.deliveryService.startTransit(id, user.userId);
+  }
+
   @Post('orders/:id/verify-otp')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.DRIVER)
@@ -174,6 +184,15 @@ export class DeliveryController {
     @Body() dto: VerifyDeliveryOtpDto,
   ) {
     return this.deliveryOtpClient.verifyOtp(id, dto.otp);
+  }
+
+  @Post('orders/:id/resend-otp')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.DRIVER)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Regenerate and re-send the dropoff OTP if the original one expired (DRIVER)' })
+  resendOtp(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.deliveryService.resendOtp(id, user.userId);
   }
 
   @Patch('orders/:id/complete')

@@ -8,7 +8,7 @@ import {
   Inject,
   forwardRef,
 } from '@nestjs/common';
-import { Cron, CronExpression, SchedulerRegistry } from '@nestjs/schedule';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { randomInt } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
@@ -31,7 +31,7 @@ import { RateDeliveryDto } from './dto/rate-delivery.dto';
 
 const RIDER_HEARTBEAT = (id: string) => `rider:heartbeat:${id}`;
 const DELIVERY_OTP = (orderId: string) => `delivery:otp:${orderId}`;
-const DELIVERY_MATCH_TIMEOUT = (orderId: string) => `delivery-match:${orderId}`;
+const DELIVERY_OTP_ATTEMPTS = (orderId: string) => `delivery:otp:attempts:${orderId}`;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -64,7 +64,6 @@ export class DeliveryService {
     private s3Service: S3Service,
     private config: ConfigService,
     private resilience: ResilienceService,
-    private schedulerRegistry: SchedulerRegistry,
     private settlementService: SettlementService,
     @Inject(forwardRef(() => DeliveryGateway)) private gateway: DeliveryGateway,
   ) {}
@@ -85,45 +84,89 @@ export class DeliveryService {
     return R * c;
   }
 
-  // ── scheduleMatchTimeout ──────────────────────────────────────────────────
+  // ── attemptMatchOrder ─────────────────────────────────────────────────────
 
-  private scheduleMatchTimeout(orderId: string): void {
-    const timeoutId = setTimeout(async () => {
-      await this.expireUnmatchedOrder(orderId);
-    }, 60_000);
-    this.schedulerRegistry.addTimeout(DELIVERY_MATCH_TIMEOUT(orderId), timeoutId);
-  }
-
-  // ── expireUnmatchedOrder ──────────────────────────────────────────────────
-
-  private async expireUnmatchedOrder(orderId: string): Promise<void> {
+  /**
+   * Offers the order to the nearest not-yet-tried online rider, or expires it once
+   * the configured retry budget is exhausted. Called from requestDelivery (first
+   * offer), declineOrder (immediate re-match), and sweepUnmatchedOrders
+   * (distributed-safe timeout — see that cron for why this replaced the old
+   * in-process setTimeout/SchedulerRegistry mechanism). Mirrors
+   * TransportService.attemptMatchTrip's design exactly.
+   */
+  private async attemptMatchOrder(orderId: string): Promise<void> {
     try {
       const order = await this.prisma.deliveryOrder.findFirst({ where: { id: orderId } });
       if (!order || order.status !== 'SEARCHING') return;
 
-      await this.prisma.deliveryOrder.update({
-        where: { id: orderId },
-        data: { status: 'EXPIRED' as any },
+      const maxAttemptsCfg = await this.prisma.platformConfig.findUnique({
+        where: { key: 'delivery.match_max_retry_attempts' },
       });
+      const maxAttempts = maxAttemptsCfg ? Number(maxAttemptsCfg.value) : 3;
 
-      // L-05: null guard on gateway.server — gateway may not be initialised at expiry time
-      if (!this.gateway?.server) return;
+      if (order.matchAttempts >= maxAttempts) {
+        await this.prisma.deliveryOrder.update({
+          where: { id: orderId },
+          data: { status: 'EXPIRED' as any },
+        });
+        await this.prisma.deliveryEvent.create({
+          data: {
+            orderId,
+            event: 'ORDER_EXPIRED',
+            metadata: { reason: 'max_attempts_exhausted', attempts: order.matchAttempts },
+          },
+        });
+        if (this.gateway?.server) {
+          this.gateway.server.to(`delivery:${orderId}`).emit('delivery:expired', { orderId });
+          this.gateway.server.to(`user:${order.senderId}`).emit('delivery:expired', { orderId });
+        }
+        this.logger.log(`DeliveryOrder ${orderId} expired — exhausted ${order.matchAttempts} match attempt(s)`);
+        return;
+      }
 
-      // H-04: emit to both the order room AND the sender's user room to handle the
-      // race where the client joins the room after the expiry event fires
-      this.gateway.server.to(`delivery:${orderId}`).emit('delivery:expired', { orderId });
-      this.gateway.server.to(`user:${order.senderId}`).emit('delivery:expired', { orderId });
-      this.logger.log(`DeliveryOrder ${orderId} expired — no rider matched within 60s`);
+      const radiusCfg = await this.prisma.platformConfig.findUnique({
+        where: { key: 'delivery_match_radius_km' },
+      });
+      const radiusKm = radiusCfg ? Number(radiusCfg.value) : 5;
+
+      const nearby = await this.redis.geosearch(
+        'riders:online',
+        Number(order.pickupLng),
+        Number(order.pickupLat),
+        radiusKm,
+      );
+      const excluded = new Set(order.excludedRiderIds);
+      const candidate = nearby.find((id) => !excluded.has(id));
+
+      const nextAttempts = order.matchAttempts + 1;
+      const nextDeadline = new Date(Date.now() + 60_000);
+
+      if (candidate) {
+        await this.prisma.deliveryOrder.update({
+          where: { id: orderId },
+          data: {
+            matchAttempts: nextAttempts,
+            matchDeadlineAt: nextDeadline,
+            excludedRiderIds: { push: candidate },
+          },
+        });
+        await this.prisma.deliveryEvent.create({
+          data: { orderId, event: 'RIDER_OFFERED', metadata: { riderId: candidate, attempt: nextAttempts } },
+        });
+        if (this.gateway?.server) {
+          this.gateway.server.to(`rider:${candidate}`).emit('delivery:request', order);
+        }
+      } else {
+        await this.prisma.deliveryOrder.update({
+          where: { id: orderId },
+          data: { matchAttempts: nextAttempts, matchDeadlineAt: nextDeadline },
+        });
+        await this.prisma.deliveryEvent.create({
+          data: { orderId, event: 'NO_RIDERS_AVAILABLE', metadata: { attempt: nextAttempts } },
+        });
+      }
     } catch (err) {
-      this.logger.error(`expireUnmatchedOrder failed for order ${orderId}`, err.message);
-    }
-  }
-
-  // ── cancelMatchTimeout ────────────────────────────────────────────────────
-
-  private cancelMatchTimeout(orderId: string): void {
-    if (this.schedulerRegistry.doesExist('timeout', DELIVERY_MATCH_TIMEOUT(orderId))) {
-      this.schedulerRegistry.deleteTimeout(DELIVERY_MATCH_TIMEOUT(orderId));
+      this.logger.error(`attemptMatchOrder failed for order ${orderId}`, (err as Error).message);
     }
   }
 
@@ -267,13 +310,7 @@ export class DeliveryService {
       weightKg: dto.weightKg,
     });
 
-    // 2. Read match radius from PlatformConfig
-    const radiusCfg = await this.prisma.platformConfig.findUnique({
-      where: { key: 'delivery_match_radius_km' },
-    });
-    const radiusKm = radiusCfg ? Number(radiusCfg.value) : 5;
-
-    // 3. Create DeliveryOrder with SEARCHING status
+    // 2. Create DeliveryOrder with SEARCHING status
     const order = await this.prisma.deliveryOrder.create({
       data: {
         senderId: userId,
@@ -291,32 +328,25 @@ export class DeliveryService {
       },
     });
 
-    // 4. Generate 6-digit OTP and store in Redis with 300s TTL
+    // 3. Generate 6-digit OTP and store in Redis. TTL is configurable (real delivery
+    // lifecycles — match, collect, transit, dropoff — routinely exceed a fixed 5-minute
+    // window; a resendOtp() escape hatch exists below for whenever it does expire anyway.
     // C-06: use crypto.randomInt (CSPRNG) instead of Math.random()
+    const otpTtlCfg = await this.prisma.platformConfig.findUnique({
+      where: { key: 'delivery.otp_ttl_seconds' },
+    });
+    const otpTtlSeconds = otpTtlCfg ? Number(otpTtlCfg.value) : 1800;
     const otp = randomInt(100000, 1000000).toString();
-    await this.redis.set(DELIVERY_OTP(order.id), otp, 300);
+    await this.redis.set(DELIVERY_OTP(order.id), otp, otpTtlSeconds);
 
-    // 5. Send OTP via Termii to recipientPhone (NOT sender's phone)
+    // 4. Send OTP via Termii to recipientPhone (NOT sender's phone)
     await this.sendTermiiDeliveryOtp(dto.recipientPhone, otp);
 
-    // 6. GEOSEARCH riders:online for nearest rider
-    const nearbyRiders = await this.redis.geosearch(
-      'riders:online',
-      dto.pickupLng,
-      dto.pickupLat,
-      radiusKm,
-    );
+    // 5. First match attempt — same re-match logic the decline path and the
+    // distributed sweep cron reuse for every subsequent attempt.
+    await this.attemptMatchOrder(order.id);
 
-    // 7. Notify nearest rider if available
-    if (nearbyRiders.length > 0) {
-      const nearestRiderId = nearbyRiders[0];
-      this.gateway.server.to(`rider:${nearestRiderId}`).emit('delivery:request', order);
-    }
-
-    // 8. Schedule 60s match timeout
-    this.scheduleMatchTimeout(order.id);
-
-    return order;
+    return this.prisma.deliveryOrder.findFirst({ where: { id: order.id } });
   }
 
   // ── sendTermiiDeliveryOtp ─────────────────────────────────────────────────
@@ -378,9 +408,6 @@ export class DeliveryService {
       data: { orderId, event: 'RIDER_MATCHED' },
     });
 
-    // Cancel match timeout
-    this.cancelMatchTimeout(orderId);
-
     const updatedOrder = await this.prisma.deliveryOrder.findFirst({ where: { id: orderId } });
 
     // Notify sender
@@ -410,7 +437,14 @@ export class DeliveryService {
       data: { acceptanceRate: newRate },
     });
 
-    this.logger.log(`Rider ${rider.id} declined order ${orderId}`);
+    // Record decline event — rider was already excluded when offered, so the
+    // immediate re-match below naturally skips them.
+    await this.prisma.deliveryEvent.create({
+      data: { orderId, event: 'RIDER_DECLINED', metadata: { riderId: rider.id } },
+    });
+
+    this.logger.log(`Rider ${rider.id} declined order ${orderId} — attempting re-match`);
+    await this.attemptMatchOrder(orderId);
 
     return { declined: true };
   }
@@ -435,8 +469,6 @@ export class DeliveryService {
         data: { orderId, event: 'ORDER_CANCELLED' },
       }),
     ]);
-
-    this.cancelMatchTimeout(orderId);
 
     this.logger.log(`Order ${orderId} cancelled by userId=${userId}`);
 
@@ -491,7 +523,7 @@ export class DeliveryService {
     if (!order) throw new NotFoundException('Delivery order not found');
 
     // C-03: brute-force limit — mirrors auth.service.ts OTP lockout pattern
-    const attemptsKey = `delivery:otp:attempts:${orderId}`;
+    const attemptsKey = DELIVERY_OTP_ATTEMPTS(orderId);
     const attemptsStr = await this.redis.get(attemptsKey);
     const attempts = parseInt(attemptsStr ?? '0', 10);
     if (attempts >= 5) {
@@ -500,11 +532,19 @@ export class DeliveryService {
 
     const storedOtp = await this.redis.get(DELIVERY_OTP(orderId));
     if (storedOtp === null) {
-      throw new BadRequestException('OTP expired. Request a new delivery to get a fresh code.');
+      throw new BadRequestException(
+        'OTP expired. Ask the driver to request a fresh code via resend-otp.',
+      );
     }
     if (storedOtp !== dto.otp) {
-      // Increment attempt counter with same TTL as OTP (300s)
-      await this.redis.set(attemptsKey, String(attempts + 1), 300);
+      // Increment attempt counter with the same TTL as the OTP itself, whatever that
+      // currently configured TTL is — keeping the lockout window tied 1:1 to the
+      // OTP's real validity window rather than a stale hardcoded value.
+      const otpTtlCfg = await this.prisma.platformConfig.findUnique({
+        where: { key: 'delivery.otp_ttl_seconds' },
+      });
+      const otpTtlSeconds = otpTtlCfg ? Number(otpTtlCfg.value) : 1800;
+      await this.redis.set(attemptsKey, String(attempts + 1), otpTtlSeconds);
       throw new BadRequestException(`Incorrect OTP. Ask the recipient to check their SMS. ${5 - attempts - 1} attempt(s) remaining.`);
     }
 
@@ -518,6 +558,83 @@ export class DeliveryService {
     });
 
     return { verified: true };
+  }
+
+  // ── resendOtp ─────────────────────────────────────────────────────────────
+
+  /**
+   * The rider-facing escape hatch for the OTP TTL problem: even a generous
+   * default (30 min) can still be outlived by a slow delivery. Regenerates the
+   * code, resets its TTL and the brute-force attempt counter, and re-sends via
+   * the same Termii path as the original request.
+   */
+  async resendOtp(orderId: string, riderUserId: string): Promise<{ resent: true }> {
+    const rider = await this.prisma.deliveryRider.findFirst({
+      where: { userId: riderUserId, deletedAt: null },
+    });
+    if (!rider) throw new NotFoundException('Delivery rider profile not found');
+
+    const order = await this.prisma.deliveryOrder.findFirst({ where: { id: orderId } });
+    if (!order) throw new NotFoundException('Delivery order not found');
+    if (order.riderId !== rider.id) {
+      throw new ForbiddenException('You are not the assigned rider for this order');
+    }
+    if (!(['MATCHED', 'COLLECTING', 'IN_TRANSIT'] as string[]).includes(order.status as string)) {
+      throw new BadRequestException(`Cannot resend OTP for an order in status: ${order.status}`);
+    }
+
+    const otpTtlCfg = await this.prisma.platformConfig.findUnique({
+      where: { key: 'delivery.otp_ttl_seconds' },
+    });
+    const otpTtlSeconds = otpTtlCfg ? Number(otpTtlCfg.value) : 1800;
+
+    const otp = randomInt(100000, 1000000).toString();
+    await this.redis.set(DELIVERY_OTP(orderId), otp, otpTtlSeconds);
+    await this.redis.del(DELIVERY_OTP_ATTEMPTS(orderId));
+
+    await this.sendTermiiDeliveryOtp(order.recipientPhone, otp);
+
+    await this.prisma.deliveryEvent.create({
+      data: { orderId, event: 'OTP_RESENT' },
+    });
+
+    return { resent: true };
+  }
+
+  // ── startTransit ──────────────────────────────────────────────────────────
+
+  /**
+   * COLLECTING → IN_TRANSIT. This status existed in the enum but no code path ever
+   * set it — every order previously jumped straight from COLLECTING to DELIVERED.
+   */
+  async startTransit(orderId: string, riderUserId: string) {
+    const rider = await this.prisma.deliveryRider.findFirst({
+      where: { userId: riderUserId, deletedAt: null },
+    });
+    if (!rider) throw new NotFoundException('Delivery rider profile not found');
+
+    const order = await this.prisma.deliveryOrder.findFirst({ where: { id: orderId } });
+    if (!order) throw new NotFoundException('Delivery order not found');
+    if (order.riderId !== rider.id) {
+      throw new ForbiddenException('You are not the assigned rider for this order');
+    }
+
+    const updated = await this.prisma.deliveryOrder.updateMany({
+      where: { id: orderId, status: 'COLLECTING' as any },
+      data: { status: 'IN_TRANSIT' as any },
+    });
+    if (updated.count === 0) {
+      throw new BadRequestException(`Order cannot start transit in status: ${order.status}`);
+    }
+
+    await this.prisma.deliveryEvent.create({
+      data: { orderId, event: 'TRANSIT_STARTED' },
+    });
+
+    const updatedOrder = await this.prisma.deliveryOrder.findFirst({ where: { id: orderId } });
+    this.gateway.server.to(`delivery:${orderId}`).emit('delivery:in_transit', { orderId });
+
+    return updatedOrder;
   }
 
   // ── completeDelivery ──────────────────────────────────────────────────────
@@ -852,6 +969,35 @@ export class DeliveryService {
       }
     } catch (err) {
       this.logger.error('cleanStaleRiderHeartbeats failed', err.message);
+    }
+  }
+
+  // ── sweepUnmatchedOrders (cron) ───────────────────────────────────────────
+
+  /**
+   * Distributed-safe replacement for the old in-process setTimeout/SchedulerRegistry
+   * match timeout — mirrors TransportService.sweepUnmatchedTrips exactly, including
+   * the cron-lock:<methodName> naming convention.
+   */
+  @Cron(CronExpression.EVERY_10_SECONDS)
+  async sweepUnmatchedOrders(): Promise<void> {
+    try {
+      const acquired = await this.redis.setNx('cron-lock:sweepUnmatchedOrders', '1', 8);
+      if (!acquired) {
+        this.logger.debug('sweepUnmatchedOrders: lock held by another replica — skipping this tick');
+        return;
+      }
+
+      const dueOrders = await this.prisma.deliveryOrder.findMany({
+        where: { status: 'SEARCHING' as any, matchDeadlineAt: { lte: new Date() } },
+        select: { id: true },
+      });
+
+      for (const { id } of dueOrders) {
+        await this.attemptMatchOrder(id);
+      }
+    } catch (err) {
+      this.logger.error('sweepUnmatchedOrders failed', err.message);
     }
   }
 }

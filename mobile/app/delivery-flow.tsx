@@ -37,7 +37,7 @@ import {
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-type Stage = 'form' | 'searching' | 'matched' | 'collecting' | 'delivered' | 'ended';
+type Stage = 'form' | 'searching' | 'matched' | 'collecting' | 'in_transit' | 'delivered' | 'ended';
 
 function fmtNGN(n: number): string {
   return `₦${Math.round(n).toLocaleString('en-NG')}`;
@@ -129,6 +129,7 @@ export default function DeliveryFlowScreen() {
       setStage('matched');
     });
     socket.on('delivery:collecting', () => setStage('collecting'));
+    socket.on('delivery:in_transit', () => setStage('in_transit'));
     socket.on('delivery:completed', (payload: { riderEarnings: number }) => {
       setCompletedEarnings(payload?.riderEarnings ?? null);
       setStage('delivered');
@@ -153,6 +154,7 @@ export default function DeliveryFlowScreen() {
       if (socket) {
         socket.off('rider:assigned');
         socket.off('delivery:collecting');
+        socket.off('delivery:in_transit');
         socket.off('delivery:completed');
         socket.off('delivery:cancelled');
         socket.off('delivery:expired');
@@ -259,7 +261,7 @@ export default function DeliveryFlowScreen() {
         </ScrollView>
       )}
 
-      {(stage === 'searching' || stage === 'matched' || stage === 'collecting') && (
+      {(stage === 'searching' || stage === 'matched' || stage === 'collecting' || stage === 'in_transit') && (
         <View style={styles.statusScreen}>
           {stage === 'searching' && (
             <>
@@ -283,9 +285,21 @@ export default function DeliveryFlowScreen() {
             <>
               <Package size={40} color={GOLD} />
               <Text style={styles.statusTitle}>Parcel collected</Text>
+              <Text style={styles.statusSub}>Your rider is packing up before heading to drop-off.</Text>
+            </>
+          )}
+          {stage === 'in_transit' && (
+            <>
+              <Truck size={40} color={GOLD} />
+              <Text style={styles.statusTitle}>On the way to drop-off</Text>
               <Text style={styles.statusSub}>
-                Your rider is on the way. The recipient will confirm delivery with the OTP sent to their phone.
+                The recipient will confirm delivery with the OTP sent to their phone.
               </Text>
+              {riderLocation && (
+                <Text style={styles.statusSub}>
+                  Rider location: {riderLocation.lat.toFixed(4)}, {riderLocation.lng.toFixed(4)}
+                </Text>
+              )}
             </>
           )}
 

@@ -8,7 +8,7 @@ import {
   Inject,
   forwardRef,
 } from '@nestjs/common';
-import { Cron, CronExpression, SchedulerRegistry } from '@nestjs/schedule';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
@@ -50,7 +50,6 @@ export class TransportService {
     private prisma: PrismaService,
     private redis: RedisService,
     private walletService: WalletService,
-    private schedulerRegistry: SchedulerRegistry,
     @Inject(forwardRef(() => TransportGateway)) private gateway: TransportGateway,
     private settlementService: SettlementService,
   ) {}
@@ -71,39 +70,87 @@ export class TransportService {
     return R * c;
   }
 
-  // ── scheduleMatchTimeout ──────────────────────────────────────────────────
+  // ── attemptMatchTrip ──────────────────────────────────────────────────────
 
-  private scheduleMatchTimeout(tripId: string): void {
-    const timeoutId = setTimeout(async () => {
-      await this.expireUnmatchedTrip(tripId);
-    }, 60_000);
-    this.schedulerRegistry.addTimeout(`match:${tripId}`, timeoutId);
-  }
-
-  // ── expireUnmatchedTrip ───────────────────────────────────────────────────
-
-  private async expireUnmatchedTrip(tripId: string): Promise<void> {
+  /**
+   * Offers the trip to the nearest not-yet-tried online driver, or expires it once
+   * the configured retry budget is exhausted. Called from requestRide (first offer),
+   * declineTrip (immediate re-match — no reason to wait for the next sweep), and
+   * sweepUnmatchedTrips (distributed-safe timeout — see that cron for why this
+   * replaced the old in-process setTimeout/SchedulerRegistry mechanism).
+   *
+   * Drivers already offered to are recorded in excludedDriverIds at offer time (not
+   * only on decline), so an unanswered offer is naturally never re-offered on the
+   * next sweep tick either — a single list covers both "declined" and "ignored".
+   */
+  private async attemptMatchTrip(tripId: string): Promise<void> {
     try {
       const trip = await this.prisma.trip.findFirst({ where: { id: tripId } });
       if (!trip || trip.status !== 'SEARCHING') return;
 
-      await this.prisma.trip.update({
-        where: { id: tripId },
-        data: { status: 'EXPIRED' as any },
+      const maxAttemptsCfg = await this.prisma.platformConfig.findUnique({
+        where: { key: 'transport.match_max_retry_attempts' },
       });
+      const maxAttempts = maxAttemptsCfg ? Number(maxAttemptsCfg.value) : 3;
 
-      this.gateway.server.to(`trip:${tripId}`).emit('trip:expired');
-      this.logger.log(`Trip ${tripId} expired — no driver matched within 60s`);
+      if (trip.matchAttempts >= maxAttempts) {
+        await this.prisma.trip.update({
+          where: { id: tripId },
+          data: { status: 'EXPIRED' as any },
+        });
+        await this.prisma.tripEvent.create({
+          data: {
+            tripId,
+            event: 'TRIP_EXPIRED',
+            metadata: { reason: 'max_attempts_exhausted', attempts: trip.matchAttempts },
+          },
+        });
+        this.gateway.server.to(`trip:${tripId}`).emit('trip:expired');
+        this.logger.log(`Trip ${tripId} expired — exhausted ${trip.matchAttempts} match attempt(s)`);
+        return;
+      }
+
+      const radiusCfg = await this.prisma.platformConfig.findUnique({
+        where: { key: 'transport_match_radius_km' },
+      });
+      const radiusKm = radiusCfg ? Number(radiusCfg.value) : 5;
+
+      const nearby = await this.redis.geosearch(
+        'drivers:online',
+        Number(trip.pickupLng),
+        Number(trip.pickupLat),
+        radiusKm,
+      );
+      const excluded = new Set(trip.excludedDriverIds);
+      const candidate = nearby.find((id) => !excluded.has(id));
+
+      const nextAttempts = trip.matchAttempts + 1;
+      const nextDeadline = new Date(Date.now() + 60_000);
+
+      if (candidate) {
+        await this.prisma.trip.update({
+          where: { id: tripId },
+          data: {
+            matchAttempts: nextAttempts,
+            matchDeadlineAt: nextDeadline,
+            excludedDriverIds: { push: candidate },
+          },
+        });
+        await this.prisma.tripEvent.create({
+          data: { tripId, event: 'DRIVER_OFFERED', metadata: { driverId: candidate, attempt: nextAttempts } },
+        });
+        this.gateway.server.to(`driver:${candidate}`).emit('ride:request', trip);
+      } else {
+        await this.prisma.trip.update({
+          where: { id: tripId },
+          data: { matchAttempts: nextAttempts, matchDeadlineAt: nextDeadline },
+        });
+        await this.prisma.tripEvent.create({
+          data: { tripId, event: 'NO_DRIVERS_AVAILABLE', metadata: { attempt: nextAttempts } },
+        });
+      }
     } catch (err) {
-      this.logger.error(`expireUnmatchedTrip failed for trip ${tripId}`, err.message);
-    }
-  }
-
-  // ── cancelMatchTimeout ────────────────────────────────────────────────────
-
-  private cancelMatchTimeout(tripId: string): void {
-    if (this.schedulerRegistry.doesExist('timeout', `match:${tripId}`)) {
-      this.schedulerRegistry.deleteTimeout(`match:${tripId}`);
+      this.logger.error(`attemptMatchTrip failed for trip ${tripId}`, (err as Error).message);
     }
   }
 
@@ -336,12 +383,6 @@ export class TransportService {
       dropoffLng: dto.dropoffLng,
     });
 
-    // Read match radius from PlatformConfig
-    const radiusCfg = await this.prisma.platformConfig.findUnique({
-      where: { key: 'transport_match_radius_km' },
-    });
-    const radiusKm = radiusCfg ? Number(radiusCfg.value) : 5;
-
     // Create trip record
     const trip = await this.prisma.trip.create({
       data: {
@@ -360,24 +401,11 @@ export class TransportService {
       },
     });
 
-    // Find nearby drivers
-    const nearbyDrivers = await this.redis.geosearch(
-      'drivers:online',
-      dto.pickupLng,
-      dto.pickupLat,
-      radiusKm,
-    );
+    // First match attempt — same re-match logic the decline path and the
+    // distributed sweep cron reuse for every subsequent attempt.
+    await this.attemptMatchTrip(trip.id);
 
-    // Notify nearest driver if available
-    if (nearbyDrivers.length > 0) {
-      const nearestDriverId = nearbyDrivers[0];
-      this.gateway.server.to(`driver:${nearestDriverId}`).emit('ride:request', trip);
-    }
-
-    // Schedule 60s match timeout
-    this.scheduleMatchTimeout(trip.id);
-
-    return trip;
+    return this.prisma.trip.findFirst({ where: { id: trip.id } });
   }
 
   // ── acceptTrip ────────────────────────────────────────────────────────────
@@ -410,9 +438,6 @@ export class TransportService {
       data: { tripId, event: 'DRIVER_MATCHED' },
     });
 
-    // Cancel match timeout
-    this.cancelMatchTimeout(tripId);
-
     const updatedTrip = await this.prisma.trip.findFirst({ where: { id: tripId } });
 
     // Notify rider
@@ -432,7 +457,8 @@ export class TransportService {
     const trip = await this.prisma.trip.findFirst({ where: { id: tripId } });
     if (!trip) throw new NotFoundException('Trip not found');
 
-    // Record decline event — trip stays SEARCHING
+    // Record decline event — driver was already excluded when offered, so the
+    // immediate re-match below naturally skips them.
     await this.prisma.tripEvent.create({
       data: {
         tripId,
@@ -441,7 +467,8 @@ export class TransportService {
       },
     });
 
-    this.logger.log(`Driver ${driver.id} declined trip ${tripId}`);
+    this.logger.log(`Driver ${driver.id} declined trip ${tripId} — attempting re-match`);
+    await this.attemptMatchTrip(tripId);
 
     return { declined: true };
   }
@@ -775,11 +802,6 @@ export class TransportService {
       throw new ForbiddenException('Only the rider or assigned driver can cancel this trip');
     }
 
-    // Cancel match timeout if trip is still searching
-    if (trip.status === 'SEARCHING' || trip.status === 'MATCHED') {
-      this.cancelMatchTimeout(tripId);
-    }
-
     const updatedTrip = await this.prisma.trip.update({
       where: { id: tripId },
       data: {
@@ -863,6 +885,39 @@ export class TransportService {
       }
     } catch (err) {
       this.logger.error('cleanStaleDriverHeartbeats failed', err.message);
+    }
+  }
+
+  // ── sweepUnmatchedTrips (cron) ────────────────────────────────────────────
+
+  /**
+   * Distributed-safe replacement for the old in-process setTimeout/SchedulerRegistry
+   * match timeout — that mechanism lived only in one Node process's memory and never
+   * fired correctly across a restart/redeploy or a multi-instance deployment. This
+   * cron polls for trips whose current match attempt has timed out and re-attempts
+   * (or expires) them; the redis.setNx lock ensures only one running instance acts
+   * on a given tick, matching the cron-lock:<methodName> convention used elsewhere
+   * (e.g. cleanStaleDriverHeartbeats above).
+   */
+  @Cron(CronExpression.EVERY_10_SECONDS)
+  async sweepUnmatchedTrips(): Promise<void> {
+    try {
+      const acquired = await this.redis.setNx('cron-lock:sweepUnmatchedTrips', '1', 8);
+      if (!acquired) {
+        this.logger.debug('sweepUnmatchedTrips: lock held by another replica — skipping this tick');
+        return;
+      }
+
+      const dueTrips = await this.prisma.trip.findMany({
+        where: { status: 'SEARCHING' as any, matchDeadlineAt: { lte: new Date() } },
+        select: { id: true },
+      });
+
+      for (const { id } of dueTrips) {
+        await this.attemptMatchTrip(id);
+      }
+    } catch (err) {
+      this.logger.error('sweepUnmatchedTrips failed', err.message);
     }
   }
 }

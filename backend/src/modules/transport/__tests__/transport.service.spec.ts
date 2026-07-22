@@ -12,7 +12,6 @@ import { TransportService } from '../transport.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { RedisService } from '../../../redis/redis.service';
 import { WalletService } from '../../wallet/wallet.service';
-import { SchedulerRegistry } from '@nestjs/schedule';
 import { TransportGateway } from '../transport.gateway';
 import { SettlementService } from '../../../common/services/settlement.service';
 
@@ -142,12 +141,6 @@ const mockWallet = {
   creditWallet: jest.fn().mockResolvedValue(undefined),
 };
 
-const mockScheduler = {
-  addTimeout: jest.fn(),
-  deleteTimeout: jest.fn(),
-  doesExist: jest.fn().mockReturnValue(false),
-};
-
 const mockGateway = {
   server: {
     to: jest.fn().mockReturnValue({ emit: jest.fn() }),
@@ -158,6 +151,23 @@ const mockGateway = {
 
 describe('TransportService', () => {
   let service: TransportService;
+
+  // Keyed platformConfig lookup — robust against call-order changes, unlike chained
+  // mockResolvedValueOnce(). Individual tests can override specific keys afterward.
+  const DEFAULT_CONFIG: Record<string, number> = {
+    transport_base_fare_car: 500,
+    transport_per_km_car: 120,
+    transport_surge_threshold: 1.5,
+    transport_match_radius_km: 5,
+    'transport.match_max_retry_attempts': 3,
+  };
+
+  function mockConfigDefaults(overrides: Record<string, number> = {}) {
+    const merged = { ...DEFAULT_CONFIG, ...overrides };
+    mockPrisma.platformConfig.findUnique.mockImplementation(({ where }: any) =>
+      Promise.resolve(where.key in merged ? mockPlatformConfig(where.key, merged[where.key]) : null),
+    );
+  }
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -170,6 +180,8 @@ describe('TransportService', () => {
     mockSettlement.settle.mockResolvedValue({ status: 'SETTLED', platformAmountNgn: 0, recipientCredits: [] });
     mockSettlement.resolveMinistryWallet.mockResolvedValue({ id: 'WAL-MINISTRY' });
     mockSettlement.resolveSplit.mockResolvedValue({ earnerPct: 0.85, ministryPct: 0.05, platformPct: 0.1 });
+    mockConfigDefaults();
+    mockPrisma.trip.count.mockResolvedValue(0);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -177,7 +189,6 @@ describe('TransportService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: RedisService, useValue: mockRedis },
         { provide: WalletService, useValue: mockWallet },
-        { provide: SchedulerRegistry, useValue: mockScheduler },
         { provide: TransportGateway, useValue: mockGateway },
         { provide: SettlementService, useValue: mockSettlement },
       ],
@@ -473,110 +484,93 @@ describe('TransportService', () => {
   // ── requestRide ────────────────────────────────────────────────────────────
 
   describe('requestRide', () => {
-    it('calls redis.geosearch with pickup coords', async () => {
-      mockRedis.geosearch.mockResolvedValue([]);
-      mockPrisma.trip.create.mockResolvedValue({ ...mockTrip, status: 'SEARCHING', driverId: null });
-      mockPrisma.platformConfig.findUnique
-        .mockResolvedValueOnce(mockPlatformConfig('transport_base_fare_car', 500))
-        .mockResolvedValueOnce(mockPlatformConfig('transport_per_km_car', 120))
-        .mockResolvedValueOnce(mockPlatformConfig('transport_match_radius_km', 5));
-      mockPrisma.trip.count.mockResolvedValue(0);
+    const dto = {
+      pickupLat: 7.1608,
+      pickupLng: 3.3475,
+      dropoffLat: 7.2571,
+      dropoffLng: 3.4167,
+      vehicleType: 'CAR',
+    };
 
-      const dto = {
-        pickupLat: 7.1608,
-        pickupLng: 3.3475,
-        dropoffLat: 7.2571,
-        dropoffLng: 3.4167,
-        vehicleType: 'CAR',
+    function mockCreatedTrip(overrides: any = {}) {
+      return {
+        ...mockTrip,
+        id: TRIP_ID,
+        status: 'SEARCHING',
+        driverId: null,
+        matchAttempts: 0,
+        excludedDriverIds: [],
+        pickupLat: dto.pickupLat,
+        pickupLng: dto.pickupLng,
+        ...overrides,
       };
+    }
+
+    it('calls redis.geosearch with pickup coords via the first match attempt', async () => {
+      mockRedis.geosearch.mockResolvedValue([]);
+      const created = mockCreatedTrip();
+      mockPrisma.trip.create.mockResolvedValue(created);
+      mockPrisma.trip.findFirst.mockResolvedValue(created);
 
       await service.requestRide('rider-uuid-001', dto as any);
 
-      expect(mockRedis.geosearch).toHaveBeenCalledWith(
-        'drivers:online',
-        expect.any(Number),
-        expect.any(Number),
-        expect.any(Number),
-      );
+      expect(mockRedis.geosearch).toHaveBeenCalledWith('drivers:online', dto.pickupLng, dto.pickupLat, 5);
     });
 
-    it('returns trip with status SEARCHING when no drivers found', async () => {
+    it('returns trip with status SEARCHING and matchAttempts=1 when no drivers found', async () => {
       mockRedis.geosearch.mockResolvedValue([]);
-      mockPrisma.trip.create.mockResolvedValue({ ...mockTrip, status: 'SEARCHING', driverId: null });
-      mockPrisma.platformConfig.findUnique
-        .mockResolvedValueOnce(mockPlatformConfig('transport_base_fare_car', 500))
-        .mockResolvedValueOnce(mockPlatformConfig('transport_per_km_car', 120))
-        .mockResolvedValueOnce(mockPlatformConfig('transport_match_radius_km', 5));
-      mockPrisma.trip.count.mockResolvedValue(0);
-
-      const dto = {
-        pickupLat: 7.1608,
-        pickupLng: 3.3475,
-        dropoffLat: 7.2571,
-        dropoffLng: 3.4167,
-        vehicleType: 'CAR',
-      };
+      const created = mockCreatedTrip();
+      mockPrisma.trip.create.mockResolvedValue(created);
+      mockPrisma.trip.findFirst.mockResolvedValue(created);
 
       const result = await service.requestRide('rider-uuid-001', dto as any);
 
-      expect(result.status).toBe('SEARCHING');
+      expect(result?.status).toBe('SEARCHING');
+      expect(mockPrisma.trip.update).toHaveBeenCalledWith({
+        where: { id: TRIP_ID },
+        data: { matchAttempts: 1, matchDeadlineAt: expect.any(Date) },
+      });
+      expect(mockPrisma.tripEvent.create).toHaveBeenCalledWith({
+        data: { tripId: TRIP_ID, event: 'NO_DRIVERS_AVAILABLE', metadata: { attempt: 1 } },
+      });
     });
 
-    it('notifies first driver via gateway.server.to("driver:{driverId}").emit when geosearch returns a driver', async () => {
+    it('offers the trip to the nearest driver, excludes them, and sets a 60s matchDeadlineAt', async () => {
       mockRedis.geosearch.mockResolvedValue([DRIVER_ID]);
-      mockPrisma.trip.create.mockResolvedValue({ ...mockTrip, status: 'SEARCHING' });
-      mockPrisma.platformConfig.findUnique
-        .mockResolvedValueOnce(mockPlatformConfig('transport_base_fare_car', 500))
-        .mockResolvedValueOnce(mockPlatformConfig('transport_per_km_car', 120))
-        .mockResolvedValueOnce(mockPlatformConfig('transport_match_radius_km', 5));
-      mockPrisma.trip.count.mockResolvedValue(0);
-
-      const dto = {
-        pickupLat: 7.1608,
-        pickupLng: 3.3475,
-        dropoffLat: 7.2571,
-        dropoffLng: 3.4167,
-        vehicleType: 'CAR',
-      };
+      const created = mockCreatedTrip();
+      mockPrisma.trip.create.mockResolvedValue(created);
+      mockPrisma.trip.findFirst.mockResolvedValue(created);
 
       await service.requestRide('rider-uuid-001', dto as any);
 
       expect(mockGateway.server.to).toHaveBeenCalledWith(`driver:${DRIVER_ID}`);
+      expect(mockPrisma.trip.update).toHaveBeenCalledWith({
+        where: { id: TRIP_ID },
+        data: { matchAttempts: 1, matchDeadlineAt: expect.any(Date), excludedDriverIds: { push: DRIVER_ID } },
+      });
+      expect(mockPrisma.tripEvent.create).toHaveBeenCalledWith({
+        data: { tripId: TRIP_ID, event: 'DRIVER_OFFERED', metadata: { driverId: DRIVER_ID, attempt: 1 } },
+      });
     });
 
-    it('calls schedulerRegistry.addTimeout("match:{tripId}", anything) to register 60s timeout', async () => {
-      mockRedis.geosearch.mockResolvedValue([]);
-      mockPrisma.trip.create.mockResolvedValue({ ...mockTrip, id: TRIP_ID, status: 'SEARCHING', driverId: null });
-      mockPrisma.platformConfig.findUnique
-        .mockResolvedValueOnce(mockPlatformConfig('transport_base_fare_car', 500))
-        .mockResolvedValueOnce(mockPlatformConfig('transport_per_km_car', 120))
-        .mockResolvedValueOnce(mockPlatformConfig('transport_match_radius_km', 5));
-      mockPrisma.trip.count.mockResolvedValue(0);
-
-      const dto = {
-        pickupLat: 7.1608,
-        pickupLng: 3.3475,
-        dropoffLat: 7.2571,
-        dropoffLng: 3.4167,
-        vehicleType: 'CAR',
-      };
+    it('does not offer to a driver already in excludedDriverIds (re-match skips previously-tried drivers)', async () => {
+      mockRedis.geosearch.mockResolvedValue([DRIVER_ID, 'driver-uuid-002']);
+      const created = mockCreatedTrip({ excludedDriverIds: [DRIVER_ID] });
+      mockPrisma.trip.create.mockResolvedValue(created);
+      mockPrisma.trip.findFirst.mockResolvedValue(created);
 
       await service.requestRide('rider-uuid-001', dto as any);
 
-      expect(mockScheduler.addTimeout).toHaveBeenCalledWith(
-        `match:${TRIP_ID}`,
-        expect.anything(),
-      );
+      expect(mockGateway.server.to).toHaveBeenCalledWith('driver:driver-uuid-002');
+      expect(mockGateway.server.to).not.toHaveBeenCalledWith(`driver:${DRIVER_ID}`);
     });
   });
 
   // ── acceptTrip ─────────────────────────────────────────────────────────────
 
   describe('acceptTrip', () => {
-    it('updates trip status to MATCHED, sets matchedAt, cancels timeout, emits driver:matched to trip room', async () => {
-      mockPrisma.trip.findFirst.mockResolvedValue({ ...mockTrip, status: 'SEARCHING', driverId: null });
+    it('updates trip status to MATCHED, sets matchedAt, emits driver:matched to trip room', async () => {
       mockPrisma.driver.findFirst.mockResolvedValue(mockDriver);
-      mockScheduler.doesExist.mockReturnValue(true);
       mockPrisma.trip.updateMany.mockResolvedValue({ count: 1 });
       mockPrisma.trip.findFirst.mockResolvedValueOnce({ ...mockTrip, status: 'SEARCHING', driverId: null })
                                 .mockResolvedValueOnce({ ...mockTrip, status: 'MATCHED', matchedAt: new Date() });
@@ -584,8 +578,68 @@ describe('TransportService', () => {
 
       await service.acceptTrip(TRIP_ID, USER_ID);
 
-      expect(mockScheduler.deleteTimeout).toHaveBeenCalledWith(`match:${TRIP_ID}`);
       expect(mockGateway.server.to).toHaveBeenCalledWith(`trip:${TRIP_ID}`);
+    });
+  });
+
+  // ── declineTrip ────────────────────────────────────────────────────────────
+
+  describe('declineTrip', () => {
+    it('logs DRIVER_DECLINED and immediately attempts to re-match with the next driver', async () => {
+      mockPrisma.driver.findFirst.mockResolvedValue(mockDriver);
+      const trip = {
+        ...mockTrip,
+        id: TRIP_ID,
+        status: 'SEARCHING',
+        matchAttempts: 1,
+        excludedDriverIds: [DRIVER_ID],
+        pickupLat: 7.1608,
+        pickupLng: 3.3475,
+      };
+      mockPrisma.trip.findFirst.mockResolvedValue(trip);
+      mockRedis.geosearch.mockResolvedValue(['driver-uuid-002']);
+
+      const result = await service.declineTrip(TRIP_ID, USER_ID);
+
+      expect(result).toEqual({ declined: true });
+      expect(mockPrisma.tripEvent.create).toHaveBeenCalledWith({
+        data: { tripId: TRIP_ID, event: 'DRIVER_DECLINED', metadata: { driverId: DRIVER_ID } },
+      });
+      // Immediate re-match offers the next (not-yet-excluded) driver, doesn't wait for the sweep cron.
+      expect(mockGateway.server.to).toHaveBeenCalledWith('driver:driver-uuid-002');
+    });
+  });
+
+  // ── sweepUnmatchedTrips ────────────────────────────────────────────────────
+
+  describe('sweepUnmatchedTrips', () => {
+    it('skips the tick when the distributed lock is already held by another replica', async () => {
+      mockRedis.setNx.mockResolvedValue(false);
+
+      await service.sweepUnmatchedTrips();
+
+      expect(mockPrisma.trip.findMany).not.toHaveBeenCalled();
+    });
+
+    it('re-attempts matching for every SEARCHING trip past its matchDeadlineAt', async () => {
+      mockRedis.setNx.mockResolvedValue(true);
+      mockPrisma.trip.findMany.mockResolvedValue([{ id: 'trip-a' }, { id: 'trip-b' }]);
+      mockPrisma.trip.findFirst.mockResolvedValue({
+        ...mockTrip,
+        status: 'SEARCHING',
+        matchAttempts: 3,
+        excludedDriverIds: [],
+      });
+
+      await service.sweepUnmatchedTrips();
+
+      expect(mockPrisma.trip.findMany).toHaveBeenCalledWith({
+        where: { status: 'SEARCHING', matchDeadlineAt: { lte: expect.any(Date) } },
+        select: { id: true },
+      });
+      // Both due trips exhausted their retry budget (matchAttempts=3 >= default max 3) — both expire.
+      expect(mockPrisma.trip.update).toHaveBeenCalledWith({ where: { id: 'trip-a' }, data: { status: 'EXPIRED' } });
+      expect(mockPrisma.trip.update).toHaveBeenCalledWith({ where: { id: 'trip-b' }, data: { status: 'EXPIRED' } });
     });
   });
 
