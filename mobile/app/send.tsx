@@ -88,6 +88,15 @@ function formatBalance(n: number): string {
   return n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// Per-attempt idempotency key for POST /wallet/transfer — never sent to a
+// security-sensitive context (it's a dedup key, not a secret), so Math.random()
+// is fine here. Avoids the `uuid` package's crypto.getRandomValues() dependency,
+// which Hermes doesn't provide without a native polyfill (react-native-get-random-values)
+// that isn't linked into this build. Same construction as ai-chat.tsx's uuidv4().
+function generateIdempotencyKey(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
+
 // ── Components ─────────────────────────────────────────────────────────────────
 
 function RecipientAvatar({
@@ -183,6 +192,7 @@ export default function SendScreen() {
       recipientPhone: string;
       amount: number;
       narration?: string;
+      idempotencyKey: string;
     }) => api.post('/wallet/transfer', payload).then((r) => r.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['wallet'] });
@@ -205,6 +215,7 @@ export default function SendScreen() {
       recipientPhone: selectedRecipient.phone,
       amount: numAmount,
       narration: note || undefined,
+      idempotencyKey: generateIdempotencyKey(),
     });
   }
 
