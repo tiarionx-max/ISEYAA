@@ -5,7 +5,7 @@ milestone_name: — Extraction Backlog Clearance & Settlement Flexibility
 status: Awaiting next milestone
 stopped_at: Phase 22 UI-SPEC approved
 last_updated: "2026-07-21T15:10:55.561Z"
-last_activity: 2026-07-21 — Milestone v2.1 completed and archived
+last_activity: 2026-07-22 - Completed quick task 260722-qdl: Fix NDPA consent compliance gap in phone-OTP mobile signup flow
 progress:
   total_phases: 5
   completed_phases: 5
@@ -92,6 +92,7 @@ None currently open for active work — 2 pre-existing todo files (add-compile-s
 |---|-------------|------|--------|-----------|
 | 260716-lbl | Fix deleteOutDir/tsbuildinfo stale-cache race and root .env not loading in backend dev bootstrap | 2026-07-16 | 5bd04f4 | [260716-lbl-fix-deleteoutdir-tsbuildinfo-stale-cache](./quick/260716-lbl-fix-deleteoutdir-tsbuildinfo-stale-cache/) |
 | 260720-qth | Correct README.md inaccuracies against current codebase (stale monolith description, missing microservices/gRPC architecture) | 2026-07-21 | 2e88e78 | [260720-qth-correct-readme-md-inaccuracies-against-c](./quick/260720-qth-correct-readme-md-inaccuracies-against-c/) |
+| 260722-qdl | Fix NDPA consent compliance gap in phone-OTP mobile signup flow (auth.service.ts phoneAuth hardcoded ndpaConsent:true with no real consent collection; added ndpaConsent field to PhoneAuthDto + mobile consent checkbox) | 2026-07-22 | a87dba5 | [260722-qdl-fix-ndpa-consent-compliance-gap-in-phone](./quick/260722-qdl-fix-ndpa-consent-compliance-gap-in-phone/) |
 
 ## Deferred Items
 
