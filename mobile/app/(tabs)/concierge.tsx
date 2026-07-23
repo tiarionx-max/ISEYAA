@@ -94,7 +94,7 @@ export default function ConciergeScreen() {
   const [mode, setMode] = useState<'chat' | 'ride' | 'delivery'>('chat');
 
   const { data: userData } = useQuery({ queryKey: ['me'], queryFn: () => fetcher('/users/me') });
-  const firstName = ((userData?.data?.name ?? userData?.name) ?? '').split(' ')[0];
+  const firstName = userData?.firstName ?? '';
 
   const handlePrompt = (prompt: string) => {
     router.push({ pathname: '/ai-chat', params: { prompt } });

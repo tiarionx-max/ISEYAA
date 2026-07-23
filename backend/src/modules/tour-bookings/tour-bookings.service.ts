@@ -452,6 +452,8 @@ export class TourBookingService {
             name: true,
             slug: true,
             coverImageUrl: true,
+            durationHours: true,
+            lga: { select: { name: true } },
             tourGuide: {
               select: {
                 id: true,

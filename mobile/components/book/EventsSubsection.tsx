@@ -194,11 +194,15 @@ export function EventsSubsection(): JSX.Element {
   return (
     <View style={styles.root}>
       <View style={styles.feedList}>
-        {isLoading || events.length === 0 ? (
+        {isLoading ? (
           <>
             <SkeletonCard />
             <SkeletonCard />
           </>
+        ) : events.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyText}>No events on sale right now.</Text>
+          </View>
         ) : (
           events.map((item, i) => (
             <EventCard key={item.id ?? i} item={item} gradientIndex={i} />
@@ -335,6 +339,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 0.4,
     textTransform: 'uppercase',
+  },
+
+  // Empty state
+  emptyState: {
+    paddingTop: 40,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontFamily: FONT_UI,
+    fontSize: 13,
+    color: INK_MID,
   },
 
   // Skeleton
