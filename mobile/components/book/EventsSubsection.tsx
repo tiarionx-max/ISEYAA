@@ -189,7 +189,7 @@ export function EventsSubsection(): JSX.Element {
     queryFn: () => fetcher('/events?limit=10'),
   });
 
-  const events: EventItem[] = data?.data ?? [];
+  const events: EventItem[] = data ?? [];
 
   return (
     <View style={styles.root}>
