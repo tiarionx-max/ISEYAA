@@ -18,6 +18,7 @@ import { WalletService } from '../wallet/wallet.service';
 import { S3Service } from '../../common/services/s3.service';
 import { ResilienceService } from '../../resilience/resilience.service';
 import { SettlementService, SettlementRecipient } from '../../common/services/settlement.service';
+import { NotificationsClientService } from '../notifications-client/notifications-client.service';
 import { DeliveryGateway } from './delivery.gateway';
 import { CreateDeliveryRiderDto } from './dto/create-delivery-rider.dto';
 import { ApproveDeliveryRiderDto } from './dto/approve-delivery-rider.dto';
@@ -65,6 +66,7 @@ export class DeliveryService {
     private config: ConfigService,
     private resilience: ResilienceService,
     private settlementService: SettlementService,
+    private notifications: NotificationsClientService,
     @Inject(forwardRef(() => DeliveryGateway)) private gateway: DeliveryGateway,
   ) {}
 
@@ -896,6 +898,19 @@ export class DeliveryService {
     this.logger.log(`Order ${orderId} completed — ₦${riderEarnings} credited to rider ${riderUserId}`);
 
     this.gateway.server.to(`delivery:${orderId}`).emit('delivery:completed', { orderId, riderEarnings });
+
+    // Push notification (best-effort) — notify the sender their package arrived.
+    // A failed push must never undo the delivery/settlement that already committed above.
+    try {
+      await this.notifications.sendPush(
+        order.senderId,
+        'Delivery completed',
+        'Your package has been delivered',
+        { type: 'delivery_update', orderId },
+      );
+    } catch (err: any) {
+      this.logger.error(`completeDelivery push notification failed for order ${orderId}: ${err.message}`);
+    }
 
     const updatedOrder = await this.prisma.deliveryOrder.findFirst({ where: { id: orderId } });
     return updatedOrder;

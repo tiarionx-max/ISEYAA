@@ -89,12 +89,15 @@ export interface IEvent {
   isFeatured: boolean;
 }
 
+// Mirrors WalletService.getBalance()'s actual return shape
+// (backend/src/modules/wallet/wallet.service.ts) — NOT the raw Prisma Wallet
+// row. The REST response is a computed KYC/escrow summary, not a passthrough
+// of the wallet table (no id/userId/currency/isActive on the wire).
 export interface IWallet {
-  id: string;
-  userId: string;
-  balance: number;
-  currency: string;
-  isActive: boolean;
+  balance_ngn: number;
+  escrow_balance_ngn: number;
+  kyc_tier: number;
+  daily_limit_ngn: number;
 }
 
 export interface ITransaction {

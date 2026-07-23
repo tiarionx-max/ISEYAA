@@ -1,11 +1,17 @@
 // Shared DTO shapes used across web, mobile and backend
 
+// Mirrors RegisterDto (backend/src/modules/auth/dto/register.dto.ts) — email
+// and phone are both required there (not optional), and `ndpaConsent` is a
+// required field enforced by AuthService.register() per the Nigerian Data
+// Protection Act (NDPA) — omitting it here previously let a consumer build a
+// request payload that the backend would always reject.
 export interface RegisterRequest {
-  email?: string;
-  phone?: string;
+  email: string;
+  phone: string;
   firstName: string;
   lastName: string;
   password: string;
+  ndpaConsent: boolean;
 }
 
 export interface LoginRequest {

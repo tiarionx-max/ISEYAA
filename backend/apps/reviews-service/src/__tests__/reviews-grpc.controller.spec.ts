@@ -11,7 +11,7 @@ import { PrismaService } from '../../../../src/prisma/prisma.service';
  * delivery-otp-grpc.controller.spec.ts's structure exactly: proves each business exception
  * type ReviewsService.createReview() can throw round-trips through RpcException with the
  * correct GrpcStatus code and the original message preserved, and that any other error type
- * is rethrown unwrapped.
+ * is rethrown unwrapped. listReviews() coverage added separately below.
  */
 describe('ReviewsGrpcController', () => {
   let controller: ReviewsGrpcController;
@@ -20,8 +20,6 @@ describe('ReviewsGrpcController', () => {
 
   beforeEach(async () => {
     reviewsService = { createReview: jest.fn() };
-    // listReviews() is untouched by this plan — mock as an unused object since
-    // createReview() tests never reach it.
     prisma = { review: { findMany: jest.fn() } };
 
     const moduleRef: TestingModule = await Test.createTestingModule({
@@ -116,5 +114,48 @@ describe('ReviewsGrpcController', () => {
       expect(err).toBe(originalError);
       expect(err).not.toBeInstanceOf(RpcException);
     }
+  });
+
+  describe('listReviews', () => {
+    const LIST_REQUEST = { targetType: 'GUIDE', targetId: 'GUIDE-1' };
+
+    it('returns mapped rows for a valid targetType', async () => {
+      prisma.review.findMany.mockResolvedValue([
+        { id: 'REV-1', userId: 'USR-1', rating: 5, comment: 'Great!', flagged: false, createdAt: new Date('2026-01-01') },
+      ]);
+
+      const result = await controller.listReviews(LIST_REQUEST as any);
+
+      expect(result.reviews).toEqual([
+        { id: 'REV-1', userId: 'USR-1', rating: 5, comment: 'Great!', flagged: false, createdAt: '2026-01-01T00:00:00.000Z' },
+      ]);
+    });
+
+    it('rejects an invalid targetType with INVALID_ARGUMENT before ever querying Prisma', async () => {
+      try {
+        await controller.listReviews({ targetType: 'NOT_A_REAL_TYPE', targetId: 'X' } as any);
+        fail('expected listReviews to throw');
+      } catch (err) {
+        expect(err).toBeInstanceOf(RpcException);
+        expect((err as RpcException).getError()).toEqual(
+          expect.objectContaining({ code: status.INVALID_ARGUMENT }),
+        );
+      }
+      expect(prisma.review.findMany).not.toHaveBeenCalled();
+    });
+
+    it('wraps an unexpected Prisma error in RpcException(INTERNAL) instead of letting it escape uncaught — regression test for the circuit-breaker-poisoning bug', async () => {
+      prisma.review.findMany.mockRejectedValue(new Error('Invalid value provided for enum'));
+
+      try {
+        await controller.listReviews(LIST_REQUEST as any);
+        fail('expected listReviews to throw');
+      } catch (err) {
+        expect(err).toBeInstanceOf(RpcException);
+        expect((err as RpcException).getError()).toEqual(
+          expect.objectContaining({ code: status.INTERNAL, message: 'Invalid value provided for enum' }),
+        );
+      }
+    });
   });
 });

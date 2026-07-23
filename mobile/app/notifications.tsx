@@ -81,7 +81,37 @@ const TYPE_CONFIG: Record<string, { icon: LucideIcon; tone: Tone }> = {
   tour_t_minus_24h: { icon: Car,      tone: 'gold'   },
   tour_t_minus_2h:  { icon: Car,      tone: 'gold'   },
   tour_post_rating: { icon: Heart,    tone: 'gold'   },
+  // Real push types now sent by WalletService (top-up + transfer received),
+  // TransportService (driver matched), DeliveryService (order delivered), and
+  // EventsService (ticket purchase confirmed) — see backend/src/modules/{wallet,
+  // transport,delivery,events}/*.service.ts. These live in Notification.data.type,
+  // same as the tour_* types above.
+  wallet_credit:    { icon: CreditCard, tone: 'success' },
+  ride_matched:     { icon: Car,        tone: 'gold'    },
+  delivery_update:  { icon: Package,    tone: 'forest'  },
+  ticket_purchased: { icon: Ticket,     tone: 'gold'    },
 };
+
+// ── Filter chip → notification type mapping ─────────────────────────────────────
+// Maps each chip (other than 'All') to the raw type strings (top-level `type` or
+// `data.type`) it should surface. Keeps FILTER_CHIPS/activeFilter driving a real
+// filter instead of just highlighting the active chip.
+const CHIP_TYPES: Record<Exclude<FilterChip, 'All'>, string[]> = {
+  Bookings: ['STAY', 'DELIVERY', 'delivery_update', 'KYC', 'tour_t_minus_24h', 'tour_t_minus_2h', 'tour_post_rating'],
+  Money:    ['WALLET_CREDIT', 'WALLET_DEBIT', 'wallet_credit'],
+  Rides:    ['RIDE', 'ride_matched'],
+  Events:   ['EVENT', 'TICKET', 'ticket_purchased'],
+  Social:   ['SOCIAL'],
+};
+
+function getNotifType(n: any): string {
+  return n.data?.type ?? n.type ?? '';
+}
+
+function matchesFilter(n: any, filter: FilterChip): boolean {
+  if (filter === 'All') return true;
+  return CHIP_TYPES[filter].includes(getNotifType(n));
+}
 
 function formatTimeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -207,8 +237,12 @@ export default function NotificationsScreen() {
   });
 
   const rawItems: any[] = Array.isArray(data?.data ?? data) ? (data?.data ?? data) : [];
-  const sections = buildSections(rawItems);
+  // Unread count reflects ALL notifications regardless of the active filter chip —
+  // "Mark all" should always be able to clear every unread item, not just the
+  // currently filtered subset.
   const unreadCount = rawItems.filter((n) => !n.readAt).length;
+  const filteredItems = rawItems.filter((n) => matchesFilter(n, activeFilter));
+  const sections = buildSections(filteredItems);
 
   const markReadMutation = useMutation({
     mutationFn: (id: string) => api.patch(`/notifications/${id}/read`),

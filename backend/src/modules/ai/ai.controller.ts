@@ -37,6 +37,8 @@ export class AiController {
   }
 
   @Post('itinerary')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Generate AI travel itinerary with real platform data (streaming SSE)' })
   async itinerary(@Body() dto: ItineraryDto, @Res() res: Response) {
     res.setHeader('Content-Type', 'text/event-stream');

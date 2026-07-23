@@ -9,6 +9,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 import { PaystackService } from '../../common/services/paystack.service';
+import { NotificationsClientService } from '../notifications-client/notifications-client.service';
 import { TransferDto } from './dto/transfer.dto';
 import { TopupDto } from './dto/topup.dto';
 
@@ -29,6 +30,7 @@ export class WalletService {
     private prisma: PrismaService,
     private paystack: PaystackService,
     private redis: RedisService,
+    private notifications: NotificationsClientService,
   ) {}
 
   // ── Private: async KYC tier resolution from PlatformConfig ────────────────
@@ -412,6 +414,20 @@ export class WalletService {
       throw err;
     }
 
+    // Push notification (best-effort) — recipient side only; the sender already sees
+    // the debit reflected in their own balance/history. A failed push must never
+    // undo or block the transfer that already committed above.
+    try {
+      await this.notifications.sendPush(
+        recipientUser.id,
+        'Money received',
+        `You received ₦${amount.toLocaleString('en-NG')} from a fellow ISEYAA user`,
+        { type: 'wallet_credit', reference, amount: String(amount) },
+      );
+    } catch (err: any) {
+      this.logger.error(`transfer push notification failed for recipient ${recipientUser.id}: ${err.message}`);
+    }
+
     return {
       reference,
       amount,
@@ -434,11 +450,13 @@ export class WalletService {
     // concurrent race condition where two requests read the same balance and both write
     // an inflated value (double-credit). CLAUDE.md requires SELECT FOR UPDATE on all
     // wallet mutations.
+    let creditedUserId: string | null = null;
     await this.prisma.$transaction(async (tx) => {
       // Lock the wallet row to prevent concurrent updates
       await tx.$executeRaw`SELECT id FROM wallets WHERE id = ${walletId} FOR UPDATE`;
       const locked = await tx.wallet.findUnique({ where: { id: walletId } });
       if (!locked) throw new NotFoundException('Wallet not found');
+      creditedUserId = locked.userId;
 
       const balanceBefore = Number(locked.balance);
       const balanceAfter = balanceBefore + amount;
@@ -460,5 +478,24 @@ export class WalletService {
         },
       });
     });
+
+    // Push notification (best-effort) — scoped to direct wallet top-ups (the default
+    // `module === 'wallet'` callers, e.g. Paystack top-up webhook). Earnings credits
+    // (transport/delivery/marketplace/etc. pass their own `module` name) get their own
+    // domain-specific push at the trigger point instead, so this stays a single,
+    // unambiguous "your wallet was funded" notification rather than firing for every
+    // internal settlement credit too.
+    if (module === 'wallet' && creditedUserId) {
+      try {
+        await this.notifications.sendPush(
+          creditedUserId,
+          'Wallet funded',
+          `₦${amount.toLocaleString('en-NG')} was added to your wallet`,
+          { type: 'wallet_credit', reference, amount: String(amount) },
+        );
+      } catch (err: any) {
+        this.logger.error(`creditWallet push notification failed for wallet ${walletId}: ${err.message}`);
+      }
+    }
   }
 }

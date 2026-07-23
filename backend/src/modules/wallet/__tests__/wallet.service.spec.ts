@@ -4,6 +4,7 @@ import { WalletService } from '../wallet.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { PaystackService } from '../../../common/services/paystack.service';
 import { RedisService } from '../../../redis/redis.service';
+import { NotificationsClientService } from '../../notifications-client/notifications-client.service';
 
 const USER_ID = 'user-001';
 const WALLET_ID = 'wallet-001';
@@ -66,6 +67,7 @@ const mockTx = {
 
 const mockPaystack = { initiatePayment: jest.fn() };
 const mockRedis = { setNx: jest.fn().mockResolvedValue(true), del: jest.fn().mockResolvedValue(1) };
+const mockNotifications = { sendPush: jest.fn().mockResolvedValue({ sent: true }) };
 
 describe('WalletService', () => {
   let service: WalletService;
@@ -85,6 +87,7 @@ describe('WalletService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: PaystackService, useValue: mockPaystack },
         { provide: RedisService, useValue: mockRedis },
+        { provide: NotificationsClientService, useValue: mockNotifications },
       ],
     }).compile();
     service = module.get<WalletService>(WalletService);

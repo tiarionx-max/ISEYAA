@@ -14,6 +14,7 @@ import { RedisService } from '../../../redis/redis.service';
 import { WalletService } from '../../wallet/wallet.service';
 import { TransportGateway } from '../transport.gateway';
 import { SettlementService } from '../../../common/services/settlement.service';
+import { NotificationsClientService } from '../../notifications-client/notifications-client.service';
 
 // ── Fixture IDs ────────────────────────────────────────────────────────────────
 
@@ -141,6 +142,8 @@ const mockWallet = {
   creditWallet: jest.fn().mockResolvedValue(undefined),
 };
 
+const mockNotifications = { sendPush: jest.fn().mockResolvedValue({ sent: true }) };
+
 const mockGateway = {
   server: {
     to: jest.fn().mockReturnValue({ emit: jest.fn() }),
@@ -194,6 +197,7 @@ describe('TransportService', () => {
         { provide: WalletService, useValue: mockWallet },
         { provide: TransportGateway, useValue: mockGateway },
         { provide: SettlementService, useValue: mockSettlement },
+        { provide: NotificationsClientService, useValue: mockNotifications },
       ],
     }).compile();
 

@@ -14,6 +14,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 import { WalletService } from '../wallet/wallet.service';
 import { SettlementService, SettlementRecipient } from '../../common/services/settlement.service';
+import { NotificationsClientService } from '../notifications-client/notifications-client.service';
 import { TransportGateway } from './transport.gateway';
 import { TripStatus, VehicleType } from '@prisma/client';
 import { CreateDriverDto } from './dto/create-driver.dto';
@@ -52,6 +53,7 @@ export class TransportService {
     private walletService: WalletService,
     @Inject(forwardRef(() => TransportGateway)) private gateway: TransportGateway,
     private settlementService: SettlementService,
+    private notifications: NotificationsClientService,
   ) {}
 
   // ── haversineDistanceKm ──────────────────────────────────────────────────
@@ -453,6 +455,21 @@ export class TransportService {
 
     // Notify rider
     this.gateway.server.to(`trip:${tripId}`).emit('driver:matched', { driver, trip: updatedTrip });
+
+    // Push notification (best-effort) — a failed push must never undo the match
+    // that already committed above.
+    if (updatedTrip?.riderId) {
+      try {
+        await this.notifications.sendPush(
+          updatedTrip.riderId,
+          'Driver found',
+          'Your driver is on the way to pick you up',
+          { type: 'ride_matched', tripId },
+        );
+      } catch (err: any) {
+        this.logger.error(`acceptTrip push notification failed for trip ${tripId}: ${err.message}`);
+      }
+    }
 
     return updatedTrip;
   }

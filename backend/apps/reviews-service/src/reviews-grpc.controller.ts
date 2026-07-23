@@ -9,7 +9,7 @@ import { GrpcMethod, RpcException } from '@nestjs/microservices';
 import { status as GrpcStatus } from '@grpc/grpc-js';
 import { ReviewsService } from '../../../src/modules/reviews/reviews.service';
 import { PrismaService } from '../../../src/prisma/prisma.service';
-import { ReviewTargetTypeLiteral } from '../../../src/modules/reviews/dto/create-review.dto';
+import { ReviewTargetTypeLiteral, REVIEW_TARGET_TYPES } from '../../../src/modules/reviews/dto/create-review.dto';
 import { reviews } from '@iseyaa/proto';
 
 /**
@@ -67,34 +67,56 @@ export class ReviewsGrpcController {
 
   @GrpcMethod('ReviewsService', 'ListReviews')
   async listReviews(data: reviews.ListReviewsRequest): Promise<reviews.ListReviewsResponse> {
-    // Deliberately NOT routed through ReviewsService.findByTarget() — that method
-    // internally caps `limit` at 50 (Math.min(50, ...)), which would silently
-    // truncate results and defeat the "return everything, paginate downstream"
-    // approach the monolith facade (21-05) needs. Query Prisma directly instead,
-    // scoped identically to findByTarget's where-clause (targetType, targetId,
-    // deletedAt: null, flagged: false — no broader data exposure than the existing
-    // REST endpoint already has), with a 1000-row safety cap — well above realistic
-    // per-target review volume, distinct from the REST-facing 50-row cap.
-    const rows = await this.prisma.review.findMany({
-      where: {
-        targetType: data.targetType as ReviewTargetTypeLiteral,
-        targetId: data.targetId,
-        deletedAt: null,
-        flagged: false,
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 1000,
-    });
+    // An unhandled error here (e.g. an invalid targetType reaching Prisma's `where`
+    // as a bad enum value) previously escaped this method uncaught. NestJS's default
+    // gRPC exception filter converts any non-RpcException into a generic INTERNAL
+    // error, which was observed to degrade ReviewsClientService's resilience/circuit
+    // breaker on the caller side — every subsequent call, including valid ones,
+    // returned 503 without even reaching this container. Validate up front and wrap
+    // any unexpected error in RpcException, mirroring CreateReview's pattern above.
+    if (!REVIEW_TARGET_TYPES.includes(data.targetType as ReviewTargetTypeLiteral)) {
+      throw new RpcException({
+        code: GrpcStatus.INVALID_ARGUMENT,
+        message: `targetType must be one of ${REVIEW_TARGET_TYPES.join(' | ')}`,
+      });
+    }
 
-    return {
-      reviews: rows.map((r) => ({
-        id: r.id,
-        userId: r.userId,
-        rating: r.rating,
-        comment: r.comment ?? '',
-        flagged: r.flagged,
-        createdAt: r.createdAt.toISOString(),
-      })),
-    };
+    try {
+      // Deliberately NOT routed through ReviewsService.findByTarget() — that method
+      // internally caps `limit` at 50 (Math.min(50, ...)), which would silently
+      // truncate results and defeat the "return everything, paginate downstream"
+      // approach the monolith facade (21-05) needs. Query Prisma directly instead,
+      // scoped identically to findByTarget's where-clause (targetType, targetId,
+      // deletedAt: null, flagged: false — no broader data exposure than the existing
+      // REST endpoint already has), with a 1000-row safety cap — well above realistic
+      // per-target review volume, distinct from the REST-facing 50-row cap.
+      const rows = await this.prisma.review.findMany({
+        where: {
+          targetType: data.targetType as ReviewTargetTypeLiteral,
+          targetId: data.targetId,
+          deletedAt: null,
+          flagged: false,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 1000,
+      });
+
+      return {
+        reviews: rows.map((r) => ({
+          id: r.id,
+          userId: r.userId,
+          rating: r.rating,
+          comment: r.comment ?? '',
+          flagged: r.flagged,
+          createdAt: r.createdAt.toISOString(),
+        })),
+      };
+    } catch (err) {
+      if (err instanceof RpcException) throw err;
+      throw new RpcException({
+        code: GrpcStatus.INTERNAL,
+        message: (err as Error).message ?? 'ListReviews failed',
+      });
+    }
   }
 }

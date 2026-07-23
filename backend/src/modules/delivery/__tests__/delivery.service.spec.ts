@@ -12,6 +12,7 @@ import { ConfigService } from '@nestjs/config';
 import { S3Service } from '../../../common/services/s3.service';
 import { ResilienceService } from '../../../resilience/resilience.service';
 import { SettlementService } from '../../../common/services/settlement.service';
+import { NotificationsClientService } from '../../notifications-client/notifications-client.service';
 
 // ── Fixture IDs ────────────────────────────────────────────────────────────────
 
@@ -137,6 +138,8 @@ const mockWallet = {
   creditWallet: jest.fn().mockResolvedValue(undefined),
 };
 
+const mockNotifications = { sendPush: jest.fn().mockResolvedValue({ sent: true }) };
+
 const mockGateway = {
   server: {
     to: jest.fn().mockReturnValue({ emit: jest.fn() }),
@@ -212,6 +215,7 @@ describe('DeliveryService', () => {
         { provide: S3Service, useValue: mockS3 },
         { provide: ResilienceService, useValue: mockResilience },
         { provide: SettlementService, useValue: mockSettlement },
+        { provide: NotificationsClientService, useValue: mockNotifications },
       ],
     }).compile();
 
