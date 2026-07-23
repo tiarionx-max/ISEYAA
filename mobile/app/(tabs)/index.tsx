@@ -617,18 +617,25 @@ export default function DiscoverScreen() {
               <Text style={styles.emptyBody}>Try a different area or check back later.</Text>
             </View>
           ) : (
-            <View style={styles.attractionGrid}>
-              {filteredAttractions.map((item, index) => (
+            <FlatList
+              data={filteredAttractions}
+              keyExtractor={(item) => item.id}
+              numColumns={2}
+              scrollEnabled={false}
+              columnWrapperStyle={styles.attractionRow}
+              ItemSeparatorComponent={() => <View style={{ height: SPACE_3 }} />}
+              initialNumToRender={6}
+              maxToRenderPerBatch={6}
+              renderItem={({ item, index }) => (
                 <AttractionCard
-                  key={item.id}
                   item={item}
                   index={index}
                   cardWidth={CARD_W}
                   isBookmarked={bookmarks.includes(item.id)}
                   onBookmark={handleBookmark}
                 />
-              ))}
-            </View>
+              )}
+            />
           )}
         </View>
       </ScrollView>
@@ -983,6 +990,10 @@ const styles = StyleSheet.create({
   attractionGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    paddingHorizontal: SPACE_4,
+    gap: SPACE_3,
+  },
+  attractionRow: {
     paddingHorizontal: SPACE_4,
     gap: SPACE_3,
   },
