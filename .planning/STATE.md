@@ -93,7 +93,7 @@ None currently open for active work — 2 pre-existing todo files (add-compile-s
 | 260716-lbl | Fix deleteOutDir/tsbuildinfo stale-cache race and root .env not loading in backend dev bootstrap | 2026-07-16 | 5bd04f4 | [260716-lbl-fix-deleteoutdir-tsbuildinfo-stale-cache](./quick/260716-lbl-fix-deleteoutdir-tsbuildinfo-stale-cache/) |
 | 260720-qth | Correct README.md inaccuracies against current codebase (stale monolith description, missing microservices/gRPC architecture) | 2026-07-21 | 2e88e78 | [260720-qth-correct-readme-md-inaccuracies-against-c](./quick/260720-qth-correct-readme-md-inaccuracies-against-c/) |
 | 260722-qdl | Fix NDPA consent compliance gap in phone-OTP mobile signup flow (auth.service.ts phoneAuth hardcoded ndpaConsent:true with no real consent collection; added ndpaConsent field to PhoneAuthDto + mobile consent checkbox) | 2026-07-22 | a87dba5 | [260722-qdl-fix-ndpa-consent-compliance-gap-in-phone](./quick/260722-qdl-fix-ndpa-consent-compliance-gap-in-phone/) |
-| 260723-mobile-alert-crash-fix | Fix remaining Alert.alert/text-render native crash sites from array-typed ValidationPipe error messages (UnexpectedNativeTypeException) across 8 mobile screens, routed through existing getErrorMessage() helper | 2026-07-23 | pending | [260723-mobile-alert-crash-fix](./quick/260723-mobile-alert-crash-fix/) |
+| 260723-mobile-alert-crash-fix | Fix remaining Alert.alert/text-render native crash sites from array-typed ValidationPipe error messages (UnexpectedNativeTypeException) across 8 mobile screens, routed through existing getErrorMessage() helper | 2026-07-23 | 8d03de2 | [260723-mobile-alert-crash-fix](./quick/260723-mobile-alert-crash-fix/) |
 
 ## Deferred Items
 
