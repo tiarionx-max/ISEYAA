@@ -41,10 +41,7 @@ export function NewsTicker(): JSX.Element | null {
     staleTime: 5 * 60 * 1000,
   });
 
-  // No fabricated fallback headlines under a "LIVE" badge — if there's no real news yet,
-  // don't render the strip at all rather than claim invented facts are live.
-  if (!Array.isArray(data) || data.length === 0) return null;
-  const items = data.slice(0, 20);
+  const items = Array.isArray(data) ? data.slice(0, 20) : [];
 
   // Duplicate so the marquee loops seamlessly — when translateX hits -contentWidth, reset to 0.
   const looped = [...items, ...items];
@@ -118,6 +115,12 @@ export function NewsTicker(): JSX.Element | null {
       // Silently swallow — non-critical UX action.
     });
   };
+
+  // No fabricated fallback headlines under a "LIVE" badge — if there's no real news yet,
+  // don't render the strip at all rather than claim invented facts are live. This check
+  // must come after every hook above — an early return before them would call hooks
+  // conditionally between renders (Rules of Hooks violation).
+  if (items.length === 0) return null;
 
   return (
     <View style={styles.container}>

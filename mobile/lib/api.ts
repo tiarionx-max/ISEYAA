@@ -1,5 +1,6 @@
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
+import { router } from 'expo-router';
 
 export const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1';
 
@@ -10,6 +11,59 @@ api.interceptors.request.use(async (config) => {
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
+
+// Access tokens are 15 minutes (backend/src/modules/auth/auth.service.ts). With no
+// refresh handling, every screen silently went blank ~15 minutes into a session —
+// each request 401'd, react-query swallowed it, and nothing ever told the user they'd
+// been logged out. `refreshPromise` de-dupes concurrent 401s into a single in-flight
+// refresh call: the backend blacklists the old refresh token on every rotation, so
+// firing one refresh per failed request would race and revoke each other.
+let refreshPromise: Promise<string | null> | null = null;
+
+async function refreshAccessToken(): Promise<string | null> {
+  const refreshToken = await SecureStore.getItemAsync('refresh_token');
+  if (!refreshToken) return null;
+
+  try {
+    const { data } = await axios.post(`${API_BASE}/auth/refresh`, { refreshToken });
+    await SecureStore.setItemAsync('access_token', data.accessToken);
+    await SecureStore.setItemAsync('refresh_token', data.refreshToken);
+    return data.accessToken;
+  } catch {
+    return null;
+  }
+}
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const { config, response } = error;
+    if (response?.status !== 401 || config?._retried) {
+      throw error;
+    }
+    config._retried = true;
+
+    if (!refreshPromise) {
+      refreshPromise = refreshAccessToken().finally(() => {
+        refreshPromise = null;
+      });
+    }
+    const newAccessToken = await refreshPromise;
+
+    if (!newAccessToken) {
+      // Refresh token itself is invalid/expired/revoked — there is no way back in
+      // without a fresh login. Clear stale tokens and bounce to the entry screen
+      // rather than leaving every screen silently blank.
+      await SecureStore.deleteItemAsync('access_token');
+      await SecureStore.deleteItemAsync('refresh_token');
+      router.replace('/onboarding' as any);
+      throw error;
+    }
+
+    config.headers.Authorization = `Bearer ${newAccessToken}`;
+    return api.request(config);
+  },
+);
 
 export const fetcher = (url: string) => api.get(url).then((r) => r.data);
 
