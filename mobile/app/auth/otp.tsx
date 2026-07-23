@@ -14,7 +14,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import { Info } from 'lucide-react-native';
+import { Info, Check } from 'lucide-react-native';
 import { api } from '../../lib/api';
 import {
   SURFACE_DEEP,
@@ -44,6 +44,7 @@ export default function OtpScreen() {
   const [loading, setLoading] = useState(false);
   const [cooldown, setCooldown] = useState(60);
   const [fallbackUsed, setFallbackUsed] = useState(fallbackUsedParam === 'true');
+  const [consent, setConsent] = useState(false);
   const inputRef = useRef<TextInput>(null);
 
   useEffect(() => {
@@ -56,7 +57,7 @@ export default function OtpScreen() {
     if (value.length !== OTP_LENGTH || loading) return;
     setLoading(true);
     try {
-      const res = await api.post('/auth/phone-auth', { phone, otp: value });
+      const res = await api.post('/auth/phone-auth', { phone, otp: value, ndpaConsent: consent });
       const payload = res.data?.data ?? res.data ?? {};
       const { accessToken, refreshToken } = payload;
       if (accessToken) {
@@ -90,7 +91,7 @@ export default function OtpScreen() {
   function handleChange(text: string) {
     const digits = text.replace(/\D/g, '').slice(0, OTP_LENGTH);
     setCode(digits);
-    if (digits.length === OTP_LENGTH) verify(digits);
+    if (digits.length === OTP_LENGTH && consent) verify(digits);
   }
 
   const digits = code.padEnd(OTP_LENGTH, ' ').split('');
@@ -138,10 +139,30 @@ export default function OtpScreen() {
           </View>
         )}
 
+        {/* NDPA consent checkbox */}
+        <TouchableOpacity
+          style={styles.consentRow}
+          activeOpacity={0.7}
+          onPress={() => setConsent((c) => !c)}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: consent }}
+          accessibilityLabel="Consent to NDPA data processing"
+        >
+          <View style={[styles.consentBox, consent && styles.consentBoxChecked]}>
+            {consent && <Check size={14} color={SURFACE_DEEP} />}
+          </View>
+          <Text style={styles.consentText}>
+            I consent to processing of my personal data under the{' '}
+            <Text style={styles.consentTextHighlight}>Nigerian Data Protection Act (NDPA)</Text> as part of the
+            Iṣẹ́yáá platform.
+          </Text>
+        </TouchableOpacity>
+
         {/* OTP boxes — tap to focus hidden input */}
         <TouchableOpacity
-          style={styles.otpRow}
+          style={[styles.otpRow, !consent && styles.otpRowDisabled]}
           activeOpacity={1}
+          disabled={!consent}
           onPress={() => inputRef.current?.focus()}
           accessibilityLabel="OTP input"
         >
@@ -175,6 +196,7 @@ export default function OtpScreen() {
           onChangeText={handleChange}
           keyboardType="number-pad"
           maxLength={OTP_LENGTH}
+          editable={consent}
           autoFocus
           caretHidden
         />
@@ -262,10 +284,43 @@ const styles = StyleSheet.create({
     color: INK_DIM,
     marginTop: 2,
   },
+  consentRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginBottom: 20,
+  },
+  consentBox: {
+    width: 20,
+    height: 20,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: BORDER,
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  consentBoxChecked: {
+    borderColor: GOLD,
+    backgroundColor: GOLD,
+  },
+  consentText: {
+    flex: 1,
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.50)',
+    lineHeight: 18,
+  },
+  consentTextHighlight: {
+    color: GOLD,
+  },
   otpRow: {
     flexDirection: 'row',
     gap: 8,
     marginBottom: 20,
+  },
+  otpRowDisabled: {
+    opacity: 0.4,
   },
   otpBox: {
     flex: 1,
