@@ -28,7 +28,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
@@ -720,10 +720,26 @@ function CartBag() {
   );
 }
 
+const VALID_SECTIONS: Section[] = ['events', 'stays', 'studio', 'marketplace', 'tours'];
+
 // ── Main screen ────────────────────────────────────────────────────────
 export default function BookScreen() {
+  // Quick actions on the Discover tab deep-link here with ?section=... (e.g. "Buy
+  // Ticket" -> events, "Order Food" -> marketplace) — without this, every quick
+  // action landed on the same default section regardless of what it promised.
+  const { section: sectionParam } = useLocalSearchParams<{ section?: string }>();
   // Default: Stays — showcase redesign this phase per CONTEXT.
   const [activeSection, setActiveSection] = useState<Section>('stays');
+
+  // expo-router's bottom-tab screens stay mounted across tab switches — a plain
+  // useState initializer only runs once on first mount, so navigating back here
+  // with a *different* ?section= after the screen is already mounted would be
+  // silently ignored. Re-sync on every param change instead.
+  useEffect(() => {
+    if (VALID_SECTIONS.includes(sectionParam as Section)) {
+      setActiveSection(sectionParam as Section);
+    }
+  }, [sectionParam]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>

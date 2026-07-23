@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import {
   Sparkles,
   Car,
@@ -90,8 +90,24 @@ function getYorubaTimeGreeting(): string {
 }
 
 // ── Main screen ─────────────────────────────────────────────────────────
+const VALID_MODES = ['chat', 'ride', 'delivery'] as const;
+type ConciergeMode = (typeof VALID_MODES)[number];
+
 export default function ConciergeScreen() {
-  const [mode, setMode] = useState<'chat' | 'ride' | 'delivery'>('chat');
+  // Discover's "Book Ride" quick action deep-links here with ?mode=ride — without
+  // this, it always landed on the generic Chat tab regardless of intent.
+  const { mode: modeParam } = useLocalSearchParams<{ mode?: string }>();
+  const [mode, setMode] = useState<ConciergeMode>('chat');
+
+  // expo-router's bottom-tab screens stay mounted across tab switches — a plain
+  // useState initializer only runs once on first mount, so returning here with a
+  // *different* ?mode= after the screen is already mounted would be silently
+  // ignored. Re-sync on every param change instead.
+  useEffect(() => {
+    if ((VALID_MODES as readonly string[]).includes(modeParam ?? '')) {
+      setMode(modeParam as ConciergeMode);
+    }
+  }, [modeParam]);
 
   const { data: userData } = useQuery({ queryKey: ['me'], queryFn: () => fetcher('/users/me') });
   const firstName = userData?.firstName ?? '';

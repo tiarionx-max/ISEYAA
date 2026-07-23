@@ -389,11 +389,11 @@ function getFirstName(name?: string): string {
 // ── Quick action definitions ──────────────────────────────────────────────────
 
 const QUICK_ACTIONS = [
-  { label: 'Book Ride', Icon: Car, route: '/(tabs)/concierge' },
-  { label: 'Find Stay', Icon: Home, route: '/(tabs)/book' },
-  { label: 'Buy Ticket', Icon: Ticket, route: '/(tabs)/book' },
-  { label: 'Order Food', Icon: ShoppingBag, route: '/(tabs)/book' },
-  { label: 'Scan', Icon: QrCode, route: '/(tabs)/book' },
+  { label: 'Book Ride', Icon: Car, route: '/(tabs)/concierge?mode=ride' },
+  { label: 'Find Stay', Icon: Home, route: '/(tabs)/book?section=stays' },
+  { label: 'Buy Ticket', Icon: Ticket, route: '/(tabs)/book?section=events' },
+  { label: 'Order Food', Icon: ShoppingBag, route: '/(tabs)/book?section=marketplace' },
+  { label: 'Scan', Icon: QrCode, route: '/qr-checkin' },
 ] as const;
 
 // ── Main screen ───────────────────────────────────────────────────────────────
