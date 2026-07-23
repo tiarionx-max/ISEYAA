@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-07-19)
 Phase: Milestone v2.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-07-23 - Completed quick task 260723-fnm: Virtualize the Discover tab attractions grid with FlatList instead of a plain View+.map() to fix perf/lazy-loading
+Last activity: 2026-07-23 - Completed quick task 260723-gik: Fix wallet Send screen missing required idempotencyKey field causing guaranteed HTTP 400 on every transfer
 
 ## Current Status
 
@@ -95,6 +95,7 @@ None currently open for active work — 2 pre-existing todo files (add-compile-s
 | 260722-qdl | Fix NDPA consent compliance gap in phone-OTP mobile signup flow (auth.service.ts phoneAuth hardcoded ndpaConsent:true with no real consent collection; added ndpaConsent field to PhoneAuthDto + mobile consent checkbox) | 2026-07-22 | a87dba5 | [260722-qdl-fix-ndpa-consent-compliance-gap-in-phone](./quick/260722-qdl-fix-ndpa-consent-compliance-gap-in-phone/) |
 | 260723-mobile-alert-crash-fix | Fix remaining Alert.alert/text-render native crash sites from array-typed ValidationPipe error messages (UnexpectedNativeTypeException) across 8 mobile screens, routed through existing getErrorMessage() helper | 2026-07-23 | 8d03de2 | [260723-mobile-alert-crash-fix](./quick/260723-mobile-alert-crash-fix/) |
 | 260723-fnm | Virtualize the Discover tab attractions grid with FlatList instead of a plain View+.map() to fix perf/lazy-loading | 2026-07-23 | c22b8c3 | [260723-fnm-virtualize-the-discover-tab-attractions-](./quick/260723-fnm-virtualize-the-discover-tab-attractions-/) |
+| 260723-gik | Fix wallet Send screen missing required idempotencyKey field causing guaranteed HTTP 400 on every transfer | 2026-07-23 | 7f844de | [260723-gik-fix-wallet-send-screen-missing-required-](./quick/260723-gik-fix-wallet-send-screen-missing-required-/) |
 
 ## Deferred Items
 
