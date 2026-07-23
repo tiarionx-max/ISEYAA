@@ -138,7 +138,7 @@ export default function PhoneScreen() {
             keyboardType="phone-pad"
             value={phone}
             onChangeText={setPhone}
-            maxLength={11}
+            maxLength={15}
             autoFocus
           />
         </View>
