@@ -8,7 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as Location from 'expo-location';
-import { fetcher, api } from '../lib/api';
+import { fetcher, api, getErrorMessage } from '../lib/api';
 import { ChevronLeft, Car, TrendingUp, Clock, CheckCircle2, MapPin } from 'lucide-react-native';
 import {
   SURFACE_DEEP, SURFACE_MID, SURFACE_ELEV,
@@ -64,7 +64,7 @@ export default function DriverDashboardScreen() {
       queryClient.invalidateQueries({ queryKey: ['driver-earnings'] });
       queryClient.invalidateQueries({ queryKey: ['driver-me'] });
     },
-    onError: (e: any) => Alert.alert('Error', e?.response?.data?.message ?? e?.message ?? 'Please try again.'),
+    onError: (e: any) => Alert.alert('Error', getErrorMessage(e, e?.message ?? 'Please try again.')),
   });
 
   const isLoading = todayLoading || weekLoading;

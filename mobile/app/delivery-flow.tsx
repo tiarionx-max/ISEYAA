@@ -14,7 +14,7 @@ import { router } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Package, X, Truck, CheckCircle2 } from 'lucide-react-native';
 import type { Socket } from 'socket.io-client';
-import { api, fetcher } from '../lib/api';
+import { api, fetcher, getErrorMessage } from '../lib/api';
 import { getSocket } from '../lib/socket';
 import { LocationPicker, type PickedLocation } from '../components/LocationPicker';
 import {
@@ -108,7 +108,7 @@ export default function DeliveryFlowScreen() {
       }
     },
     onError: (err: any) => {
-      Alert.alert('Could not request delivery', err?.response?.data?.message ?? 'Please try again.');
+      Alert.alert('Could not request delivery', getErrorMessage(err, 'Please try again.'));
     },
   });
 
@@ -119,7 +119,7 @@ export default function DeliveryFlowScreen() {
       setEndedMessage('Delivery cancelled.');
     },
     onError: (err: any) => {
-      Alert.alert('Could not cancel', err?.response?.data?.message ?? 'Please try again.');
+      Alert.alert('Could not cancel', getErrorMessage(err, 'Please try again.'));
     },
   });
 

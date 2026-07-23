@@ -15,7 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import Svg, { Rect, Line, Circle } from 'react-native-svg';
 import { MessageSquare, MessageCircle, Mail } from 'lucide-react-native';
-import { api } from '../../lib/api';
+import { api, getErrorMessage } from '../../lib/api';
 import {
   SURFACE_DEEP,
   SURFACE_MID,
@@ -57,12 +57,13 @@ export default function PhoneScreen() {
   const [channel, setChannel] = useState<OtpChannel>('SMS');
   const [email, setEmail] = useState('');
 
-  const formattedPhone = phone.startsWith('0')
-    ? `+234${phone.slice(1)}`
-    : phone.startsWith('+')
-    ? phone
-    : phone.length > 0
-    ? `+234${phone}`
+  const digitsOnly = phone.replace(/[^\d+]/g, '');
+  const formattedPhone = digitsOnly.startsWith('0')
+    ? `+234${digitsOnly.slice(1)}`
+    : digitsOnly.startsWith('+')
+    ? digitsOnly
+    : digitsOnly.length > 0
+    ? `+234${digitsOnly}`
     : '';
 
   async function handleContinue() {
@@ -84,7 +85,7 @@ export default function PhoneScreen() {
         params: { phone: formattedPhone, fallbackUsed: String(fallbackUsed) },
       } as any);
     } catch (err: any) {
-      const msg = err.response?.data?.message ?? 'Could not send OTP. Please try again.';
+      const msg = getErrorMessage(err, 'Could not send OTP. Please try again.');
       Alert.alert('Error', msg);
     } finally {
       setLoading(false);

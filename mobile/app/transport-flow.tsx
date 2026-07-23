@@ -13,7 +13,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bike, Car, Bus, MapPin, X, Navigation } from 'lucide-react-native';
 import type { Socket } from 'socket.io-client';
-import { api, fetcher } from '../lib/api';
+import { api, fetcher, getErrorMessage } from '../lib/api';
 import { getSocket } from '../lib/socket';
 import { LocationPicker, type PickedLocation } from '../components/LocationPicker';
 import {
@@ -116,7 +116,7 @@ export default function TransportFlowScreen() {
       }
     },
     onError: (err: any) => {
-      Alert.alert('Could not request ride', err?.response?.data?.message ?? 'Please try again.');
+      Alert.alert('Could not request ride', getErrorMessage(err, 'Please try again.'));
     },
   });
 
@@ -127,7 +127,7 @@ export default function TransportFlowScreen() {
       setEndedMessage('Ride cancelled.');
     },
     onError: (err: any) => {
-      Alert.alert('Could not cancel', err?.response?.data?.message ?? 'Please try again.');
+      Alert.alert('Could not cancel', getErrorMessage(err, 'Please try again.'));
     },
   });
 

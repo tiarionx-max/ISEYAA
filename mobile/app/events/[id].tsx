@@ -7,7 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import * as WebBrowser from 'expo-web-browser';
-import { fetcher, api } from '../../lib/api';
+import { fetcher, api, getErrorMessage } from '../../lib/api';
 import { ChevronLeft, Heart, Share2, MapPin } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Rect, Line, Circle } from 'react-native-svg';
@@ -107,7 +107,7 @@ export default function EventDetailScreen() {
       }
       Alert.alert('Ticket Purchased!', 'Your QR code is waiting in your profile.');
     },
-    onError: (e: any) => Alert.alert('Purchase Failed', e?.response?.data?.message ?? e?.message ?? 'Please try again.'),
+    onError: (e: any) => Alert.alert('Purchase Failed', getErrorMessage(e, e?.message ?? 'Please try again.')),
   });
 
   if (isLoading) {

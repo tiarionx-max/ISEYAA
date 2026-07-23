@@ -21,7 +21,7 @@ import {
   ChevronRight,
   Check,
 } from 'lucide-react-native';
-import { api, fetcher } from '../lib/api';
+import { api, fetcher, getErrorMessage } from '../lib/api';
 import {
   SURFACE_DEEP,
   SURFACE_MID,
@@ -192,7 +192,7 @@ export default function SendScreen() {
       ]);
     },
     onError: (err: any) => {
-      Alert.alert('Failed', err.response?.data?.message ?? 'Transfer failed. Please try again.');
+      Alert.alert('Failed', getErrorMessage(err, 'Transfer failed. Please try again.'));
     },
   });
 
@@ -254,7 +254,7 @@ export default function SendScreen() {
           {!selectedRecipient && debouncedPhone.length > 0 && !isLookingUp && (
             <Text style={styles.overBudget}>
               {lookupEnabled
-                ? (lookupError as any)?.response?.data?.message ?? 'No ISEYAA user found with that number'
+                ? getErrorMessage(lookupError, 'No ISEYAA user found with that number')
                 : 'Enter a full Nigerian phone number'}
             </Text>
           )}

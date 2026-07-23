@@ -13,7 +13,7 @@ import { router } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Shield } from 'lucide-react-native';
 import * as WebBrowser from 'expo-web-browser';
-import { api, fetcher } from '../lib/api';
+import { api, fetcher, getErrorMessage } from '../lib/api';
 import {
   SURFACE_DEEP,
   SURFACE_MID,
@@ -66,6 +66,7 @@ export default function TopUpScreen() {
         }
       }
       queryClient.invalidateQueries({ queryKey: ['wallet'] });
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
       Alert.alert(
         'Top-up initiated',
         'Your wallet will be credited once payment is confirmed.',
@@ -73,7 +74,7 @@ export default function TopUpScreen() {
       );
     },
     onError: (err: any) => {
-      Alert.alert('Failed', err.response?.data?.message ?? err?.message ?? 'Could not initiate top-up. Please try again.');
+      Alert.alert('Failed', getErrorMessage(err, err?.message ?? 'Could not initiate top-up. Please try again.'));
     },
   });
 

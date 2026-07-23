@@ -15,7 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { Info, Check } from 'lucide-react-native';
-import { api } from '../../lib/api';
+import { api, getErrorMessage } from '../../lib/api';
 import {
   SURFACE_DEEP,
   SURFACE_MID,
@@ -69,7 +69,7 @@ export default function OtpScreen() {
         setCode('');
       }
     } catch (err: any) {
-      const msg = err.response?.data?.message ?? 'Incorrect or expired code.';
+      const msg = getErrorMessage(err, 'Incorrect or expired code.');
       Alert.alert('Wrong code', msg);
       setCode('');
     } finally {
