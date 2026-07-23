@@ -302,6 +302,10 @@ export class AuthService {
     if (!user) {
       isNewUser = true;
 
+      if (!dto.ndpaConsent) {
+        throw new BadRequestException('NDPA consent is required to create an account');
+      }
+
       if (channel === OtpChannel.EMAIL && email) {
         const existingEmailUser = await this.prisma.user.findFirst({ where: { email, deletedAt: null } });
         if (existingEmailUser) {
@@ -321,8 +325,8 @@ export class AuthService {
           registeredRoles: [UserRole.CITIZEN],
           status: 'ACTIVE',
           otpChannel: channel,
-          ndpaConsent: true,
-          ndpaConsentAt: new Date(),
+          ndpaConsent: dto.ndpaConsent,
+          ndpaConsentAt: dto.ndpaConsent ? new Date() : undefined,
           wallet: { create: { balance: 0 } },
         },
         select: USER_SELECT,

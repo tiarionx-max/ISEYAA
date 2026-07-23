@@ -371,7 +371,7 @@ describe('AuthService', () => {
       mockPrisma.user.create.mockResolvedValue({ id: 'new-user', role: 'CITIZEN', registeredRoles: ['CITIZEN'] });
       mockJwt.signAsync.mockResolvedValueOnce('acc').mockResolvedValueOnce('ref');
 
-      await service.phoneAuth({ phone: '+2348012345678', otp: '654321' });
+      await service.phoneAuth({ phone: '+2348012345678', otp: '654321', ndpaConsent: true });
 
       expect(mockPrisma.user.create).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ otpChannel: 'WHATSAPP' }) }),
@@ -386,7 +386,7 @@ describe('AuthService', () => {
       mockPrisma.user.create.mockResolvedValue({ id: 'new-user', role: 'CITIZEN', registeredRoles: ['CITIZEN'] });
       mockJwt.signAsync.mockResolvedValueOnce('acc').mockResolvedValueOnce('ref');
 
-      await service.phoneAuth({ phone: '+2348012345678', otp: '654321' });
+      await service.phoneAuth({ phone: '+2348012345678', otp: '654321', ndpaConsent: true });
 
       expect(mockPrisma.user.create).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ email: 'real@example.com' }) }),
@@ -401,7 +401,64 @@ describe('AuthService', () => {
         .mockResolvedValueOnce(null)
         .mockResolvedValueOnce({ id: 'other-user-id' });
 
-      await expect(service.phoneAuth({ phone: '+2348012345678', otp: '654321' })).rejects.toThrow(ConflictException);
+      await expect(
+        service.phoneAuth({ phone: '+2348012345678', otp: '654321', ndpaConsent: true }),
+      ).rejects.toThrow(ConflictException);
+      expect(mockPrisma.user.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects new-user creation with BadRequestException when ndpaConsent is false (consent required)', async () => {
+      mockRedis.exists.mockResolvedValue(false);
+      mockRedis.get.mockResolvedValue('654321:0:SMS:');
+      mockRedis.del.mockResolvedValue(undefined);
+      mockPrisma.user.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.phoneAuth({ phone: '+2348012345678', otp: '654321', ndpaConsent: false }),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockPrisma.user.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects new-user creation with BadRequestException when ndpaConsent is omitted (consent required)', async () => {
+      mockRedis.exists.mockResolvedValue(false);
+      mockRedis.get.mockResolvedValue('654321:0:SMS:');
+      mockRedis.del.mockResolvedValue(undefined);
+      mockPrisma.user.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.phoneAuth({ phone: '+2348012345678', otp: '654321' } as any),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockPrisma.user.create).not.toHaveBeenCalled();
+    });
+
+    it('persists real ndpaConsent and a server-generated ndpaConsentAt for a new user when consent is true (consent granted)', async () => {
+      mockRedis.exists.mockResolvedValue(false);
+      mockRedis.get.mockResolvedValue('654321:0:SMS:');
+      mockRedis.del.mockResolvedValue(undefined);
+      mockPrisma.user.findFirst.mockResolvedValue(null);
+      mockPrisma.user.create.mockResolvedValue({ id: 'new-user', role: 'CITIZEN', registeredRoles: ['CITIZEN'] });
+      mockJwt.signAsync.mockResolvedValueOnce('acc').mockResolvedValueOnce('ref');
+
+      await service.phoneAuth({ phone: '+2348012345678', otp: '654321', ndpaConsent: true });
+
+      expect(mockPrisma.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ ndpaConsent: true, ndpaConsentAt: expect.any(Date) }),
+        }),
+      );
+    });
+
+    it('succeeds for an existing user logging back in even when ndpaConsent is omitted (no login regression)', async () => {
+      mockRedis.exists.mockResolvedValue(false);
+      mockRedis.get.mockResolvedValue('654321:0:SMS:');
+      mockRedis.del.mockResolvedValue(undefined);
+      mockPrisma.user.findFirst.mockResolvedValue({ id: 'existing-user', role: 'CITIZEN', registeredRoles: ['CITIZEN'] });
+      mockPrisma.user.update.mockResolvedValue({ id: 'existing-user', role: 'CITIZEN', registeredRoles: ['CITIZEN'] });
+      mockJwt.signAsync.mockResolvedValueOnce('acc').mockResolvedValueOnce('ref');
+
+      const result = await service.phoneAuth({ phone: '+2348012345678', otp: '654321' } as any);
+
+      expect(result.isNewUser).toBe(false);
       expect(mockPrisma.user.create).not.toHaveBeenCalled();
     });
 
@@ -414,7 +471,9 @@ describe('AuthService', () => {
       await expect(
         service.sendOtp({ phone: '+2348012345678', channel: 'EMAIL' as any, email: 'x@example.com' }),
       ).rejects.toThrow(ForbiddenException);
-      await expect(service.phoneAuth({ phone: '+2348012345678', otp: '654321' })).rejects.toThrow(ForbiddenException);
+      await expect(service.phoneAuth({ phone: '+2348012345678', otp: '654321' } as any)).rejects.toThrow(
+        ForbiddenException,
+      );
 
       expect(mockResilience.execute).not.toHaveBeenCalledWith('metaWhatsapp', expect.any(Function));
       expect(mockResilience.execute).not.toHaveBeenCalledWith('sendgrid', expect.any(Function));
