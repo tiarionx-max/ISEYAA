@@ -275,7 +275,7 @@ function StaysSection() {
     staleTime: 30_000,
   });
 
-  const properties: Property[] = data?.data ?? [];
+  const properties: Property[] = data ?? [];
 
   const renderItem = ({ item, index }: ListRenderItemInfo<Property>) => (
     <StayCard item={item} index={index} />
@@ -578,7 +578,7 @@ function MarketplaceSection() {
     staleTime: 30_000,
   });
 
-  const products: ProductItem[] = data?.data ?? [];
+  const products: ProductItem[] = data ?? [];
 
   function toggleWishlist(id: string) {
     setWishlist((prev) => {
@@ -652,7 +652,7 @@ function ToursSection() {
     staleTime: 30_000,
   });
 
-  const packages: TourPackage[] = data?.data ?? [];
+  const packages: TourPackage[] = data ?? [];
 
   const renderItem = ({ item, index }: ListRenderItemInfo<TourPackage>) => (
     <TourCard
