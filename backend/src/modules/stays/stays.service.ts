@@ -85,10 +85,11 @@ export class StaysService implements OnModuleInit {
     types?: string[]; // multiple types for category filtering, e.g. ['LOUNGE','CLUB']
     bookingMode?: string;
     featured?: boolean;
+    search?: string;
     page?: number;
     limit?: number;
   }) {
-    const { lgaId, type, types, bookingMode, featured, page = 1, limit = 24 } = filters;
+    const { lgaId, type, types, bookingMode, featured, search, page = 1, limit = 24 } = filters;
     return this.prisma.property.findMany({
       where: {
         deletedAt: null,
@@ -98,6 +99,7 @@ export class StaysService implements OnModuleInit {
         ...(types && types.length > 0 && { type: { in: types as any } }),
         ...(bookingMode && { bookingMode: bookingMode as any }),
         ...(featured && { isFeatured: true }),
+        ...(search && { name: { contains: search, mode: 'insensitive' } }),
       },
       include: { lga: { select: { name: true, slug: true } } },
       orderBy: [{ isFeatured: 'desc' }, { createdAt: 'desc' }],

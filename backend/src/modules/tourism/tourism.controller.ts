@@ -27,6 +27,7 @@ export class TourismController {
   @ApiQuery({ name: 'lgaId', required: false })
   @ApiQuery({ name: 'category', required: false, enum: ['NATURAL', 'CULTURAL', 'HISTORICAL', 'RECREATIONAL', 'RELIGIOUS'] })
   @ApiQuery({ name: 'freeEntryOnly', required: false, type: Boolean })
+  @ApiQuery({ name: 'search', required: false, description: 'Filter by name (case-insensitive substring)' })
   @ApiQuery({ name: 'lat', required: false, type: Number, description: 'Near latitude' })
   @ApiQuery({ name: 'lng', required: false, type: Number, description: 'Near longitude' })
   @ApiQuery({ name: 'radius', required: false, type: Number, description: 'Near radius in km (default 10)' })
@@ -35,6 +36,7 @@ export class TourismController {
     @Query('lgaId') lgaId?: string,
     @Query('category') category?: string,
     @Query('freeEntryOnly') freeEntryOnly?: string,
+    @Query('search') search?: string,
     @Query('lat') latStr?: string,
     @Query('lng') lngStr?: string,
     @Query('radius') radiusStr?: string,
@@ -46,6 +48,7 @@ export class TourismController {
       lgaId,
       category,
       freeEntryOnly: freeEntryOnly === 'true',
+      search,
       lat: latStr !== undefined ? parseFloat(latStr) : undefined,
       lng: lngStr !== undefined ? parseFloat(lngStr) : undefined,
       radius: radiusStr !== undefined ? parseFloat(radiusStr) : undefined,
