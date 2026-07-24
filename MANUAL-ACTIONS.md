@@ -75,7 +75,7 @@ curl -X POST https://<your-railway-domain>/api/v1/auth/otp/send \
   -H "Content-Type: application/json" \
   -d '{"phone": "+2348000000001"}'
 ```
-Expected: HTTP 201 with `"OTP sent"`.
+Expected: HTTP 200 with `"OTP sent"`.
 
 ### Step 4 — Verify Upstash Redis
 After Step 3, open Upstash Console → Data Browser. Look for key `otp:+2348000000001` with a 5-minute TTL.
@@ -121,7 +121,7 @@ If a step fails, reply: **`02-FAIL step N: <description>`**
 **Your job:** Test the full rider ↔ driver flow on two devices (or two simulators).
 
 ### Setup
-1. Start backend: `npm run dev --workspace=backend` — confirm "Application is running on: http://0.0.0.0:3001"
+1. Start backend: `npm run dev:backend` — confirm "Application is running on: http://0.0.0.0:3001"
 2. Start mobile: `npx expo start --workspace=mobile`
 3. Open app on **two devices** (or iOS Simulator + Android Emulator). Log in as:
    - Device A: a test user with role `CITIZEN` (rider)
@@ -440,7 +440,7 @@ Watch Railway logs for `Client connected:` messages.
 Upload a test image to any event or property:
 ```bash
 curl -X POST \
-  https://iseyaa-staging.railway.app/api/v1/events/<event-id>/image \
+  https://iseyaa-staging.railway.app/api/v1/events/<event-id>/images \
   -H "Authorization: Bearer <your-token>" \
   -F "file=@test.jpg"
 ```
@@ -461,7 +461,7 @@ cd c:/Developer/work/ISEYAA/mobile && npm run atlas
 ```
 Then:
 ```bash
-npx expo-atlas .expo/atlas.jsonl
+npx expo-atlas .expo/atlas.jsonl   # fetched on-demand via npx; not a mobile/package.json dependency
 ```
 Note the total initial bundle size. **Target: < 2 MB for 3G cold start < 3 s.**
 
@@ -518,7 +518,7 @@ Any failures will generate gap-closure plans before Phase 7 begins.
 
 ```bash
 # Start everything locally
-npm run dev --workspace=backend          # backend on :3001
+npm run dev:backend          # backend on :3001
 cd mobile && npx expo start             # mobile QR code
 
 # Run all tests
@@ -741,7 +741,7 @@ This signal is informational only — this phase's automated plans do not block 
 
 Phase 16 documents Neon's built-in `-pooler` connection string pattern (POOL-01) — an explicit `connection_limit`/`pool_timeout` on both the monolith's and notifications-service's `DATABASE_URL`, replacing Prisma's silent default pool size of 10, with zero new infrastructure (D-01: Neon's managed pooler, not a self-hosted PgBouncer container).
 
-This section covered three manual verification steps, all completed by the operator per Plan 16-04's checkpoint tasks. Full detail (Neon plan/CU reading, k6 combined-topology run result, Grafana alert threshold, production Railway change) is recorded in `.planning/phases/16-connection-pooling-infrastructure/16-VERIFICATION.md`.
+This section covered three manual verification steps, all completed by the operator per Plan 16-04's checkpoint tasks. Full detail (Neon plan/CU reading, k6 combined-topology run result, Grafana alert threshold, production Railway change) was recorded in the phase 16 verification notes; the `.planning/phases/16-connection-pooling-infrastructure/` directory has since been removed and is no longer present in this repository.
 
 ### Completed record
 
