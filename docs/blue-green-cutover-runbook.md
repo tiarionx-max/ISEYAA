@@ -128,10 +128,10 @@ entire window.
 ## Known manual-only checks
 
 The following three items are known manual-only verifications, recorded here rather
-than silently dropped, per `20-VALIDATION.md`'s Manual-Only Verifications table. None
-of these are re-tested by this phase's automated test suite — each requires either a
-real Railway deployment or a real multi-replica environment that is out of scope for
-this phase's automation.
+than silently dropped — items 1–2 per `20-VALIDATION.md`'s Manual-Only Verifications
+table, item 3 per `20-05-PLAN.md` (line 66). None of these are re-tested by this
+phase's automated test suite — each requires either a real Railway deployment or a
+real multi-replica environment that is out of scope for this phase's automation.
 
 1. **Railway `healthcheckPath` actually blocks promotion on a deliberately-failing
    health response.** Confirming this requires a real Railway deploy with the health

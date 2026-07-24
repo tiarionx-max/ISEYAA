@@ -1,6 +1,9 @@
+<!-- generated-by: gsd-doc-writer -->
 # Iṣẹ́yáá — Ogun State Digital Super-Platform
 
 > The unified digital platform for all 20 LGAs of Ogun State. Tourism, events, stays, marketplace, studio booking, wallet, and government services in a single system.
+
+Confidential government project. Operated by LJ Entertainment under contract with Ogun State.
 
 ## Architecture
 
@@ -12,20 +15,20 @@ ISEYAA/
 ├── shared/           TypeScript types/DTOs/constants shared by web + mobile (npm workspace)
 ├── packages/proto/   Shared gRPC/protobuf definitions (npm workspace)
 ├── docs/             Runbooks (e.g. blue-green-cutover-runbook.md)
-├── monitoring/       Observability configuration
-└── load-tests/       Load/performance test scripts
+├── monitoring/       Observability configuration (Grafana dashboard, Sentry alert rules)
+└── load-tests/       Load/performance test scripts (Artillery, k6, DB audit)
 ```
 
 `backend/src/` is a NestJS monolith that still serves most domains in-process: auth, wallet, events, stays, marketplace, studio, admin, ai, tourism, transport, delivery, users, settlement-disputes, ministry, lgas, webhooks. `backend/apps/` additionally contains 12 independently-buildable/deployable gRPC microservice scaffolds, each with its own `railway.toml` + `Dockerfile`. Of those 12, only 5 are actually live-wired into local dev today via `docker-compose.yml` and called from the monolith over gRPC through thin client modules (`notifications-client`, `news-client`, `waitlist-client`, `reviews-client`, `delivery-otp-client`): `notifications-service`, `news-service`, `waitlist-service`, `reviews-service`, and `delivery-otp-service` (the last scoped to the single `VerifyDeliveryOtp` RPC — the rest of the delivery flow stays in-process). The other 7 (`admin-service`, `ai-service`, `auth-service`, `events-service`, `marketplace-service`, `stays-service`, `wallet-service`) are Railway-deployable scaffolds for future extraction — their domains are still served entirely in-process by the monolith today, not "extracted". See `docs/blue-green-cutover-runbook.md` for the blue-green canary cutover process used when shifting live traffic to a newly-extracted service.
 
 ## Prerequisites
 
-- Node.js 20 LTS
+- Node.js 20 LTS for local development and CI (`backend/Dockerfile.dev`, `.github/workflows/ci.yml` all pin Node 20). The production `backend/Dockerfile` builds on `node:22-alpine`, and root `package.json` `engines.node` requires `>=22.0.0` — use Node 22 if you plan to run production builds locally.
 - PostgreSQL 16
 - Redis 7
 - Cloudflare R2 (or AWS S3 — `S3Service` auto-detects based on which env vars are set)
 - Paystack account
-- SendGrid account
+- Resend account (transactional email; `SendgridService`'s internals now send via the Resend SDK)
 - Docker + Docker Compose (recommended — boots Postgres, Redis, backend, web, and the 5 live-wired gRPC services together; see `docker-compose.yml`)
 
 ## Local Setup
@@ -73,8 +76,7 @@ PAYSTACK_PUBLIC_KEY="pk_test_..."
 PAYSTACK_WEBHOOK_SECRET="whsec_..."
 FLUTTERWAVE_SECRET_KEY="FLWSECK_TEST-..."
 
-# Messaging
-SENDGRID_API_KEY="SG...."
+# Messaging — SendgridService's internals now send via Resend (SENDGRID_API_KEY is unused)
 SENDGRID_FROM_EMAIL="noreply@iseyaa.gov.ng"
 RESEND_API_KEY="re_xxxx..."
 TERMII_API_KEY="TL..."
@@ -101,8 +103,8 @@ TYPESENSE_API_KEY="..."
 TYPESENSE_PROTOCOL=http
 TYPESENSE_PORT=8108
 
-# Push
-FIREBASE_SERVER_KEY="AAAA..."
+# Push — FCM HTTP v1 via a Google service-account JWT (legacy FIREBASE_SERVER_KEY is unused)
+FIREBASE_SERVICE_ACCOUNT_JSON='{"type":"service_account","project_id":"...","private_key":"...","client_email":"..."}'
 
 # gRPC service URLs — only these 5 are consumed today (docker-compose service names in dev);
 # the other *_SERVICE_URL vars in .env.example are unused placeholders for future extractions
@@ -167,11 +169,11 @@ All routes are prefixed with `/api/v1`.
 | Module | Key Routes |
 |--------|-----------|
 | Auth | `POST /auth/register` `POST /auth/login` |
-| Tourism | `GET /tourism/lgas` `GET /tourism/attractions` |
-| Events | `GET /events` `POST /events` `POST /events/:id/tickets` |
+| Tourism | `GET /lgas` `GET /attractions` |
+| Events | `GET /events` `POST /events` `POST /events/:id/purchase` |
 | Tickets | `POST /tickets/:qr_hash/checkin` |
-| Stays | `GET /stays/properties` `POST /stays/properties/:id/bookings` |
-| Marketplace | `GET /marketplace/products` `POST /marketplace/orders` |
+| Stays | `GET /properties` `POST /properties/:id/bookings` |
+| Marketplace | `GET /products` `POST /orders` |
 | Studio | `GET /studio/slots` `POST /studio/bookings` `GET /studio/feed` |
 | Wallet | `GET /wallet/balance` `GET /wallet/transactions` `POST /wallet/topup` |
 | Admin | `GET /admin/dashboard` `GET /admin/revenue` |
@@ -198,23 +200,26 @@ Full OpenAPI spec: http://localhost:3001/api/docs (Swagger UI)
 | `@Global()` CommonModule | PaystackService, S3Service, SendgridService, QrService, ImageService provided once |
 | Framer Motion page transitions | Consistent animated entry for all Next.js pages |
 | AsyncStorage for offline cache | Attractions and bookmarks survive network loss on mobile |
+| Resend for transactional email | `SendgridService`'s internals were migrated to the Resend SDK; class name kept for callers |
 
 ## Running Tests
 
 ```bash
-cd backend && npm test              # 70 test suites (npx jest --listTests to recount)
-cd backend && npm run test:cov      # coverage report — run for current pass/fail totals
+cd backend && npm test              # 76 test suites (npx jest --listTests to recount)
+cd backend && npm run test:coverage # coverage report — run for current pass/fail totals
 ```
+
+Targeted end-to-end suites also exist as dedicated scripts in `backend/package.json`: `npm run test:e2e:tours`, `npm run test:e2e:settlement-splits`, `npm run test:e2e:settlement-disputes`.
 
 ## Deployment Checklist
 
 This is a multi-target Railway deployment, not a single monolith deploy: `railway.toml` (repo root) deploys the monolith, `web/railway.toml` deploys the web app, and each `backend/apps/<service>/railway.toml` deploys that gRPC service independently. See `docs/blue-green-cutover-runbook.md` for the blue-green cutover process used when shifting live traffic to a newly-extracted gRPC service (notifications, news, waitlist, reviews, delivery-otp), including the `grpc.<service>_service.canary_enabled` `platformConfig` kill-switches.
 
 - [ ] Set `NODE_ENV=production` on every deployed target (monolith, web, and each live gRPC service)
-- [ ] Set all secrets (JWT_SECRET, JWT_REFRESH_SECRET, PAYSTACK_*, R2_*/AWS_*, SENDGRID_*) in environment
+- [ ] Set all secrets (JWT_SECRET, JWT_REFRESH_SECRET, PAYSTACK_*, R2_*/AWS_*, RESEND_API_KEY) in environment
 - [ ] Set `NEXTAUTH_SECRET` to a 32+ char random string
 - [ ] Run `npx prisma db push` against production DB
-- [ ] Configure Paystack webhook URL: `https://api.iseyaa.gov.ng/api/v1/webhooks/paystack`
+- [ ] Configure Paystack webhook URL: <!-- VERIFY: production API base URL for the Paystack webhook endpoint --> `https://<production-api-host>/api/v1/webhooks/paystack`
 - [ ] Set Paystack `PAYSTACK_WEBHOOK_SECRET` to match your Paystack dashboard secret
 - [ ] Configure storage bucket CORS policy for frontend uploads (R2 bucket, or S3 bucket if running in AWS mode)
 - [ ] Set `R2_PUBLIC_URL` + `R2_BUCKET` (or `AWS_CLOUDFRONT_URL` + `AWS_S3_BUCKET` if running in AWS mode) per `S3Service`'s dual-mode env var reads
@@ -229,7 +234,7 @@ gRPC-client-only wrapper modules (`notifications-client`, `news-client`, `waitli
 
 ### EventsModule
 - `ORGANISER` role creates and manages events
-- Ticket purchase → Paystack → `charge.success` webhook → QR PNG → S3 → SendGrid email
+- Ticket purchase → Paystack → `charge.success` webhook → QR PNG → S3/R2 → Resend email
 - HMAC-SHA512 webhook verification before any processing
 - Check-in: `POST /tickets/:qr_hash/checkin` → `VALID` | `ALREADY_USED` | `NOT_FOUND`
 - Event cover images resized to 1200×630 JPEG 85% via Sharp
@@ -249,7 +254,7 @@ gRPC-client-only wrapper modules (`notifications-client`, `news-client`, `waitli
 ### StudioModule
 - Government priority slots: visible to `LGA_ADMIN`/`SUPER_ADMIN` only
 - Booking uses `SELECT FOR UPDATE` row lock to prevent double-booking
-- Confirmed booking triggers prep checklist email (5 items) via SendGrid
+- Confirmed booking triggers prep checklist email (5 items) via Resend
 - Creative uploads: audio (mp3/wav/aac/flac) + video (mp4/mov/avi/webm) up to 500MB
 - Published content feeds back via `GET /studio/feed`
 
@@ -275,7 +280,8 @@ gRPC-client-only wrapper modules (`notifications-client`, `news-client`, `waitli
 ### NotificationsModule
 - FCM HTTP v1 push via a Google service-account JWT (`FIREBASE_SERVICE_ACCOUNT_JSON`); logs a warning and no-ops if not configured
 - `POST /notifications/register-token` stores the device's FCM token on the user's `metadata` JSON field
-- `GET /notifications` currently returns an empty list — no `Notification` persistence model exists yet in the Prisma schema
+- Push sends persist a `Notification` row regardless of FCM delivery outcome (Prisma model `notifications`), so `GET /notifications` returns the caller's real notification history, newest-first
+- `PATCH /notifications/:id/read` marks a single notification read; `PATCH /notifications/read-all` marks all of the caller's unread notifications read
 
 ### WaitlistModule
 - `POST /waitlist` upserts by `(source, email)` or `(source, phone)` — re-submitting with extra info refreshes phone/fullName without duplicating the entry

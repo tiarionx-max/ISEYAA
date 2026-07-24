@@ -30,22 +30,22 @@ Operated by LJ Entertainment under contract with Ogun State. Confidential govern
 - TypeScript 5.3.x — All four workspaces (backend, web, mobile, shared)
 - JavaScript — `seed-demo.js`, `smoke-test.js` in `backend/`; `next.config.js`, `postcss.config.js` in `web/`
 ## Runtime
-- Node.js >=20.0.0 (Node 20 LTS — enforced via `engines` in root `package.json`)
+- Node.js >=22.0.0 (enforced via `engines` in root `package.json`; CI and `backend/Dockerfile.dev` still pin Node 20 for local dev/build)
 - Docker image `node:20-alpine` for backend container (`backend/Dockerfile.dev`)
 - npm >=10.0.0 (enforced via `engines`)
-- Workspaces: npm workspaces at root (`package.json` workspaces: `["backend","web","mobile","shared"]`)
+- Workspaces: npm workspaces at root (`package.json` workspaces: `["backend","web","mobile","shared","packages/proto"]`)
 - Lockfile: present (`package-lock.json` at root)
 ## Frameworks
-- NestJS 10.3.x (`@nestjs/core`, `@nestjs/common`) — REST API framework, modular DI
-- NestJS Swagger 7.3.x (`@nestjs/swagger`) — API documentation at `/api/docs`
-- NestJS Throttler 5.1.x (`@nestjs/throttler`) — Rate limiting (100 req / 60s global)
-- NestJS Schedule 4.0.x (`@nestjs/schedule`) — Cron/scheduled tasks
-- NestJS EventEmitter 2.0.x (`@nestjs/event-emitter`) — Internal domain event bus
+- NestJS 11.1.x (`@nestjs/core`, `@nestjs/common`) — REST API framework, modular DI
+- NestJS Swagger 11.4.x (`@nestjs/swagger`) — API documentation at `/api/docs`
+- NestJS Throttler 6.5.x (`@nestjs/throttler`) — Rate limiting (100 req / 60s global)
+- NestJS Schedule 6.1.x (`@nestjs/schedule`) — Cron/scheduled tasks
+- NestJS EventEmitter 3.1.x (`@nestjs/event-emitter`) — Internal domain event bus
 - Passport 0.7.x + `passport-jwt` 4.0.x — JWT authentication strategy
 - Next.js 14.1.3 — App Router + Pages Router (both present: `src/app/` and `src/pages/`)
 - React 18.2.x / ReactDOM 18.2.x
 - Expo SDK ~51.0.0 — React Native build toolchain
-- React Native 0.74.0
+- React Native 0.74.5
 - Expo Router ~3.5.0 — File-based navigation (`main: "expo-router/entry"`)
 - React Navigation 6.x (`@react-navigation/native`) — Navigation primitives
 - Pure TypeScript library — no runtime framework
@@ -53,18 +53,18 @@ Operated by LJ Entertainment under contract with Ogun State. Confidential govern
 - Jest 29.7.x — All workspaces
 - ts-jest 29.1.x — TypeScript transformer for backend Jest
 - jest-expo ~51.0.0 — Expo-aware Jest preset for mobile
-- `@nestjs/testing` 10.3.x — NestJS testing utilities
-- `@nestjs/cli` 10.3.x — NestJS build & dev server (`nest build`, `nest start --watch`)
+- `@nestjs/testing` 11.1.x — NestJS testing utilities
+- `@nestjs/cli` 11.0.x — NestJS build & dev server (`nest build`, `nest start --watch`)
 - TypeScript compiler (`tsc`) — Shared library build
 - Metro bundler — React Native/Expo bundler (configured via `app.json` `web.bundler: "metro"`)
 ## Key Dependencies
-- `@prisma/client` 5.11.x + `prisma` 5.11.x — ORM and DB migration tool; schema at `backend/prisma/schema.prisma`
+- `@prisma/client` 5.22.x + `prisma` 5.11.x (backend) — ORM and DB migration tool; schema at `backend/prisma/schema.prisma` (note: root `package.json` also declares a conflicting `prisma` devDependency `^7.8.0`)
 - `@nestjs/jwt` 10.2.x + `jsonwebtoken` (transitive) — JWT access tokens (15m) and refresh tokens (30d), blacklisted in Redis
 - `ioredis` 5.3.x — Redis client for OTP state, token blacklist, caching (`backend/src/redis/redis.service.ts`)
 - `class-validator` 0.14.x + `class-transformer` 0.5.x — DTO validation pipeline (global `ValidationPipe`)
 - `@anthropic-ai/sdk` 0.52.x — Anthropic Claude API client (streaming chat + itinerary AI)
 - `@aws-sdk/client-s3` 3.1045.x — AWS S3 file uploads (`backend/src/common/services/s3.service.ts`)
-- `@sendgrid/mail` 8.1.6 — Transactional email (`backend/src/common/services/sendgrid.service.ts`)
+- `resend` ^6.18.0 — Transactional email (`backend/src/common/services/sendgrid.service.ts` — internals migrated to Resend SDK)
 - `@tanstack/react-query` 5.24.x — Server state management (web + mobile)
 - `zustand` 4.5.x — Client state management (web + mobile)
 - `zod` 3.22.x — Runtime schema validation (web + mobile)
@@ -139,7 +139,7 @@ Operated by LJ Entertainment under contract with Ogun State. Confidential govern
 - Test files: `<service>.spec.ts` in a `__tests__/` subdirectory (e.g., `backend/src/modules/auth/__tests__/auth.service.spec.ts`)
 - Guard spec files: co-located as `<guard>.spec.ts` alongside the guard (e.g., `backend/src/common/guards/roles.guard.spec.ts`)
 - Next.js pages: `page.tsx` inside App Router directories (e.g., `web/src/app/events/page.tsx`)
-- Expo screens: PascalCase default export in `app/(tabs)/<name>.tsx` (e.g., `mobile/app/(tabs)/events.tsx`)
+- Expo screens: PascalCase default export in `app/(tabs)/<name>.tsx` (e.g., `mobile/app/(tabs)/book.tsx`)
 - Classes and decorators: `PascalCase` (e.g., `AuthService`, `JwtAuthGuard`, `RegisterDto`)
 - Functions and methods: `camelCase` (e.g., `createBooking`, `handleTicketPayment`, `slugify`)
 - Module-level constants: `SCREAMING_SNAKE_CASE` (e.g., `OTP_TTL`, `KYC_TIER_1_LIMIT`, `REFRESH_TTL_SECONDS`)
@@ -179,7 +179,7 @@ Operated by LJ Entertainment under contract with Ogun State. Confidential govern
 ## Comments
 - Module-level section dividers using `// ── Section Name ──────────────────────` (seen in `admin.service.ts`, `marketplace.service.ts`, `ai.service.ts`)
 - Inline constants explaining magic numbers (e.g., `const OTP_TTL = 300; // 5 minutes`)
-- Critical business rules that are non-obvious (e.g., `// SELECT FOR UPDATE prevents concurrent double-bookings` in `stays.service.ts:166`)
+- Critical business rules that are non-obvious (e.g., `// SELECT FOR UPDATE prevents concurrent double-bookings` in `stays.service.ts:211`)
 - Stub detection comments (e.g., `// Token already invalid — logout is still successful`)
 - `// NEVER hardcode` warnings on platform fee configs
 ## DTO Design
@@ -231,7 +231,7 @@ Operated by LJ Entertainment under contract with Ogun State. Confidential govern
 - Payment flows use Paystack; webhook events are dispatched via `EventEmitter2` to `@OnEvent()` handlers within feature services
 - Authentication uses short-lived JWT access tokens (15 min) + long-lived refresh tokens (30 days); refresh tokens are blacklisted in Redis on rotation/logout
 - OTP-based phone verification uses Redis with 5-minute TTL and brute-force lockout (3 attempts → 15-minute lock)
-- All clients communicate exclusively through `GET/POST /api/v1/*` REST endpoints
+- Clients communicate primarily through `GET/POST /api/v1/*` REST endpoints; `backend/src/modules/transport/transport.gateway.ts` and `backend/src/modules/delivery/delivery.gateway.ts` also expose Socket.IO `@WebSocketGateway()` channels for real-time GPS/delivery updates
 - `shared/` is an npm workspace package consumed by both `web/` and `mobile/` for type safety
 ## Layers
 - Purpose: Route HTTP requests, validate with DTOs, delegate to services
@@ -318,7 +318,7 @@ Operated by LJ Entertainment under contract with Ogun State. Confidential govern
 - **EventEmitter coupling:** `WebhooksService` dispatches domain events that must be handled by feature services. Adding a new payment type requires: (1) new `metadata.type` case in `WebhooksService`, (2) `@OnEvent()` handler in the target feature service.
 - **JWT token storage (web):** Access token stored in NextAuth JWT cookie, not in-memory or localStorage. Refresh token sent via POST body on rotation — never in Authorization header.
 - **JWT token storage (mobile):** Access token stored in `expo-secure-store` (hardware-backed secure enclave on iOS/Android).
-- **NDPA compliance constraint:** User registration requires `ndpaConsent: true` — enforced in `AuthService.register()` at line 54. This is a legal requirement (Nigerian Data Protection Act).
+- **NDPA compliance constraint:** User registration requires `ndpaConsent: true` — enforced in `AuthService.register()` at lines 61-63 (method begins at line 60). This is a legal requirement (Nigerian Data Protection Act).
 ## Anti-Patterns
 ### Direct cross-module service calls (except via exports)
 ### Inline SQL in service via `$queryRaw`
