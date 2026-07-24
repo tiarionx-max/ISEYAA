@@ -168,8 +168,32 @@ export class AdminService {
     });
   }
 
-  updateVendorStatus(id: string, status: string) {
-    return this.prisma.vendor.update({ where: { id }, data: { status: status as any } });
+  async updateVendorStatus(id: string, status: string) {
+    const updated = await this.prisma.vendor.update({ where: { id }, data: { status: status as any } });
+
+    // Approval is the actual gate on vendor capabilities (e.g. POST /products
+    // requires the VENDOR role) — grant it here, mirroring UsersService.becomeHost.
+    // Without this, an approved vendor's own role never changes and they remain
+    // unable to create products despite this admin action accepting them.
+    if (status === 'ACTIVE') {
+      const user = await this.prisma.user.findUnique({
+        where: { id: updated.userId },
+        select: { registeredRoles: true },
+      });
+      if (user) {
+        await this.prisma.user.update({
+          where: { id: updated.userId },
+          data: {
+            registeredRoles: user.registeredRoles.includes('VENDOR' as any)
+              ? user.registeredRoles
+              : { set: [...user.registeredRoles, 'VENDOR' as any] },
+            role: 'VENDOR' as any,
+          },
+        });
+      }
+    }
+
+    return updated;
   }
 
   // ── Properties ─────────────────────────────────────────────────────────────

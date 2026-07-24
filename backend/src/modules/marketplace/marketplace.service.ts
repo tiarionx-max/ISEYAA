@@ -68,6 +68,26 @@ export class MarketplaceService implements OnModuleInit {
     if (!vendor) throw new NotFoundException('Vendor not found');
     if (vendor.status === 'ACTIVE') throw new ConflictException('Vendor already active');
 
+    // Approval is the actual gate on vendor capabilities (e.g. POST /products
+    // requires the VENDOR role) — grant it here, mirroring UsersService.becomeHost.
+    // Without this, an approved vendor's own role never changes and they remain
+    // unable to create products despite their application being accepted.
+    const user = await this.prisma.user.findUnique({
+      where: { id: vendor.userId },
+      select: { registeredRoles: true },
+    });
+    if (user) {
+      await this.prisma.user.update({
+        where: { id: vendor.userId },
+        data: {
+          registeredRoles: user.registeredRoles.includes('VENDOR' as any)
+            ? user.registeredRoles
+            : { set: [...user.registeredRoles, 'VENDOR' as any] },
+          role: 'VENDOR' as any,
+        },
+      });
+    }
+
     return this.prisma.vendor.update({ where: { id }, data: { status: 'ACTIVE' } });
   }
 
