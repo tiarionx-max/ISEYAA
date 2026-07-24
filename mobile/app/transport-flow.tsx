@@ -214,7 +214,7 @@ export default function TransportFlowScreen() {
     setEndedMessage(null);
   }
 
-  const fare = fareData ? Number(fareData.fare ?? fareData.total ?? 0) : null;
+  const fare = fareData ? Number(fareData.totalFare ?? 0) : null;
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>

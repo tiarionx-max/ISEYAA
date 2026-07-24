@@ -49,6 +49,23 @@ function formatDate(iso: string) {
   });
 }
 
+function formatDuration(startIso?: string, endIso?: string): string {
+  if (!startIso || !endIso) return 'See details';
+  const start = new Date(startIso);
+  const end = new Date(endIso);
+  const ms = end.getTime() - start.getTime();
+  if (!Number.isFinite(ms) || ms <= 0) return 'See details';
+
+  const sameDay = start.toDateString() === end.toDateString();
+  if (sameDay) {
+    const hours = ms / 3_600_000;
+    if (hours < 1) return `${Math.round(ms / 60_000)} min`;
+    return hours % 1 === 0 ? `${hours} hr` : `${hours.toFixed(1)} hr`;
+  }
+  const days = Math.round(ms / 86_400_000);
+  return `${days} day${days === 1 ? '' : 's'}`;
+}
+
 function formatWeekdayTime(iso: string) {
   const d = new Date(iso);
   const weekday = d.toLocaleDateString('en-NG', { weekday: 'short' });
@@ -105,7 +122,10 @@ export default function EventDetailScreen() {
           // Payment page failed to open — the Paystack webhook is still the source of truth.
         }
       }
-      Alert.alert('Ticket Purchased!', 'Your QR code is waiting in your profile.');
+      Alert.alert(
+        'Purchase initiated',
+        'Your QR code will be ready in your profile once payment is confirmed.',
+      );
     },
     onError: (e: any) => Alert.alert('Purchase Failed', getErrorMessage(e, e?.message ?? 'Please try again.')),
   });
@@ -130,6 +150,7 @@ export default function EventDetailScreen() {
   const displayDate = dateStr ? formatDate(dateStr) : 'Date TBD';
   const displaySub = dateStr ? formatWeekdayTime(dateStr) : '';
   const venue = event.location ?? event.venue ?? 'Venue TBD';
+  const duration = formatDuration(event.startDate, event.endDate);
 
   const tiers = ticketTypes.map((tt) => {
     const soldOut = tt.sold >= tt.quantity;
@@ -239,8 +260,8 @@ export default function EventDetailScreen() {
         <View style={s.factsRow}>
           {[
             { k: 'Date', v: displayDate, sub: displaySub },
-            { k: 'Venue', v: 'Venue', sub: venue },
-            { k: 'Duration', v: 'Event', sub: 'See details' },
+            { k: 'Venue', v: venue, sub: event.address ?? '' },
+            { k: 'Duration', v: duration, sub: '' },
           ].map((cell) => (
             <View key={cell.k} style={s.factCell}>
               <Text style={s.factKicker}>{cell.k.toUpperCase()}</Text>

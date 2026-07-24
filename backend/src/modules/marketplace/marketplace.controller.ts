@@ -20,10 +20,9 @@ export class VendorsController {
   constructor(private readonly marketplaceService: MarketplaceService) {}
 
   @Post()
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.VENDOR)
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Register as vendor (VENDOR role) — status starts PENDING' })
+  @ApiOperation({ summary: 'Apply to become a vendor — creates a PENDING application for admin approval; does not itself require the VENDOR role, since that role is only granted once an admin approves' })
   create(@CurrentUser() user: any, @Body() dto: CreateVendorDto) {
     return this.marketplaceService.createVendor(user.userId, dto);
   }

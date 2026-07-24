@@ -31,6 +31,7 @@ export class StaysController {
     @Query('types') types?: string,
     @Query('bookingMode') bookingMode?: string,
     @Query('featured') featured?: string,
+    @Query('search') search?: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page?: number,
     @Query('limit', new DefaultValuePipe(24), ParseIntPipe) limit?: number,
   ) {
@@ -40,6 +41,7 @@ export class StaysController {
       types: types ? types.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
       bookingMode,
       featured: featured === 'true',
+      search,
       page,
       limit,
     });

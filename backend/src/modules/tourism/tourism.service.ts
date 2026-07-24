@@ -17,6 +17,7 @@ interface FindAllFilters {
   lgaId?: string;
   category?: string;
   freeEntryOnly?: boolean;
+  search?: string;
   lat?: number;
   lng?: number;
   radius?: number;
@@ -28,7 +29,7 @@ export class TourismService {
   constructor(private prisma: PrismaService) {}
 
   async findAll(filters: FindAllFilters) {
-    const { lgaId, category, freeEntryOnly, lat, lng, radius = NEARBY_RADIUS_KM, limit } = filters;
+    const { lgaId, category, freeEntryOnly, search, lat, lng, radius = NEARBY_RADIUS_KM, limit } = filters;
     const isNearSearch = lat !== undefined && lng !== undefined;
 
     const latDiff = radius / 111.0;
@@ -43,6 +44,7 @@ export class TourismService {
         ...(freeEntryOnly && {
           OR: [{ entryFee: null }, { entryFee: { lte: 0 } }],
         }),
+        ...(search && { name: { contains: search, mode: 'insensitive' } }),
         ...(isNearSearch && {
           latitude: { gte: lat! - latDiff, lte: lat! + latDiff } as any,
           longitude: { gte: lng! - lngDiff, lte: lng! + lngDiff } as any,

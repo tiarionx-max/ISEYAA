@@ -5,6 +5,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
 import * as SecureStore from 'expo-secure-store';
+import { registerForPushNotifications } from '../lib/push-notifications';
 
 Sentry.init({
   dsn: process.env.EXPO_PUBLIC_SENTRY_DSN || '',
@@ -22,7 +23,9 @@ export default function RootLayout() {
     SecureStore.getItemAsync('access_token').then((token) => {
       if (!token) {
         router.replace('/onboarding' as any);
+        return;
       }
+      registerForPushNotifications();
     });
   }, []);
 

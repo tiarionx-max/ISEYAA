@@ -5,7 +5,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { SettlementService } from '../../../common/services/settlement.service';
 
 const mockPrisma = {
-  user: { count: jest.fn(), findMany: jest.fn(), update: jest.fn() },
+  user: { count: jest.fn(), findMany: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
   event: { count: jest.fn() },
   vendor: { count: jest.fn(), findMany: jest.fn(), update: jest.fn() },
   order: { aggregate: jest.fn() },
@@ -150,11 +150,29 @@ describe('AdminService', () => {
 
   describe('updateVendorStatus', () => {
     it('updates vendor status', async () => {
-      mockPrisma.vendor.update.mockResolvedValue({});
+      mockPrisma.vendor.update.mockResolvedValue({ userId: 'user-001' });
+      mockPrisma.user.findUnique.mockResolvedValue({ registeredRoles: ['CITIZEN'] });
       await service.updateVendorStatus('vendor-001', 'ACTIVE');
       expect(mockPrisma.vendor.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: { status: 'ACTIVE' } }),
       );
+    });
+
+    it('promotes the vendor user to the VENDOR role on approval', async () => {
+      mockPrisma.vendor.update.mockResolvedValue({ userId: 'user-001' });
+      mockPrisma.user.findUnique.mockResolvedValue({ registeredRoles: ['CITIZEN'] });
+      await service.updateVendorStatus('vendor-001', 'ACTIVE');
+      expect(mockPrisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-001' },
+        data: { registeredRoles: { set: ['CITIZEN', 'VENDOR'] }, role: 'VENDOR' },
+      });
+    });
+
+    it('does not touch the user role when rejecting/suspending', async () => {
+      mockPrisma.vendor.update.mockResolvedValue({ userId: 'user-001' });
+      await service.updateVendorStatus('vendor-001', 'SUSPENDED');
+      expect(mockPrisma.user.findUnique).not.toHaveBeenCalled();
+      expect(mockPrisma.user.update).not.toHaveBeenCalled();
     });
   });
 
