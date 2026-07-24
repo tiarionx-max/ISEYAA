@@ -27,6 +27,7 @@ firebase.json
 *service-account*.json
 *-credentials.json
 google-service-account.json
+*firebase-adminsdk*.json
 
 # Logs
 logs/
@@ -61,3 +62,6 @@ mobile/.expo/
 
 # Claude agent worktrees (ephemeral, may contain build caches with long paths)
 .claude/worktrees/
+
+# Cloudflare Wrangler local dev state
+.wrangler/
