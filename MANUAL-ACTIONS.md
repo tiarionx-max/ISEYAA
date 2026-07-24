@@ -28,6 +28,7 @@ Full list of env vars that need real values before production (stub mode is acce
 | `AWS_REGION` | Cloudflare R2 | `auto` (R2 uses `auto` as region) |
 | `AWS_CLOUDFRONT_URL` | R2 public domain | Your R2 public bucket URL |
 | `SENDGRID_API_KEY` | SendGrid | app.sendgrid.com → Settings → API Keys |
+| `RESEND_API_KEY` | Resend | resend.com → API Keys |
 | `TERMII_API_KEY` | Termii SMS | termii.com → developer portal |
 | `FIREBASE_SERVER_KEY` | FCM push | Firebase Console → Project Settings → Cloud Messaging |
 | `ENCRYPTION_KEY` | KYC (AES-256-GCM) | Generate above |
