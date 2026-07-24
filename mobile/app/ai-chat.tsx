@@ -16,7 +16,6 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
-import { v4 as uuidv4 } from 'uuid';
 import EventSource from 'react-native-sse';
 import { Send, Bot, MapPin, Calendar, Home, Car, Cloud, Sparkles } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -49,6 +48,14 @@ type Message = {
   isError?: boolean;
 };
 
+
+// Local message id only — never sent to a security-sensitive context, so Math.random()
+// is fine here. Avoids the `uuid` package's crypto.getRandomValues() dependency, which
+// Hermes doesn't provide without a native polyfill (react-native-get-random-values)
+// that isn't linked into this build.
+function uuidv4(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
 
 function formatTime(ts: number): string {
   const d = new Date(ts);
@@ -344,7 +351,8 @@ export default function AiChatScreen() {
   }, []);
 
   // ── handleError: show destructive bubble ─────────────────────────────────────
-  const handleError = useCallback((_reason: string) => {
+  const handleError = useCallback((reason: string) => {
+    console.error('AI chat error:', reason);
     setMessages((prev) => [
       ...prev,
       {

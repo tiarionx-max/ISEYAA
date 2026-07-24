@@ -524,7 +524,9 @@ export default function ProfileScreen() {
 
             {/* Kicker + headline */}
             <Text style={styles.kycKicker}>KYC PROGRESS</Text>
-            <Text style={styles.kycHeadline}>Two of three tiers unlocked</Text>
+            <Text style={styles.kycHeadline}>
+              {['Zero', 'One', 'Two', 'Three'][Math.min(tier, 3)]} of three tiers unlocked
+            </Text>
 
             {/* Tier boxes */}
             <View style={styles.tierGrid}>

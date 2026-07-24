@@ -36,7 +36,7 @@ import { Image } from 'expo-image';
 import { ChevronLeft, Heart, Minus, Plus } from 'lucide-react-native';
 
 import { fetcher, getErrorMessage } from '../../lib/api';
-import { useCartStore, useCartDrawerStore } from '../../lib/cart-store';
+import { useCartStore } from '../../lib/cart-store';
 import { PressableScale } from '../../components/ui/PressableScale';
 import { Chip } from '../../components/ui/Chip';
 import {
@@ -147,7 +147,6 @@ export default function ProductDetailScreen(): JSX.Element {
   // ── Handlers ────────────────────────────────────────────────────────────────
   const handleAddToCart = (): void => {
     useCartStore.getState().addItem(product, qty);
-    useCartDrawerStore.getState().openDrawer();
     Alert.alert('Added to cart', `${qty} × ${product.name}`, [{ text: 'OK' }]);
   };
 

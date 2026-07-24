@@ -8,7 +8,7 @@
  *   4. Marketplace  — Temu-style 8-category strip + 2-col product grid -> GET /products
  *   5. Tours        — 10-category strip + 2-col grid -> GET /tour-packages (Plan 09-11)
  *
- * Header bag icon -> useCartStore.totalCount() badge, tap -> useCartDrawerStore.openDrawer().
+ * Header bag icon -> useCartStore.totalCount() badge, tap -> router.push('/cart').
  *
  * Closes MOB-RD-03 + MOB-RD-05 + TOUR-03 (mobile browse).
  */
@@ -39,7 +39,7 @@ import {
 } from 'lucide-react-native';
 
 import { fetcher } from '../../lib/api';
-import { useCartStore, useCartDrawerStore } from '../../lib/cart-store';
+import { useCartStore } from '../../lib/cart-store';
 import {
   STAY_CATEGORIES,
   MARKETPLACE_CATEGORIES,
@@ -330,11 +330,19 @@ function StudioSection() {
   });
   const studios: StudioItem[] = (data?.data ?? data ?? []) as StudioItem[];
 
-  if (isLoading || studios.length === 0) {
+  if (isLoading) {
     return (
       <View style={styles.gridPadding}>
         <GridSkeleton count={4} />
         <GridSkeleton count={4} />
+      </View>
+    );
+  }
+
+  if (studios.length === 0) {
+    return (
+      <View style={styles.emptyState}>
+        <Text style={styles.emptyText}>No studio spaces available yet.</Text>
       </View>
     );
   }
@@ -699,7 +707,7 @@ function CartBag() {
   const count = useCartStore((s) => s.items.reduce((a, i) => a + i.quantity, 0));
   return (
     <Pressable
-      onPress={() => useCartDrawerStore.getState().openDrawer()}
+      onPress={() => router.push('/cart' as any)}
       style={({ pressed }) => [
         styles.bagBtn,
         pressed && { opacity: 0.7 },
