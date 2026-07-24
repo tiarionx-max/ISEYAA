@@ -71,6 +71,7 @@ export type Property = {
   membershipMonthlyPrice?: number | null;
   membershipBenefits?: string[];
   maxGuests?: number | null;
+  timeSlots?: Array<{ label: string; startHour: number; startMin: number; endHour: number; endMin: number }> | null;
 };
 
 export type BookingSheetProps = {

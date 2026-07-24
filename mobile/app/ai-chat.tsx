@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { v4 as uuidv4 } from 'uuid';
@@ -28,7 +29,7 @@ import {
   FONT_DISPLAY, FONT_MONO,
 } from '../lib/tokens';
 
-const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1';
+import { API_BASE } from '../lib/api';
 const CHAT_STORAGE_KEY = 'ai_chat_history';
 const MAX_STORED_MESSAGES = 100;
 
@@ -240,12 +241,14 @@ function InputBar({
 
 // ── AiChatScreen (default export) ─────────────────────────────────────────────
 export default function AiChatScreen() {
+  const { prompt } = useLocalSearchParams<{ prompt?: string }>();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
 
   const esRef = useRef<EventSource | null>(null);
   const flatListRef = useRef<FlatList>(null);
+  const consumedPromptRef = useRef(false);
 
   // Load persisted messages on mount; cleanup EventSource on unmount
   useEffect(() => {
@@ -264,6 +267,18 @@ export default function AiChatScreen() {
       esRef.current?.close();
     };
   }, []);
+
+  // Concierge quick-actions/suggested prompts navigate here with a `prompt` param
+  // (e.g. router.push({ pathname: '/ai-chat', params: { prompt } })) — previously
+  // this screen never read it, so the tapped prompt silently vanished and users
+  // landed on an empty chat. Pre-fill the input (matches web's starter-prompt
+  // behavior of populating the textbox rather than auto-sending).
+  useEffect(() => {
+    if (prompt && !consumedPromptRef.current) {
+      consumedPromptRef.current = true;
+      setInputText(Array.isArray(prompt) ? prompt[0] : prompt);
+    }
+  }, [prompt]);
 
   // Persist messages whenever they change (cap at MAX_STORED_MESSAGES)
   useEffect(() => {

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import { Users, Copy, Share2, Minus, Plus } from 'lucide-react';
@@ -127,8 +127,18 @@ export function TourBookingForm({
 
   const splitBillEnabled = watch('splitBillEnabled');
   const priceNum = Number(price ?? 0);
-  const total = priceNum * passengerCount;
-  const bulkDiscount = passengerCount >= 10;
+
+  // Real, PlatformConfig-sourced bulk-discount quote — never hardcode the discount %.
+  const { data: quote } = useQuery({
+    queryKey: ['tour-quote', tourId, passengerCount],
+    queryFn: () =>
+      api
+        .get(`/tour-bookings/quote?tourPackageId=${tourId}&passengerCount=${passengerCount}`)
+        .then((r) => r.data),
+  });
+  const unitPrice = quote?.unitPrice ?? priceNum;
+  const total = quote?.totalAmount ?? priceNum * passengerCount;
+  const bulkDiscount = quote?.discountApplied ?? false;
 
   const book = useMutation({
     mutationFn: (values: FormValues) =>
@@ -241,7 +251,10 @@ export function TourBookingForm({
         <div className="pt-4 border-t border-white/8 space-y-2 text-sm">
           <div className="flex items-center justify-between text-white/65">
             <span>
-              {fmtNGN(priceNum)} × {passengerCount} {passengerCount === 1 ? 'person' : 'people'}
+              {fmtNGN(unitPrice)} × {passengerCount} {passengerCount === 1 ? 'person' : 'people'}
+              {bulkDiscount && unitPrice < priceNum && (
+                <span className="text-gold ml-1.5">(bulk discount applied)</span>
+              )}
             </span>
             <span>{fmtNGN(total)}</span>
           </div>

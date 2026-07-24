@@ -15,6 +15,6 @@ export class SearchController {
       'Typo-tolerant full-text search. When lat/lng are provided, attractions and properties are geo-ranked (nearest first).',
   })
   async search(@Query() query: SearchQueryDto): Promise<any> {
-    return this.searchService.search(query.q, query.lat, query.lng);
+    return this.searchService.search(query.q, query.lat, query.lng, query.perPage);
   }
 }

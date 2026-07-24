@@ -381,7 +381,6 @@ export default function WalletScreen() {
                 <ArrowUp size={12} color={CREAM} />
                 <Text style={styles.balanceFlowOut}>{formatShort(monthlyOut)} out</Text>
               </View>
-              <Text style={styles.balanceCardLast4}>•• 4291</Text>
             </View>
           </LinearGradient>
         </View>

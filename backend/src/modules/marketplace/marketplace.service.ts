@@ -87,6 +87,9 @@ export class MarketplaceService implements OnModuleInit {
         description: dto.description,
         price: dto.price,
         stock: dto.stock,
+        category: dto.category,
+        compareAtPrice: dto.compareAtPrice,
+        ...(dto.imageUrls && { imageUrls: dto.imageUrls }),
       },
     });
   }
@@ -112,7 +115,7 @@ export class MarketplaceService implements OnModuleInit {
   async findProductById(id: string) {
     const product = await this.prisma.product.findFirst({
       where: { id, deletedAt: null },
-      include: { vendor: { select: { businessName: true, slug: true } } },
+      include: { vendor: { select: { businessName: true, slug: true, lga: { select: { name: true } } } } },
     });
     if (!product) throw new NotFoundException('Product not found');
     return product;
@@ -132,6 +135,9 @@ export class MarketplaceService implements OnModuleInit {
         ...(dto.description !== undefined && { description: dto.description }),
         ...(dto.price !== undefined && { price: dto.price }),
         ...(dto.stock !== undefined && { stock: dto.stock }),
+        ...(dto.category !== undefined && { category: dto.category }),
+        ...(dto.compareAtPrice !== undefined && { compareAtPrice: dto.compareAtPrice }),
+        ...(dto.imageUrls !== undefined && { imageUrls: dto.imageUrls }),
       },
     });
   }
@@ -153,7 +159,7 @@ export class MarketplaceService implements OnModuleInit {
     return this.prisma.order.findMany({
       where: { userId, deletedAt: null },
       include: {
-        orderItems: { include: { product: true } },
+        orderItems: { include: { product: { include: { vendor: true } } } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -220,7 +226,10 @@ export class MarketplaceService implements OnModuleInit {
         vendorPayout,
         paystackRef,
         status: 'PENDING',
-        metadata: { vendorName: vendor.businessName },
+        metadata: {
+          vendorName: vendor.businessName,
+          ...(dto.deliveryAddress && { deliveryAddress: dto.deliveryAddress as any }),
+        },
         orderItems: { create: orderItems },
       },
       include: { orderItems: { include: { product: { select: { name: true } } } } },

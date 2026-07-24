@@ -2,7 +2,7 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Navbar } from '@/components/layout/Navbar';
 import { PageTransition } from '@/components/ui/PageTransition';
 import { fetcher, api } from '@/lib/api';
@@ -281,6 +281,17 @@ function TopupModal({ open, onClose, email }: { open: boolean; onClose: () => vo
   );
 }
 
+// crypto.randomUUID() only exists in secure contexts (HTTPS or the literal
+// hostname 'localhost') — it's undefined over plain http:// on any other host
+// (internal IPs, LAN access, this app's own docker/emulator test setups),
+// throwing "crypto.randomUUID is not a function" instead of returning a value.
+function generateIdempotencyKey(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
+
 /* ── Send Money Card ─────────────────────────────────────────────────────── */
 function SendMoneyCard() {
   const [recipientPhone, setRecipientPhone] = useState('');
@@ -288,9 +299,22 @@ function SendMoneyCard() {
   const [narration, setNarration] = useState('');
   const qc = useQueryClient();
 
+  // Stable per-attempt idempotency key: regenerates only when the transfer's
+  // details change, so retrying the *same* send after a lost response reuses the
+  // key and the backend treats it as a replay instead of double-debiting.
+  // CLAUDE.md requires an idempotency key on all wallet mutations.
+  const idempotencyKey = useMemo(
+    () => generateIdempotencyKey(),
+    [recipientPhone, amount, narration],
+  );
+
   const transfer = useMutation({
-    mutationFn: (payload: { recipientPhone: string; amount: number; narration?: string }) =>
-      api.post('/wallet/transfer', payload).then((r) => r.data),
+    mutationFn: (payload: {
+      recipientPhone: string;
+      amount: number;
+      narration?: string;
+      idempotencyKey: string;
+    }) => api.post('/wallet/transfer', payload).then((r) => r.data),
     onSuccess: (data: any) => {
       toast.success(
         `Sent ₦${Number(data?.amount ?? 0).toLocaleString()}. New balance: ₦${Number(data?.newBalance ?? 0).toLocaleString()} · ${data?.reference ?? ''}`,
@@ -322,6 +346,7 @@ function SendMoneyCard() {
       recipientPhone: recipientPhone.trim(),
       amount: n,
       ...(narration.trim() ? { narration: narration.trim() } : {}),
+      idempotencyKey,
     });
   }
 
@@ -491,10 +516,10 @@ function TicketsTab() {
                 <Ticket size={18} className="text-gold" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-white font-semibold text-sm truncate">{t.event?.title}</p>
+                <p className="text-white font-semibold text-sm truncate">{t.ticketType?.event?.title}</p>
                 <p className="text-white/35 text-xs mt-0.5 flex items-center gap-1.5">
                   <Calendar size={10} />
-                  {t.event?.startDate ? new Date(t.event.startDate).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                  {t.ticketType?.event?.startDate ? new Date(t.ticketType.event.startDate).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
                 </p>
               </div>
               <span className={`text-[11px] px-2.5 py-1 rounded-full font-semibold border ${
@@ -574,8 +599,8 @@ function OrdersTab() {
                   <Package size={18} className="text-indigo-300/60" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-white font-semibold text-sm">{o.vendor?.businessName ?? 'Ogun State Vendor'}</p>
-                  <p className="text-white/35 text-xs mt-0.5">{o.items?.length ?? '?'} item{o.items?.length !== 1 ? 's' : ''} · {new Date(o.createdAt).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                  <p className="text-white font-semibold text-sm">{o.orderItems?.[0]?.product?.vendor?.businessName ?? 'Ogun State Vendor'}</p>
+                  <p className="text-white/35 text-xs mt-0.5">{o.orderItems?.length ?? '?'} item{o.orderItems?.length !== 1 ? 's' : ''} · {new Date(o.createdAt).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                 </div>
                 <div className="text-right shrink-0">
                   <p className="text-gold font-bold text-sm">₦{Number(o.totalAmount).toLocaleString()}</p>

@@ -23,6 +23,13 @@ const mockPrisma = {
     findUnique: jest.fn(),
     update: jest.fn(),
   },
+  notification: {
+    create: jest.fn().mockResolvedValue({}),
+    findMany: jest.fn(),
+    findFirst: jest.fn(),
+    update: jest.fn(),
+    updateMany: jest.fn(),
+  },
 };
 
 const SERVICE_ACCOUNT_JSON = JSON.stringify({
@@ -183,5 +190,86 @@ describe('NotificationsService.registerToken', () => {
         data: { metadata: { fcmToken: 'new-fcm-token' } },
       }),
     );
+  });
+});
+
+describe('NotificationsService — persistence', () => {
+  let service: NotificationsService;
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    mockPrisma.notification.create.mockResolvedValue({});
+    mockConfig.get.mockImplementation((key: string, def?: unknown) => {
+      if (key === 'FIREBASE_SERVICE_ACCOUNT_JSON') return SERVICE_ACCOUNT_JSON;
+      return def;
+    });
+    mockResilience.execute.mockImplementation(
+      (_vendor: string, fn: (context: { signal: AbortSignal | undefined }) => any) => fn({ signal: undefined }),
+    );
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        NotificationsService,
+        { provide: PrismaService, useValue: mockPrisma },
+        { provide: ConfigService, useValue: mockConfig },
+        { provide: ResilienceService, useValue: mockResilience },
+      ],
+    }).compile();
+
+    service = module.get<NotificationsService>(NotificationsService);
+  });
+
+  it('sendPush persists a Notification row even when the user has no fcmToken', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'user-1', metadata: {} });
+
+    await service.sendPush('user-1', 'Ticket confirmed', 'Your ticket is ready');
+
+    expect(mockPrisma.notification.create).toHaveBeenCalledWith({
+      data: { userId: 'user-1', title: 'Ticket confirmed', body: 'Your ticket is ready', data: undefined },
+    });
+  });
+
+  it('listForUser returns the user’s notifications ordered newest-first', async () => {
+    const rows = [{ id: 'n-1' }, { id: 'n-2' }];
+    mockPrisma.notification.findMany.mockResolvedValue(rows);
+
+    const result = await service.listForUser('user-1');
+
+    expect(mockPrisma.notification.findMany).toHaveBeenCalledWith({
+      where: { userId: 'user-1' },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+    expect(result).toBe(rows);
+  });
+
+  it('markRead throws NotFoundException when the notification does not belong to the user', async () => {
+    mockPrisma.notification.findFirst.mockResolvedValue(null);
+
+    await expect(service.markRead('user-1', 'n-404')).rejects.toThrow('Notification not found');
+  });
+
+  it('markRead sets readAt on the caller’s own notification', async () => {
+    mockPrisma.notification.findFirst.mockResolvedValue({ id: 'n-1', userId: 'user-1' });
+    mockPrisma.notification.update.mockResolvedValue({ id: 'n-1', readAt: new Date() });
+
+    await service.markRead('user-1', 'n-1');
+
+    expect(mockPrisma.notification.update).toHaveBeenCalledWith({
+      where: { id: 'n-1' },
+      data: { readAt: expect.any(Date) },
+    });
+  });
+
+  it('markAllRead only updates the caller’s unread notifications', async () => {
+    mockPrisma.notification.updateMany.mockResolvedValue({ count: 3 });
+
+    const result = await service.markAllRead('user-1');
+
+    expect(mockPrisma.notification.updateMany).toHaveBeenCalledWith({
+      where: { userId: 'user-1', readAt: null },
+      data: { readAt: expect.any(Date) },
+    });
+    expect(result).toEqual({ updated: 3 });
   });
 });

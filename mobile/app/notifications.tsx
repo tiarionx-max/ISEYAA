@@ -8,8 +8,8 @@ import {
   StatusBar,
 } from 'react-native';
 import { router } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
-import { fetcher } from '../lib/api';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { api, fetcher } from '../lib/api';
 import {
   type LucideIcon,
   ArrowLeft,
@@ -44,6 +44,7 @@ import {
 type Tone = 'gold' | 'forest' | 'success';
 
 interface NotificationItem {
+  id: string;
   icon: LucideIcon;
   tone: Tone;
   title: string;
@@ -74,7 +75,43 @@ const TYPE_CONFIG: Record<string, { icon: LucideIcon; tone: Tone }> = {
   SOCIAL:        { icon: Heart,      tone: 'gold'    },
   TICKET:        { icon: Ticket,     tone: 'gold'    },
   STAY:          { icon: Building2,  tone: 'forest'  },
+  // Real push types currently sent by TourNotificationsService
+  // (backend/src/modules/tour-bookings/tour-notifications.service.ts) — these
+  // live in Notification.data.type, not a top-level `type` column.
+  tour_t_minus_24h: { icon: Car,      tone: 'gold'   },
+  tour_t_minus_2h:  { icon: Car,      tone: 'gold'   },
+  tour_post_rating: { icon: Heart,    tone: 'gold'   },
+  // Real push types now sent by WalletService (top-up + transfer received),
+  // TransportService (driver matched), DeliveryService (order delivered), and
+  // EventsService (ticket purchase confirmed) — see backend/src/modules/{wallet,
+  // transport,delivery,events}/*.service.ts. These live in Notification.data.type,
+  // same as the tour_* types above.
+  wallet_credit:    { icon: CreditCard, tone: 'success' },
+  ride_matched:     { icon: Car,        tone: 'gold'    },
+  delivery_update:  { icon: Package,    tone: 'forest'  },
+  ticket_purchased: { icon: Ticket,     tone: 'gold'    },
 };
+
+// ── Filter chip → notification type mapping ─────────────────────────────────────
+// Maps each chip (other than 'All') to the raw type strings (top-level `type` or
+// `data.type`) it should surface. Keeps FILTER_CHIPS/activeFilter driving a real
+// filter instead of just highlighting the active chip.
+const CHIP_TYPES: Record<Exclude<FilterChip, 'All'>, string[]> = {
+  Bookings: ['STAY', 'DELIVERY', 'delivery_update', 'KYC', 'tour_t_minus_24h', 'tour_t_minus_2h', 'tour_post_rating'],
+  Money:    ['WALLET_CREDIT', 'WALLET_DEBIT', 'wallet_credit'],
+  Rides:    ['RIDE', 'ride_matched'],
+  Events:   ['EVENT', 'TICKET', 'ticket_purchased'],
+  Social:   ['SOCIAL'],
+};
+
+function getNotifType(n: any): string {
+  return n.data?.type ?? n.type ?? '';
+}
+
+function matchesFilter(n: any, filter: FilterChip): boolean {
+  if (filter === 'All') return true;
+  return CHIP_TYPES[filter].includes(getNotifType(n));
+}
 
 function formatTimeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -90,14 +127,20 @@ function formatTimeAgo(dateStr: string): string {
 }
 
 function toNotifItem(n: any): NotificationItem {
-  const cfg = TYPE_CONFIG[n.type] ?? { icon: Sparkles, tone: 'gold' as Tone };
+  // Notification (backend/prisma/schema.prisma model Notification) has no
+  // top-level `type` column — the category string real callers set (e.g.
+  // TourNotificationsService) lives inside the `data` JSON field instead.
+  // Reading `n.type` here always resolved to undefined, so every notification
+  // silently fell back to the generic Sparkles/gold icon regardless of kind.
+  const cfg = TYPE_CONFIG[n.data?.type ?? n.type] ?? { icon: Sparkles, tone: 'gold' as Tone };
   return {
+    id:     n.id,
     icon:   cfg.icon,
     tone:   cfg.tone,
     title:  n.title   ?? 'Notification',
     sub:    n.body    ?? n.message ?? '',
     time:   n.createdAt ? formatTimeAgo(n.createdAt) : '',
-    unread: !n.read,
+    unread: !n.readAt,
   };
 }
 
@@ -106,9 +149,9 @@ function buildSections(items: any[]): Section[] {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
 
-  const newItems     = items.filter((n) => !n.read);
-  const todayRead    = items.filter((n) => n.read && new Date(n.createdAt) >= todayStart);
-  const earlierRead  = items.filter((n) => n.read && new Date(n.createdAt) < todayStart);
+  const newItems     = items.filter((n) => !n.readAt);
+  const todayRead    = items.filter((n) => n.readAt && new Date(n.createdAt) >= todayStart);
+  const earlierRead  = items.filter((n) => n.readAt && new Date(n.createdAt) < todayStart);
 
   const sections: Section[] = [];
   if (newItems.length)    sections.push({ label: 'New',     items: newItems.map(toNotifItem)    });
@@ -133,12 +176,13 @@ const TONE_ICON: Record<Tone, string> = {
 
 // ── Components ─────────────────────────────────────────────────────────────────
 
-function NotificationRow({ item }: { item: NotificationItem }) {
+function NotificationRow({ item, onPress }: { item: NotificationItem; onPress: () => void }) {
   const IconComp = item.icon;
   return (
     <TouchableOpacity
       style={[styles.notifRow, item.unread && styles.notifRowUnread]}
       activeOpacity={0.7}
+      onPress={onPress}
       accessibilityRole="button"
     >
       <View style={[styles.notifIconBox, { backgroundColor: TONE_BG[item.tone] }]}>
@@ -184,6 +228,7 @@ function EmptyState() {
 
 export default function NotificationsScreen() {
   const [activeFilter, setActiveFilter] = useState<FilterChip>('All');
+  const queryClient = useQueryClient();
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['notifications'],
@@ -192,8 +237,22 @@ export default function NotificationsScreen() {
   });
 
   const rawItems: any[] = Array.isArray(data?.data ?? data) ? (data?.data ?? data) : [];
-  const sections = buildSections(rawItems);
-  const unreadCount = rawItems.filter((n) => !n.read).length;
+  // Unread count reflects ALL notifications regardless of the active filter chip —
+  // "Mark all" should always be able to clear every unread item, not just the
+  // currently filtered subset.
+  const unreadCount = rawItems.filter((n) => !n.readAt).length;
+  const filteredItems = rawItems.filter((n) => matchesFilter(n, activeFilter));
+  const sections = buildSections(filteredItems);
+
+  const markReadMutation = useMutation({
+    mutationFn: (id: string) => api.patch(`/notifications/${id}/read`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+
+  const markAllReadMutation = useMutation({
+    mutationFn: () => api.patch('/notifications/read-all'),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+  });
 
   return (
     <View style={styles.root}>
@@ -212,9 +271,18 @@ export default function NotificationsScreen() {
               {unreadCount > 0 && <Text style={styles.titleCount}> · {unreadCount}</Text>}
             </Text>
           </View>
-          <TouchableOpacity style={styles.markAllBtn} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Mark all as read">
-            <Text style={styles.markAllText}>Mark all</Text>
-          </TouchableOpacity>
+          {unreadCount > 0 && (
+            <TouchableOpacity
+              style={styles.markAllBtn}
+              activeOpacity={0.7}
+              onPress={() => markAllReadMutation.mutate()}
+              disabled={markAllReadMutation.isPending}
+              accessibilityRole="button"
+              accessibilityLabel="Mark all as read"
+            >
+              <Text style={styles.markAllText}>Mark all</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* ── Filter chips ──────────────────────────────────────────────────── */}
@@ -259,8 +327,11 @@ export default function NotificationsScreen() {
                 <Text style={styles.sectionLabel}>{section.label}</Text>
                 <View style={styles.sectionCard}>
                   {section.items.map((item, idx) => (
-                    <View key={`${section.label}-${idx}`} style={idx < section.items.length - 1 ? styles.notifDivider : undefined}>
-                      <NotificationRow item={item} />
+                    <View key={item.id} style={idx < section.items.length - 1 ? styles.notifDivider : undefined}>
+                      <NotificationRow
+                        item={item}
+                        onPress={() => item.unread && markReadMutation.mutate(item.id)}
+                      />
                     </View>
                   ))}
                 </View>

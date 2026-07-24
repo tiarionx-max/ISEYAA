@@ -1,588 +1,439 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
-  Animated,
   TouchableOpacity,
-  Dimensions,
-  StatusBar,
+  StyleSheet,
+  ScrollView,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Path, Circle, G } from 'react-native-svg';
-import { Bell, MessageCircle, Phone, X } from 'lucide-react-native';
-import { router } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Bike, Car, Bus, MapPin, X, Navigation } from 'lucide-react-native';
+import type { Socket } from 'socket.io-client';
+import { api, fetcher, getErrorMessage } from '../lib/api';
+import { getSocket } from '../lib/socket';
+import { LocationPicker, type PickedLocation } from '../components/LocationPicker';
 import {
   SURFACE_DEEP,
   SURFACE_MID,
   SURFACE_ELEV,
-  FOREST,
-  FOREST_LIGHT,
   GOLD,
   GOLD_LINE,
   CREAM,
   INK,
   INK_MID,
-  INK_FAINT,
   BORDER,
   BORDER_MID,
-  SUCCESS,
   SUCCESS_TEXT,
-  ERROR,
+  ERROR_TEXT,
   FONT_DISPLAY,
   FONT_MONO,
 } from '../lib/tokens';
 
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+// ── Types ──────────────────────────────────────────────────────────────────────
 
-// ── Animated SVG wrapper ───────────────────────────
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+type VehicleType = 'BIKE' | 'TRICYCLE' | 'CAR' | 'MINIBUS';
 
-// ── Driver Pulse Component ─────────────────────────
-function DriverPulse({ cx, cy }: { cx: number; cy: number }) {
-  const pulseAnim = useRef(new Animated.Value(0.4)).current;
+const VEHICLES: { type: VehicleType; label: string; Icon: typeof Car }[] = [
+  { type: 'BIKE', label: 'Bike', Icon: Bike },
+  { type: 'TRICYCLE', label: 'Tricycle', Icon: Car },
+  { type: 'CAR', label: 'Car', Icon: Car },
+  { type: 'MINIBUS', label: 'Minibus', Icon: Bus },
+];
 
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 0,
-          duration: 1200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 0.4,
-          duration: 1200,
-          useNativeDriver: true,
-        }),
-      ]),
-    ).start();
-  }, [pulseAnim]);
+type Stage = 'form' | 'searching' | 'matched' | 'arrived' | 'in_progress' | 'completed' | 'ended';
 
-  return (
-    <G>
-      <AnimatedCircle
-        cx={cx}
-        cy={cy}
-        r={22}
-        fill="rgba(46,204,113,0.20)"
-        opacity={pulseAnim}
-      />
-      <Circle cx={cx} cy={cy} r={10} fill={SUCCESS} />
-    </G>
-  );
+function fmtNGN(n: number): string {
+  return `₦${Math.round(n).toLocaleString('en-NG')}`;
 }
 
-// ── Live Dot Component ─────────────────────────────
-function LiveDot({ color }: { color: string }) {
-  const anim = useRef(new Animated.Value(1)).current;
+// ── Screen ─────────────────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(anim, { toValue: 0.3, duration: 700, useNativeDriver: true }),
-        Animated.timing(anim, { toValue: 1, duration: 700, useNativeDriver: true }),
-      ]),
-    ).start();
-  }, [anim]);
+const TRIP_STATUS_TO_STAGE: Record<string, Stage> = {
+  SEARCHING: 'searching',
+  MATCHED: 'matched',
+  ARRIVED: 'arrived',
+  IN_PROGRESS: 'in_progress',
+  COMPLETED: 'completed',
+  CANCELLED: 'ended',
+  EXPIRED: 'ended',
+};
 
-  return (
-    <Animated.View
-      style={[
-        styles.liveDot,
-        { backgroundColor: color, opacity: anim },
-      ]}
-    />
-  );
-}
-
-// ── Map Layer ──────────────────────────────────────
-function MapLayer() {
-  return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      <LinearGradient
-        colors={['#0d2018', '#1a3a2a', '#0d2018']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
-      <Svg
-        width={SCREEN_W}
-        height={SCREEN_H}
-        viewBox={`0 0 ${SCREEN_W} ${SCREEN_H}`}
-        style={StyleSheet.absoluteFill}
-      >
-        {/* Street lines */}
-        <Path
-          d="M -20 200 Q 120 220, 200 250 T 420 280"
-          stroke="rgba(245,237,214,0.10)"
-          strokeWidth={1}
-          fill="none"
-        />
-        <Path
-          d="M -20 360 Q 150 380, 240 360 T 420 410"
-          stroke="rgba(245,237,214,0.10)"
-          strokeWidth={1}
-          fill="none"
-        />
-        <Path
-          d="M -20 540 Q 100 520, 200 560 T 420 540"
-          stroke="rgba(245,237,214,0.10)"
-          strokeWidth={1}
-          fill="none"
-        />
-        <Path
-          d="M 80 -20 L 100 900"
-          stroke="rgba(245,237,214,0.10)"
-          strokeWidth={1}
-          fill="none"
-        />
-        <Path
-          d="M 300 -20 L 280 900"
-          stroke="rgba(245,237,214,0.10)"
-          strokeWidth={1}
-          fill="none"
-        />
-
-        {/* Gold route line */}
-        <Path
-          d="M 40 660 Q 120 560, 200 500 T 340 300"
-          stroke={GOLD}
-          strokeWidth={4}
-          strokeLinecap="round"
-          fill="none"
-        />
-
-        {/* Origin dot at (40, 660) */}
-        <Circle cx={40} cy={660} r={12} fill="rgba(212,168,67,0.2)" />
-        <Circle cx={40} cy={660} r={6} fill={GOLD} />
-
-        {/* Destination dot at (340, 300) */}
-        <Circle cx={340} cy={300} r={14} fill={GOLD} stroke="#050E0E" strokeWidth={2} />
-
-        {/* Driver pulse at (200, 500) */}
-        <DriverPulse cx={200} cy={500} />
-      </Svg>
-    </View>
-  );
-}
-
-// ── Main Screen ────────────────────────────────────
 export default function TransportFlowScreen() {
-  const insets = useSafeAreaInsets();
+  const { tripId: resumeTripId } = useLocalSearchParams<{ tripId?: string }>();
+  const queryClient = useQueryClient();
+  const socketRef = useRef<Socket | null>(null);
+
+  const [pickup, setPickup] = useState<PickedLocation | null>(null);
+  const [dropoff, setDropoff] = useState<PickedLocation | null>(null);
+  const [vehicleType, setVehicleType] = useState<VehicleType>('CAR');
+  const [pickingField, setPickingField] = useState<'pickup' | 'dropoff' | null>(null);
+
+  const [stage, setStage] = useState<Stage>(resumeTripId ? 'searching' : 'form');
+  const [tripId, setTripId] = useState<string | null>(resumeTripId ?? null);
+  const [endedMessage, setEndedMessage] = useState<string | null>(null);
+  const [driverInfo, setDriverInfo] = useState<any>(null);
+  const [driverLocation, setDriverLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [completedFare, setCompletedFare] = useState<number | null>(null);
+
+  const canRequest = !!pickup && !!dropoff;
+
+  const { data: fareData, isFetching: fareLoading } = useQuery({
+    queryKey: ['fare-estimate', pickup, dropoff, vehicleType],
+    queryFn: () =>
+      fetcher(
+        `/transport/fare-estimate?vehicleType=${vehicleType}&pickupLat=${pickup!.lat}&pickupLng=${pickup!.lng}&dropoffLat=${dropoff!.lat}&dropoffLng=${dropoff!.lng}`,
+      ),
+    enabled: canRequest,
+  });
+
+  const requestMutation = useMutation({
+    mutationFn: () =>
+      api
+        .post('/transport/trips', {
+          pickupLat: pickup!.lat,
+          pickupLng: pickup!.lng,
+          pickupAddress: pickup!.address,
+          dropoffLat: dropoff!.lat,
+          dropoffLng: dropoff!.lng,
+          dropoffAddress: dropoff!.address,
+          vehicleType,
+        })
+        .then((r) => r.data),
+    onSuccess: async (trip: any) => {
+      setTripId(trip.id);
+      setStage('searching');
+      try {
+        const socket = await getSocket();
+        socketRef.current = socket;
+        socket.emit('join:trip', trip.id);
+        attachTripListeners(socket);
+      } catch {
+        Alert.alert('Connection issue', 'Could not connect for live updates — pull to refresh trip status.');
+      }
+    },
+    onError: (err: any) => {
+      Alert.alert('Could not request ride', getErrorMessage(err, 'Please try again.'));
+    },
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: () => api.patch(`/transport/trips/${tripId}/cancel`),
+    onSuccess: () => {
+      setStage('ended');
+      setEndedMessage('Ride cancelled.');
+    },
+    onError: (err: any) => {
+      Alert.alert('Could not cancel', getErrorMessage(err, 'Please try again.'));
+    },
+  });
+
+  function attachTripListeners(socket: Socket) {
+    socket.on('driver:matched', (payload: { driver: any; trip: any }) => {
+      setDriverInfo(payload.driver);
+      setStage('matched');
+    });
+    socket.on('driver:arrived', () => setStage('arrived'));
+    socket.on('trip:started', () => setStage('in_progress'));
+    socket.on('trip:completed', (payload: { driverEarnings: number }) => {
+      setCompletedFare(payload?.driverEarnings ?? null);
+      setStage('completed');
+      queryClient.invalidateQueries({ queryKey: ['wallet'] });
+    });
+    socket.on('trip:cancelled', () => {
+      setStage('ended');
+      setEndedMessage('The driver cancelled this ride.');
+    });
+    socket.on('trip:expired', () => {
+      setStage('ended');
+      setEndedMessage('No driver was found nearby. Please try again.');
+    });
+    socket.on('driver:location', (payload: { lat: number; lng: number }) => {
+      setDriverLocation({ lat: payload.lat, lng: payload.lng });
+    });
+  }
+
+  // Resume an in-progress trip (e.g. reopened from rider-dashboard) — hydrate real
+  // status from /transport/trips/me (no single-trip GET endpoint exists) then attach
+  // listeners for further live updates.
+  useEffect(() => {
+    if (!resumeTripId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetcher('/transport/trips/me');
+        const trips: any[] = res?.data ?? res ?? [];
+        const trip = trips.find((t) => t.id === resumeTripId);
+        if (cancelled) return;
+        if (trip) {
+          setStage(TRIP_STATUS_TO_STAGE[trip.status] ?? 'ended');
+          if (trip.driver) setDriverInfo(trip.driver);
+          if (trip.status === 'CANCELLED') setEndedMessage('This ride was cancelled.');
+          if (trip.status === 'EXPIRED') setEndedMessage('No driver was found for this ride.');
+        }
+        const socket = await getSocket();
+        if (cancelled) return;
+        socketRef.current = socket;
+        socket.emit('join:trip', resumeTripId);
+        attachTripListeners(socket);
+      } catch {
+        if (!cancelled) {
+          Alert.alert('Could not load ride', 'Please try again from My Rides.');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [resumeTripId]);
+
+  useEffect(() => {
+    return () => {
+      const socket = socketRef.current;
+      if (socket) {
+        socket.off('driver:matched');
+        socket.off('driver:arrived');
+        socket.off('trip:started');
+        socket.off('trip:completed');
+        socket.off('trip:cancelled');
+        socket.off('trip:expired');
+        socket.off('driver:location');
+      }
+    };
+  }, []);
+
+  function resetToForm() {
+    setStage('form');
+    setTripId(null);
+    setDriverInfo(null);
+    setDriverLocation(null);
+    setCompletedFare(null);
+    setEndedMessage(null);
+  }
+
+  const fare = fareData ? Number(fareData.fare ?? fareData.total ?? 0) : null;
 
   return (
-    <View style={styles.root}>
-      <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
-
-      {/* Map Layer */}
-      <MapLayer />
-
-      {/* Top Status Pill */}
-      <View
-        style={[
-          styles.statusPill,
-          { top: insets.top + 16 },
-        ]}
-      >
-        <LiveDot color={SUCCESS_TEXT} />
-        <Text style={styles.statusPillText}>Driver en route</Text>
-        <TouchableOpacity style={styles.bellBtn} activeOpacity={0.75}>
-          <Bell size={16} color={INK_MID} strokeWidth={1.8} />
+    <SafeAreaView style={styles.root} edges={['top']}>
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} accessibilityRole="button">
+          <X size={18} color={INK} />
         </TouchableOpacity>
+        <Text style={styles.headerTitle}>Request a ride</Text>
       </View>
 
-      {/* Bottom Sheet */}
-      <View style={[styles.bottomSheet, { paddingBottom: Math.max(insets.bottom, 20) + 20 }]}>
-        {/* Drag handle */}
-        <View style={styles.dragHandleRow}>
-          <View style={styles.dragHandle} />
-        </View>
+      {stage === 'form' && (
+        <ScrollView contentContainerStyle={styles.scroll}>
+          <TouchableOpacity style={styles.locationRow} onPress={() => setPickingField('pickup')} activeOpacity={0.8}>
+            <View style={[styles.locationDot, { backgroundColor: SUCCESS_TEXT }]} />
+            <Text style={styles.locationLabel} numberOfLines={1}>
+              {pickup?.address ?? 'Set pickup location'}
+            </Text>
+          </TouchableOpacity>
+          <View style={styles.locationDivider} />
+          <TouchableOpacity style={styles.locationRow} onPress={() => setPickingField('dropoff')} activeOpacity={0.8}>
+            <View style={[styles.locationDot, { backgroundColor: GOLD }]} />
+            <Text style={styles.locationLabel} numberOfLines={1}>
+              {dropoff?.address ?? 'Set destination'}
+            </Text>
+          </TouchableOpacity>
 
-        {/* ETA + Countdown Ring */}
-        <View style={styles.etaRow}>
-          {/* SVG ring */}
-          <View style={styles.ringWrapper}>
-            <Svg width={60} height={60} viewBox="0 0 60 60">
-              {/* Track */}
-              <Circle
-                cx={30}
-                cy={30}
-                r={26}
-                fill="none"
-                stroke="rgba(255,255,255,0.08)"
-                strokeWidth={4}
-              />
-              {/* Progress arc — strokeDashoffset 65 of 163.36 ≈ 60% filled */}
-              <Circle
-                cx={30}
-                cy={30}
-                r={26}
-                fill="none"
-                stroke={GOLD}
-                strokeWidth={4}
-                strokeDasharray={163.36}
-                strokeDashoffset={65}
-                strokeLinecap="round"
-                rotation={-90}
-                origin="30, 30"
-              />
-            </Svg>
-            <View style={styles.ringCenter}>
-              <Text style={styles.ringNumber}>4</Text>
-              <Text style={styles.ringUnit}>MIN</Text>
+          <Text style={styles.sectionLabel}>VEHICLE</Text>
+          <View style={styles.vehicleRow}>
+            {VEHICLES.map(({ type, label, Icon }) => {
+              const active = vehicleType === type;
+              return (
+                <TouchableOpacity
+                  key={type}
+                  style={[styles.vehicleCard, active && styles.vehicleCardActive]}
+                  onPress={() => setVehicleType(type)}
+                  activeOpacity={0.8}
+                >
+                  <Icon size={20} color={active ? '#050E0E' : GOLD} />
+                  <Text style={[styles.vehicleLabel, active && styles.vehicleLabelActive]}>{label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {canRequest && (
+            <View style={styles.fareBox}>
+              {fareLoading ? (
+                <ActivityIndicator color={GOLD} />
+              ) : fare != null ? (
+                <>
+                  <Text style={styles.fareLabel}>ESTIMATED FARE</Text>
+                  <Text style={styles.fareValue}>{fmtNGN(fare)}</Text>
+                </>
+              ) : (
+                <Text style={styles.fareLabel}>Could not estimate fare</Text>
+              )}
             </View>
-          </View>
+          )}
 
-          {/* Driver info */}
-          <View style={styles.etaInfo}>
-            <Text style={styles.etaKicker}>Arriving</Text>
-            <Text style={styles.etaName}>Babatunde · 4 min away</Text>
-            <Text style={styles.etaVehicle}>Toyota Corolla · ABC-123 KJA · Silver</Text>
-          </View>
-        </View>
+          <TouchableOpacity
+            style={[styles.ctaBtn, (!canRequest || requestMutation.isPending) && styles.ctaBtnDisabled]}
+            onPress={() => requestMutation.mutate()}
+            disabled={!canRequest || requestMutation.isPending}
+            activeOpacity={0.85}
+          >
+            {requestMutation.isPending ? (
+              <ActivityIndicator color="#050E0E" />
+            ) : (
+              <Text style={styles.ctaBtnText}>Request ride</Text>
+            )}
+          </TouchableOpacity>
+        </ScrollView>
+      )}
 
-        {/* Driver Row */}
-        <View style={styles.driverRow}>
-          {/* Avatar */}
-          <View style={styles.avatar}>
-            <Text style={styles.avatarInitials}>BO</Text>
-          </View>
+      {(stage === 'searching' || stage === 'matched' || stage === 'arrived' || stage === 'in_progress') && (
+        <View style={styles.statusScreen}>
+          {stage === 'searching' && (
+            <>
+              <ActivityIndicator color={GOLD} size="large" />
+              <Text style={styles.statusTitle}>Finding you a driver…</Text>
+              <Text style={styles.statusSub}>This usually takes under a minute.</Text>
+            </>
+          )}
+          {stage === 'matched' && (
+            <>
+              <Navigation size={40} color={GOLD} />
+              <Text style={styles.statusTitle}>Driver is on the way</Text>
+              {driverInfo?.licenceNumber && (
+                <Text style={styles.statusSub}>Licence {driverInfo.licenceNumber}</Text>
+              )}
+              {driverLocation && (
+                <Text style={styles.statusSub}>
+                  Driver location: {driverLocation.lat.toFixed(4)}, {driverLocation.lng.toFixed(4)}
+                </Text>
+              )}
+            </>
+          )}
+          {stage === 'arrived' && (
+            <>
+              <MapPin size={40} color={GOLD} />
+              <Text style={styles.statusTitle}>Your driver has arrived</Text>
+              <Text style={styles.statusSub}>Head to the pickup point.</Text>
+            </>
+          )}
+          {stage === 'in_progress' && (
+            <>
+              <Car size={40} color={GOLD} />
+              <Text style={styles.statusTitle}>Trip in progress</Text>
+              <Text style={styles.statusSub}>Enjoy your ride.</Text>
+            </>
+          )}
 
-          {/* Name + Rating */}
-          <View style={styles.driverInfo}>
-            <View style={styles.driverNameRow}>
-              <Text style={styles.driverName}>Babatunde Okafor</Text>
-              <View style={styles.ratingChip}>
-                <Text style={styles.ratingChipText}>4.9 ★ · 2,140 trips</Text>
-              </View>
-            </View>
-            <Text style={styles.driverSpoken}>Speaks Yoruba · English</Text>
-          </View>
-
-          {/* Action buttons */}
-          <View style={styles.driverActions}>
-            <TouchableOpacity style={styles.msgBtn} activeOpacity={0.75}>
-              <MessageCircle size={16} color={CREAM} strokeWidth={1.8} />
+          {(stage === 'searching' || stage === 'matched') && (
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={() => cancelMutation.mutate()}
+              disabled={cancelMutation.isPending}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.cancelBtnText}>
+                {cancelMutation.isPending ? 'Cancelling…' : 'Cancel ride'}
+              </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.callBtn} activeOpacity={0.75}>
-              <Phone size={16} color={SURFACE_DEEP} strokeWidth={2} />
-            </TouchableOpacity>
-          </View>
+          )}
         </View>
+      )}
 
-        {/* Trip Route */}
-        <View style={styles.tripRoute}>
-          {/* Origin */}
-          <View style={styles.routeRow}>
-            <View style={styles.routeDotGold} />
-            <Text style={styles.routePlace}>Sapon, Abeokuta</Text>
-            <Text style={styles.routeTime}>now</Text>
-          </View>
-
-          {/* Dashed connector */}
-          <View style={styles.routeConnector} />
-
-          {/* Destination */}
-          <View style={styles.routeRow}>
-            <View style={styles.routeSquareGold} />
-            <Text style={styles.routePlace}>Olumo Rock Tourist Centre</Text>
-            <Text style={styles.routePrice}>₦2,450</Text>
-          </View>
-        </View>
-
-        {/* Cancel Button */}
-        <View style={styles.cancelWrapper}>
-          <TouchableOpacity style={styles.cancelBtn} activeOpacity={0.75} onPress={() => router.back()}>
-            <X size={14} color={ERROR} strokeWidth={2} style={{ marginRight: 6 }} />
-            <Text style={styles.cancelText}>Cancel ride</Text>
+      {stage === 'completed' && (
+        <View style={styles.statusScreen}>
+          <Text style={styles.statusTitle}>Trip completed</Text>
+          {completedFare != null && (
+            <Text style={styles.statusSub}>Fare charged: {fmtNGN(completedFare)}</Text>
+          )}
+          <TouchableOpacity style={styles.ctaBtn} onPress={() => router.back()} activeOpacity={0.85}>
+            <Text style={styles.ctaBtnText}>Done</Text>
           </TouchableOpacity>
         </View>
-      </View>
-    </View>
+      )}
+
+      {stage === 'ended' && (
+        <View style={styles.statusScreen}>
+          <Text style={[styles.statusTitle, { color: ERROR_TEXT }]}>{endedMessage}</Text>
+          <TouchableOpacity style={styles.ctaBtn} onPress={resetToForm} activeOpacity={0.85}>
+            <Text style={styles.ctaBtnText}>Try again</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      <LocationPicker
+        visible={pickingField !== null}
+        title={pickingField === 'pickup' ? 'Set pickup location' : 'Set destination'}
+        onSelect={(loc) => {
+          if (pickingField === 'pickup') setPickup(loc);
+          else setDropoff(loc);
+          setPickingField(null);
+        }}
+        onClose={() => setPickingField(null)}
+      />
+    </SafeAreaView>
   );
 }
 
-// ── Styles ─────────────────────────────────────────
+// ── Styles ─────────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: '#0d2018',
+  root: { flex: 1, backgroundColor: SURFACE_DEEP },
+  header: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 20, paddingVertical: 14,
   },
+  backBtn: {
+    width: 36, height: 36, borderRadius: 12, backgroundColor: SURFACE_MID,
+    borderWidth: 1, borderColor: BORDER, alignItems: 'center', justifyContent: 'center',
+  },
+  headerTitle: { fontFamily: FONT_DISPLAY, fontSize: 20, color: CREAM },
+  scroll: { padding: 20, gap: 4 },
 
-  // ── Status pill ──────────────────────────
-  statusPill: {
-    position: 'absolute',
-    left: 20,
-    right: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(13,31,31,0.88)',
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: BORDER_MID,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    gap: 8,
+  locationRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: SURFACE_MID, borderWidth: 1, borderColor: BORDER,
+    borderRadius: 14, padding: 14,
   },
-  liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  statusPillText: {
-    flex: 1,
-    fontSize: 11,
-    fontWeight: '600',
-    color: SUCCESS_TEXT,
-    letterSpacing: 0.2,
-  },
-  bellBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(13,31,31,0.85)',
-    borderWidth: 1,
-    borderColor: BORDER_MID,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  locationDot: { width: 10, height: 10, borderRadius: 5 },
+  locationLabel: { flex: 1, fontSize: 14, color: INK, fontWeight: '600' },
+  locationDivider: { width: 1, height: 14, backgroundColor: BORDER_MID, marginLeft: 24 },
 
-  // ── Bottom sheet ─────────────────────────
-  bottomSheet: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: SURFACE_MID,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderWidth: 1,
-    borderBottomWidth: 0,
-    borderColor: BORDER,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -8 },
-    shadowOpacity: 0.45,
-    shadowRadius: 24,
-    elevation: 24,
+  sectionLabel: {
+    fontFamily: FONT_MONO, fontSize: 10, fontWeight: '600', letterSpacing: 1.6,
+    color: GOLD, textTransform: 'uppercase', marginTop: 24, marginBottom: 10,
   },
-  dragHandleRow: {
-    alignItems: 'center',
-    paddingTop: 10,
-    paddingBottom: 4,
+  vehicleRow: { flexDirection: 'row', gap: 8 },
+  vehicleCard: {
+    flex: 1, alignItems: 'center', gap: 6, paddingVertical: 14,
+    backgroundColor: SURFACE_MID, borderWidth: 1, borderColor: BORDER, borderRadius: 14,
   },
-  dragHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: BORDER,
-  },
+  vehicleCardActive: { backgroundColor: GOLD, borderColor: GOLD },
+  vehicleLabel: { fontSize: 11, fontWeight: '600', color: INK_MID },
+  vehicleLabelActive: { color: '#050E0E' },
 
-  // ── ETA row ──────────────────────────────
-  etaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    paddingHorizontal: 20,
-    paddingTop: 14,
+  fareBox: {
+    marginTop: 24, alignItems: 'center', backgroundColor: SURFACE_ELEV,
+    borderWidth: 1, borderColor: GOLD_LINE, borderRadius: 14, padding: 18, gap: 4,
   },
-  ringWrapper: {
-    width: 60,
-    height: 60,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ringCenter: {
-    position: 'absolute',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ringNumber: {
-    fontFamily: FONT_MONO,
-    fontSize: 16,
-    color: GOLD,
-    lineHeight: 18,
-  },
-  ringUnit: {
-    fontFamily: FONT_MONO,
-    fontSize: 8,
-    color: INK_MID,
-    letterSpacing: 0.5,
-  },
-  etaInfo: {
-    flex: 1,
-    gap: 2,
-  },
-  etaKicker: {
-    fontFamily: FONT_MONO,
-    fontSize: 9.5,
-    color: GOLD,
-    letterSpacing: 1.6,
-    textTransform: 'uppercase',
-  },
-  etaName: {
-    fontFamily: FONT_DISPLAY,
-    fontSize: 20,
-    color: CREAM,
-    lineHeight: 22,
-    marginTop: 4,
-  },
-  etaVehicle: {
-    fontSize: 11.5,
-    color: INK_MID,
-    marginTop: 3,
-  },
+  fareLabel: { fontFamily: FONT_MONO, fontSize: 10, color: INK_MID, letterSpacing: 1.4 },
+  fareValue: { fontFamily: FONT_DISPLAY, fontSize: 30, color: GOLD },
 
-  // ── Driver row ───────────────────────────
-  driverRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginHorizontal: 20,
-    marginTop: 14,
-    backgroundColor: SURFACE_DEEP,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 14,
-    padding: 12,
-    paddingHorizontal: 14,
+  ctaBtn: {
+    marginTop: 28, height: 52, borderRadius: 14, backgroundColor: GOLD,
+    alignItems: 'center', justifyContent: 'center',
   },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: SURFACE_ELEV,
-    borderWidth: 2,
-    borderColor: GOLD,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitials: {
-    fontFamily: FONT_DISPLAY,
-    fontSize: 16,
-    color: CREAM,
-  },
-  driverInfo: {
-    flex: 1,
-    gap: 3,
-  },
-  driverNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  driverName: {
-    fontSize: 13.5,
-    fontWeight: '700',
-    color: INK,
-  },
-  ratingChip: {
-    backgroundColor: 'rgba(42,139,82,0.22)',
-    borderRadius: 6,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-  },
-  ratingChipText: {
-    fontSize: 10.5,
-    color: '#7DD49E',
-    fontWeight: '500',
-  },
-  driverSpoken: {
-    fontSize: 11,
-    color: INK_MID,
-  },
-  driverActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  msgBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    backgroundColor: FOREST,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  callBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    backgroundColor: GOLD,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  ctaBtnDisabled: { opacity: 0.45 },
+  ctaBtnText: { fontSize: 16, fontWeight: '700', color: '#050E0E' },
 
-  // ── Trip route ───────────────────────────
-  tripRoute: {
-    marginHorizontal: 20,
-    marginTop: 14,
-    backgroundColor: SURFACE_DEEP,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 14,
-    padding: 12,
-    paddingHorizontal: 14,
-  },
-  routeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  routeDotGold: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: GOLD,
-  },
-  routeSquareGold: {
-    width: 8,
-    height: 8,
-    borderRadius: 1,
-    backgroundColor: GOLD,
-  },
-  routePlace: {
-    flex: 1,
-    fontSize: 12.5,
-    color: INK,
-  },
-  routeTime: {
-    fontSize: 10.5,
-    color: INK_MID,
-  },
-  routePrice: {
-    fontFamily: FONT_MONO,
-    fontSize: 12.5,
-    color: GOLD,
-  },
-  routeConnector: {
-    height: 14,
-    marginLeft: 3.5,
-    borderLeftWidth: 1,
-    borderLeftColor: GOLD_LINE,
-    borderStyle: 'dashed',
-    marginVertical: 3,
-  },
-
-  // ── Cancel button ────────────────────────
-  cancelWrapper: {
-    paddingHorizontal: 20,
-    paddingTop: 14,
-  },
+  statusScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 40 },
+  statusTitle: { fontFamily: FONT_DISPLAY, fontSize: 22, color: CREAM, textAlign: 'center' },
+  statusSub: { fontSize: 13, color: INK_MID, textAlign: 'center' },
   cancelBtn: {
-    height: 46,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: 'transparent',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    marginTop: 24, borderWidth: 1, borderColor: GOLD_LINE, borderRadius: 12,
+    paddingHorizontal: 20, paddingVertical: 12,
   },
-  cancelText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: ERROR,
-  },
+  cancelBtnText: { fontSize: 13, fontWeight: '700', color: GOLD },
 });

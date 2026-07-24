@@ -17,6 +17,7 @@ import { SendgridService } from '../../common/services/sendgrid.service';
 import { QrService } from '../../common/services/qr.service';
 import { ImageService } from '../../common/services/image.service';
 import { SettlementService } from '../../common/services/settlement.service';
+import { NotificationsClientService } from '../notifications-client/notifications-client.service';
 import { VisitorLogService } from '../../common/services/visitor-log.service';
 import { DEFAULT_VISITOR_PURPOSE } from '../../common/constants/visitor-purpose.constants';
 import { CreateEventDto } from './dto/create-event.dto';
@@ -44,6 +45,7 @@ export class EventsService implements OnModuleInit {
     private kafka: KafkaService,
     private settlementService: SettlementService,
     private visitorLogService: VisitorLogService,
+    private notifications: NotificationsClientService,
   ) {}
 
   async onModuleInit() {
@@ -315,6 +317,21 @@ export class EventsService implements OnModuleInit {
           date: ticket.ticketType.event.startDate,
           venue: ticket.ticketType.event.venue,
         });
+      }
+
+      // Push notification (best-effort) — same "genuine first settlement only" guard as
+      // the email above, so a replayed webhook never double-notifies the buyer.
+      if (settlementResult.status === 'SETTLED') {
+        try {
+          await this.notifications.sendPush(
+            ticket.userId,
+            'Ticket confirmed',
+            `Your ticket for ${ticket.ticketType.event.title} is confirmed`,
+            { type: 'ticket_purchased', eventId: String(ticket.ticketType.eventId), ticketId: ticket.id },
+          );
+        } catch (err: any) {
+          this.logger.error(`handleTicketPayment push notification failed for ticket ${ticket.id}: ${err.message}`);
+        }
       }
     } catch (err) {
       this.logger.error(`handleTicketPayment failed for ref ${payload.reference}`, err.message);

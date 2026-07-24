@@ -4,6 +4,7 @@ import { WalletService } from '../wallet.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { PaystackService } from '../../../common/services/paystack.service';
 import { RedisService } from '../../../redis/redis.service';
+import { NotificationsClientService } from '../../notifications-client/notifications-client.service';
 
 const USER_ID = 'user-001';
 const WALLET_ID = 'wallet-001';
@@ -47,7 +48,7 @@ const mockUserSmileVerified = {
 
 const mockPrisma = {
   wallet: { findUnique: jest.fn(), update: jest.fn() },
-  user: { findUnique: jest.fn() },
+  user: { findUnique: jest.fn(), findFirst: jest.fn() },
   booking: { aggregate: jest.fn() },
   transaction: { findMany: jest.fn(), aggregate: jest.fn(), create: jest.fn(), update: jest.fn() },
   platformConfig: { findMany: jest.fn() },
@@ -66,6 +67,7 @@ const mockTx = {
 
 const mockPaystack = { initiatePayment: jest.fn() };
 const mockRedis = { setNx: jest.fn().mockResolvedValue(true), del: jest.fn().mockResolvedValue(1) };
+const mockNotifications = { sendPush: jest.fn().mockResolvedValue({ sent: true }) };
 
 describe('WalletService', () => {
   let service: WalletService;
@@ -85,6 +87,7 @@ describe('WalletService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: PaystackService, useValue: mockPaystack },
         { provide: RedisService, useValue: mockRedis },
+        { provide: NotificationsClientService, useValue: mockNotifications },
       ],
     }).compile();
     service = module.get<WalletService>(WalletService);
@@ -314,6 +317,34 @@ describe('WalletService', () => {
       const result = await service.getBalance(USER_ID);
       expect(result.daily_limit_ngn).toBe(50000);
       expect(result.kyc_tier).toBe(1);
+    });
+  });
+
+  // ── resolveRecipient ─────────────────────────────────────────────────────────
+
+  describe('resolveRecipient', () => {
+    it('returns userId + firstName for a phone that matches a real user', async () => {
+      mockPrisma.user.findFirst.mockResolvedValue({ id: 'user-002', firstName: 'Ada' });
+
+      const result = await service.resolveRecipient(USER_ID, '+2348012345678');
+
+      expect(mockPrisma.user.findFirst).toHaveBeenCalledWith({
+        where: { phone: '+2348012345678', deletedAt: null },
+        select: { id: true, firstName: true },
+      });
+      expect(result).toEqual({ userId: 'user-002', firstName: 'Ada', phone: '+2348012345678' });
+    });
+
+    it('throws NotFoundException when no user has that phone number', async () => {
+      mockPrisma.user.findFirst.mockResolvedValue(null);
+
+      await expect(service.resolveRecipient(USER_ID, '+2348099999999')).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws BadRequestException when resolving to your own phone number', async () => {
+      mockPrisma.user.findFirst.mockResolvedValue({ id: USER_ID, firstName: 'Self' });
+
+      await expect(service.resolveRecipient(USER_ID, '+2348012345678')).rejects.toThrow(BadRequestException);
     });
   });
 });

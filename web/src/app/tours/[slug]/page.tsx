@@ -10,7 +10,7 @@ import { fetcher } from '@/lib/api';
 import { ItineraryTimeline } from '@/components/tours/ItineraryTimeline';
 import { TourBookingForm } from '@/components/tours/TourBookingForm';
 import {
-  MapPin, Users, Clock, Star, ArrowLeft, Map, Check,
+  MapPin, Users, Clock, Star, ArrowLeft, Map,
 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -131,8 +131,7 @@ export default function TourDetailPage() {
     ),
   ];
 
-  const itinerary: any[] = tour.itinerary ?? [];
-  const highlights: string[] = tour.highlights ?? [];
+  const itinerary: any[] = tour.itineraryTemplate ?? [];
   const guideFullName = tour.tourGuide
     ? `${tour.tourGuide.user.firstName} ${tour.tourGuide.user.lastName}`
     : null;
@@ -240,31 +239,6 @@ export default function TourDetailPage() {
                 </section>
               )}
 
-              {/* Highlights */}
-              {highlights.length > 0 && (
-                <>
-                  <hr className="border-white/8" />
-                  <section>
-                    <h2 className="text-lg font-extrabold text-white mb-3">
-                      What&apos;s included
-                    </h2>
-                    <ul className="space-y-2.5">
-                      {highlights.map((h: string) => (
-                        <li
-                          key={h}
-                          className="flex items-start gap-2.5 text-sm text-white/80"
-                        >
-                          <div className="w-6 h-6 rounded-lg bg-forest/20 border border-forest/30 flex items-center justify-center mt-0.5 shrink-0">
-                            <Check size={13} className="text-forest-light" />
-                          </div>
-                          <span className="leading-relaxed">{h}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-                </>
-              )}
-
               {/* Itinerary */}
               {itinerary.length > 0 && (
                 <>
@@ -278,23 +252,6 @@ export default function TourDetailPage() {
                 </>
               )}
 
-              {/* Meeting point */}
-              {tour.meetingPoint && (
-                <>
-                  <hr className="border-white/8" />
-                  <section>
-                    <h2 className="text-lg font-extrabold text-white mb-3">
-                      Meeting point
-                    </h2>
-                    <div className="aspect-[16/9] rounded-2xl bg-jungle-3 border border-white/10 flex flex-col items-center justify-center text-center px-6 py-8">
-                      <MapPin size={32} className="text-forest-light/60 mb-3" />
-                      <p className="text-white/85 text-sm font-semibold">
-                        {tour.meetingPoint}
-                      </p>
-                    </div>
-                  </section>
-                </>
-              )}
             </div>
 
             {/* ── Right column (booking) ─────────────────────────── */}

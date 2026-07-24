@@ -11,6 +11,7 @@ import { CreatePropertyDto } from './dto/create-property.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { CreateReviewDto } from './dto/create-review.dto';
+import { CreateMembershipDto } from './dto/create-membership.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -102,6 +103,18 @@ export class StaysController {
   ) {
     return this.staysService.createBooking(user.userId, propertyId, dto);
   }
+
+  @Post(':id/memberships')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Sign up for a MEMBERSHIP-mode property — recurring monthly billing via saved card' })
+  createMembership(
+    @Param('id') propertyId: string,
+    @CurrentUser() user: any,
+    @Body() dto: CreateMembershipDto,
+  ) {
+    return this.staysService.createMembership(user.userId, propertyId, dto);
+  }
 }
 
 @ApiTags('bookings')
@@ -128,5 +141,27 @@ export class BookingsController {
     @Body() dto: CreateReviewDto,
   ) {
     return this.staysService.createReview(bookingId, user.userId, dto);
+  }
+}
+
+@ApiTags('memberships')
+@Controller('memberships')
+export class MembershipsController {
+  constructor(private readonly staysService: StaysService) {}
+
+  @Get('mine')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List the current user’s memberships with property details' })
+  findMyMemberships(@CurrentUser() user: any) {
+    return this.staysService.findMyMemberships(user.userId);
+  }
+
+  @Patch(':id/cancel')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Cancel a membership — no further renewal charges' })
+  cancelMembership(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.staysService.cancelMembership(id, user.userId);
   }
 }

@@ -35,7 +35,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { ChevronLeft, Heart, Minus, Plus } from 'lucide-react-native';
 
-import { fetcher } from '../../lib/api';
+import { fetcher, getErrorMessage } from '../../lib/api';
 import { useCartStore, useCartDrawerStore } from '../../lib/cart-store';
 import { PressableScale } from '../../components/ui/PressableScale';
 import { Chip } from '../../components/ui/Chip';
@@ -123,7 +123,7 @@ export default function ProductDetailScreen(): JSX.Element {
       <View style={[styles.root, styles.centered, { paddingHorizontal: SPACE_6 }]}>
         <Text style={styles.errorTitle}>Product unavailable</Text>
         <Text style={styles.errorBody}>
-          {(error as any)?.response?.data?.message ?? 'We could not load this product. Please try again.'}
+          {getErrorMessage(error, 'We could not load this product. Please try again.')}
         </Text>
         <PressableScale onPress={() => router.back()} style={styles.errorBtn}>
           <Text style={styles.errorBtnText}>Go back</Text>

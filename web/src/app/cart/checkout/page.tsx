@@ -44,8 +44,10 @@ export default function CheckoutPage() {
     () => items.reduce((sum, i) => sum + i.price * i.quantity, 0),
     [items],
   );
-  const serviceFee = Math.round(subtotal * 0.05);
-  const total = subtotal + serviceFee;
+  // Marketplace charges exactly the item subtotal — platform/govt fees are deducted from
+  // the vendor's payout server-side (marketplace.service.ts createOrder), never added on
+  // top of what the buyer pays. No fee line here would be real, so there isn't one.
+  const total = subtotal;
 
   const placeOrder = useMutation({
     mutationFn: () =>
@@ -185,7 +187,6 @@ export default function CheckoutPage() {
               {/* Totals */}
               <div className="mt-5 pt-5 border-t border-white/8 space-y-2 text-sm">
                 <Row label="Subtotal" value={fmtNGN(subtotal)} />
-                <Row label="Service fee (5%)" value={fmtNGN(serviceFee)} muted />
                 <div className="flex items-center justify-between pt-3 mt-1 border-t border-white/8">
                   <span className="text-white font-bold text-base">Total</span>
                   <span className="text-gold font-black text-xl">{fmtNGN(total)}</span>

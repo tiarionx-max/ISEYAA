@@ -8,6 +8,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { OtpChannel } from '../../common/enums/otp-channel.enum';
+import { UpdateUserDto } from './dto/update-user.dto';
 
 const USER_SELECT = {
   id: true,
@@ -191,10 +192,7 @@ export class UsersService {
     return user;
   }
 
-  async update(
-    id: string,
-    data: { firstName?: string; lastName?: string; avatarUrl?: string; lgaId?: string },
-  ) {
+  async update(id: string, data: UpdateUserDto) {
     return this.prisma.user.update({ where: { id }, data, select: USER_SELECT });
   }
 }

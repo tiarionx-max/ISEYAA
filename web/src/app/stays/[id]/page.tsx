@@ -119,10 +119,11 @@ function NightlyForm({
     return Math.max(0, Math.round(diff));
   }, [checkIn, checkOut]);
 
+  // Booking charges exactly pricePerNight × nights — the Ministry levy split is deducted
+  // from the host's payout server-side (stays.service.ts resolveSplit/releaseEscrow),
+  // never added on top of what the guest pays. No fee line here would be real.
   const subtotal = nights * Number(property.pricePerNight ?? 0);
-  const serviceFee = Math.round(subtotal * 0.05);
-  const tourismLevy = Math.round(subtotal * 0.02);
-  const total = subtotal + serviceFee + tourismLevy;
+  const total = subtotal;
 
   return (
     <>
@@ -166,8 +167,6 @@ function NightlyForm({
       {nights > 0 && (
         <div className="mt-4 pt-4 border-t border-white/8 space-y-2 text-sm">
           <Row label={`${fmtNGN(property.pricePerNight)} × ${nights} night${nights !== 1 ? 's' : ''}`} value={fmtNGN(subtotal)} />
-          <Row label="Service fee (5%)" value={fmtNGN(serviceFee)} />
-          <Row label="Tourism levy (2%)" value={fmtNGN(tourismLevy)} />
           <div className="flex items-center justify-between pt-3 mt-2 border-t border-white/8">
             <span className="text-white font-bold">Total</span>
             <span className="text-gold font-black text-lg">{fmtNGN(total)}</span>
@@ -377,7 +376,7 @@ function MembershipForm({
   signedIn,
 }: {
   property: any;
-  onSubmit: (args: BookingArgs) => void;
+  onSubmit: () => void;
   pending: boolean;
   signedIn: boolean;
 }) {
@@ -409,28 +408,17 @@ function MembershipForm({
         </div>
       )}
 
-      {/* TODO: replace this stay-booking POST with a proper /memberships endpoint
-          once the backend exposes one. For now we reuse the bookings flow so
-          members still get a Paystack payment URL. */}
       <SubmitButton
         signedIn={signedIn}
         pending={pending}
         disabled={false}
-        onClick={() => {
-          const start = new Date();
-          const end = new Date(start.getTime() + 30 * 86_400_000);
-          onSubmit({
-            checkIn: start.toISOString(),
-            checkOut: end.toISOString(),
-            guests: 1,
-          });
-        }}
+        onClick={onSubmit}
       >
         Become a member
       </SubmitButton>
 
       <p className="text-[10px] text-white/30 text-center mt-3 leading-relaxed">
-        Cancel anytime · Charges renew monthly via wallet auto-debit
+        Cancel anytime · Charges renew monthly via your saved card
       </p>
     </>
   );
@@ -520,6 +508,23 @@ export default function PropertyDetailPage() {
     onError: (err: any) => {
       const msg = err?.response?.data?.message;
       toast.error(Array.isArray(msg) ? msg.join(', ') : msg ?? 'Booking failed. Please try again.');
+    },
+  });
+
+  const joinMembership = useMutation({
+    mutationFn: () =>
+      api
+        .post(`/properties/${id}/memberships`, { email: session?.user?.email })
+        .then((r) => r.data),
+    onSuccess: (data) => {
+      toast.success('Membership created. Check your dashboard for details.');
+      if (data?.payment?.authorizationUrl) {
+        window.open(data.payment.authorizationUrl, '_blank');
+      }
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.message;
+      toast.error(Array.isArray(msg) ? msg.join(', ') : msg ?? 'Membership sign-up failed. Please try again.');
     },
   });
 
@@ -754,8 +759,8 @@ export default function PropertyDetailPage() {
                 {mode === 'MEMBERSHIP' && (
                   <MembershipForm
                     property={property}
-                    onSubmit={(args) => book.mutate(args)}
-                    pending={book.isPending}
+                    onSubmit={() => joinMembership.mutate()}
+                    pending={joinMembership.isPending}
                     signedIn={!!session}
                   />
                 )}

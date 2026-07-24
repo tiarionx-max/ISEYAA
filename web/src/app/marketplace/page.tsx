@@ -335,7 +335,7 @@ function VendorSignup({ variant }: { variant: 'sidebar' | 'modal' }) {
 
   const join = useMutation({
     mutationFn: (payload: { email?: string; phone?: string; fullName?: string }) =>
-      api.post('/waitlist', { source: 'vendor_marketplace', ...payload }).then((r) => r.data),
+      api.post('/waitlist', { source: 'marketplace_web', ...payload }).then((r) => r.data),
     onSuccess: () => {
       setJoined(true);
       toast.success("You're on the vendor list — we'll be in touch.");

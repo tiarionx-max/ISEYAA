@@ -60,4 +60,7 @@ async function bootstrap() {
   }
 }
 
-bootstrap();
+bootstrap().catch((err) => {
+  console.error('FATAL: backend failed to start:', err.message ?? err);
+  process.exit(1);
+});

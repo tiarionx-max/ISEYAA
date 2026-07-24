@@ -1,10 +1,24 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { SettlementService } from '../../common/services/settlement.service';
 import { UpdateSplitTierDto } from './dto/update-split-tier.dto';
+import { CreateSplitTierDto } from './dto/create-split-tier.dto';
+
+// Orders sit in PENDING from creation until the Paystack webhook fires
+// (marketplace.service.ts handleOrderPayment) and settle() fans the charge
+// out to vendor/ministry/platform wallets. Only PROCESSING/SHIPPED/DELIVERED
+// represent money that was actually collected — PENDING is an abandoned or
+// in-flight checkout (never charged) and CANCELLED/REFUNDED never resulted
+// in retained revenue. Counting PENDING rows here would report un-collected
+// cart totals as "revenue".
+const PAID_ORDER_STATUSES = ['PROCESSING', 'SHIPPED', 'DELIVERED'] as const;
 
 @Injectable()
 export class AdminService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private settlementService: SettlementService,
+  ) {}
 
   // ── Dashboard ──────────────────────────────────────────────────────────────
 
@@ -18,41 +32,66 @@ export class AdminService {
       activeEvents,
       pendingVendors,
       pendingEvents,
-      revenueResult,
-      walletGtv,
+      ministryWallet,
     ] = await Promise.all([
       this.prisma.user.count({ where: { deletedAt: null } }),
       this.prisma.user.count({ where: { deletedAt: null, updatedAt: { gte: todayStart } } }),
       this.prisma.event.count({ where: { deletedAt: null, status: 'PUBLISHED' } }),
       this.prisma.vendor.count({ where: { deletedAt: null, status: 'PENDING' } }),
       this.prisma.event.count({ where: { deletedAt: null, status: 'PENDING_APPROVAL' } }),
-      this.prisma.order.aggregate({
-        where: { deletedAt: null },
-        _sum: { totalAmount: true },
-      }),
-      this.prisma.transaction.aggregate({
-        where: { deletedAt: null, type: 'CREDIT', status: 'SUCCESS' },
-        _sum: { amount: true },
-      }),
+      this.settlementService.resolveMinistryWallet(),
+    ]);
+
+    const [govtRevenueResult, walletGtvRows] = await Promise.all([
+      // "Government Revenue" = actual govt levy collected, i.e. SUCCESS credits
+      // to the standing Ministry wallet across EVERY settled module (marketplace,
+      // stays, tour, studio, events, transport, delivery) — mirrors
+      // MinistryService.getRevenueToGovernment()'s ledger-based computation.
+      // Previously this summed Order.totalAmount (gross marketplace order value,
+      // not levy, and ignoring 6 of 7 revenue-generating modules, and including
+      // unpaid PENDING orders) — a mislabeled and badly incomplete number.
+      ministryWallet
+        ? this.prisma.transaction.aggregate({
+            where: { walletId: ministryWallet.id, type: 'CREDIT', status: 'SUCCESS', deletedAt: null },
+            _sum: { amount: true },
+          })
+        : Promise.resolve({ _sum: { amount: null as number | null } }),
+      // Wallet GTV: sum of settlement-driven CREDIT transactions (vendor + ministry
+      // + platform shares) across all modules, EXCLUDING wallet top-ups
+      // (metadata.module = 'wallet'). A top-up funds a wallet; it isn't itself a
+      // transacted value. Including both the top-up credit AND the later
+      // settlement credit generated when that same balance is spent double-counts
+      // the same money — this was silently inflating "Total transaction volume".
+      this.prisma.$queryRaw<{ total: number | null }[]>`
+        SELECT COALESCE(SUM(amount), 0) AS total
+        FROM transactions
+        WHERE type = 'CREDIT' AND status = 'SUCCESS' AND "deletedAt" IS NULL
+          AND (metadata->>'module' IS DISTINCT FROM 'wallet')
+      `,
     ]);
 
     return {
       total_users: totalUsers,
       dau,
-      total_revenue: Number(revenueResult._sum.totalAmount ?? 0),
+      total_revenue: Number(govtRevenueResult._sum.amount ?? 0),
       active_events: activeEvents,
       pending_approvals: pendingVendors + pendingEvents,
-      wallet_gtv: Number(walletGtv._sum.amount ?? 0),
+      wallet_gtv: Number(walletGtvRows[0]?.total ?? 0),
     };
   }
 
   // ── Revenue ────────────────────────────────────────────────────────────────
 
   async getRevenue() {
+    // Only PROCESSING/SHIPPED/DELIVERED orders were actually charged (webhook-
+    // confirmed via handleOrderPayment). PENDING orders carry a pre-computed
+    // govtLevy projection set at checkout time but were never paid; CANCELLED/
+    // REFUNDED orders never resulted in retained levy. The previous `status !=
+    // 'CANCELLED'` filter let unpaid PENDING carts inflate every figure below.
     const [govtLevyResult, byLga, byVendorStatus, byMonth] = await Promise.all([
       // Total govt levy collected
       this.prisma.order.aggregate({
-        where: { deletedAt: null, status: { not: 'CANCELLED' } },
+        where: { deletedAt: null, status: { in: [...PAID_ORDER_STATUSES] } },
         _sum: { govtLevy: true },
       }),
 
@@ -62,7 +101,7 @@ export class AdminService {
         FROM orders o
         JOIN vendors v ON o."vendorId" = v.id
         JOIN lgas l ON v."lgaId" = l.id
-        WHERE o."deletedAt" IS NULL AND o.status != 'CANCELLED'
+        WHERE o."deletedAt" IS NULL AND o.status IN ('PROCESSING', 'SHIPPED', 'DELIVERED')
         GROUP BY l.id, l.name
         ORDER BY total DESC
       `,
@@ -72,7 +111,7 @@ export class AdminService {
         SELECT v.status, COALESCE(SUM(o."govtLevy"), 0) AS total
         FROM orders o
         JOIN vendors v ON o."vendorId" = v.id
-        WHERE o."deletedAt" IS NULL AND o.status != 'CANCELLED'
+        WHERE o."deletedAt" IS NULL AND o.status IN ('PROCESSING', 'SHIPPED', 'DELIVERED')
         GROUP BY v.status
         ORDER BY total DESC
       `,
@@ -83,7 +122,7 @@ export class AdminService {
                COALESCE(SUM(o."govtLevy"), 0) AS total
         FROM orders o
         WHERE o."deletedAt" IS NULL
-          AND o.status != 'CANCELLED'
+          AND o.status IN ('PROCESSING', 'SHIPPED', 'DELIVERED')
           AND o."createdAt" >= NOW() - INTERVAL '12 months'
         GROUP BY month
         ORDER BY month ASC
@@ -177,6 +216,34 @@ export class AdminService {
     return this.prisma.settlementSplitTier.findMany({
       where: module ? { module } : undefined,
       orderBy: [{ module: 'asc' }, { effectiveFrom: 'desc' }],
+    });
+  }
+
+  async createSplitTier(dto: CreateSplitTierDto) {
+    const tierName = dto.tierName ?? 'default';
+    const existing = await this.prisma.settlementSplitTier.findFirst({
+      where: { module: dto.module, tierName, isActive: true },
+    });
+    if (existing) {
+      throw new BadRequestException(
+        `An active split tier already exists for module="${dto.module}" tierName="${tierName}" — use PATCH settlement-splits/:id to update it instead`,
+      );
+    }
+
+    if (dto.earnerPct + dto.ministryPct + (dto.platformPct ?? 0) > 1) {
+      throw new BadRequestException('Settlement split percentages must not exceed 1.0 in total');
+    }
+
+    return this.prisma.settlementSplitTier.create({
+      data: {
+        module: dto.module,
+        tierName,
+        earnerPct: dto.earnerPct,
+        ministryPct: dto.ministryPct,
+        platformPct: dto.platformPct ?? null,
+        isActive: true,
+        effectiveFrom: new Date(),
+      },
     });
   }
 

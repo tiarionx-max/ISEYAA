@@ -8,7 +8,7 @@ async function bootstrap() {
     transport: Transport.GRPC,
     options: {
       package: 'marketplace',
-      protoPath: join(__dirname, '../../../../packages/proto/marketplace.proto'),
+      protoPath: join(__dirname, '../../../../../packages/proto/marketplace.proto'),
       url: '0.0.0.0:5005',
     },
   });

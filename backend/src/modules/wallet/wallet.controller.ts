@@ -5,6 +5,8 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { WalletService } from './wallet.service';
 import { TransferDto } from './dto/transfer.dto';
+import { ResolveRecipientDto } from './dto/resolve-recipient.dto';
+import { TopupDto } from './dto/topup.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
@@ -43,7 +45,7 @@ export class WalletController {
 
   @Post('topup')
   @ApiOperation({ summary: 'Initiate wallet topup via Paystack (CBN daily limits enforced)' })
-  topup(@CurrentUser() user: any, @Body() body: { amount: number; email: string }) {
+  topup(@CurrentUser() user: any, @Body() body: TopupDto) {
     return this.walletService.initiateTopup(user.userId, body);
   }
 
@@ -51,5 +53,11 @@ export class WalletController {
   @ApiOperation({ summary: 'Transfer wallet balance to another user by phone number' })
   transfer(@CurrentUser() user: any, @Body() dto: TransferDto) {
     return this.walletService.transfer(user.userId, dto);
+  }
+
+  @Get('resolve-recipient')
+  @ApiOperation({ summary: 'Resolve a phone number to a display name before sending a transfer' })
+  resolveRecipient(@CurrentUser() user: any, @Query() query: ResolveRecipientDto) {
+    return this.walletService.resolveRecipient(user.userId, query.phone);
   }
 }

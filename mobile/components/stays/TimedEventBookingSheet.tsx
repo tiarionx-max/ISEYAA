@@ -117,8 +117,22 @@ export function TimedEventBookingSheet({
     if (!email && defaultEmail) setEmail(defaultEmail);
   }, [defaultEmail, email]);
 
-  const slots = DEFAULT_SLOTS;
-  const slot = slots[selectedSlotIndex];
+  // Use the property's real time slots if the host has configured them; otherwise fall
+  // back to a generic 3-slot day (clearly not property-specific data).
+  const slots: Slot[] = useMemo(() => {
+    const raw = property.timeSlots;
+    if (Array.isArray(raw) && raw.length > 0) {
+      const valid = raw.filter(
+        (s: any) =>
+          s && typeof s.label === 'string' &&
+          Number.isInteger(s.startHour) && Number.isInteger(s.startMin) &&
+          Number.isInteger(s.endHour) && Number.isInteger(s.endMin),
+      );
+      if (valid.length > 0) return valid as Slot[];
+    }
+    return DEFAULT_SLOTS;
+  }, [property.timeSlots]);
+  const slot = slots[Math.min(selectedSlotIndex, slots.length - 1)];
 
   const maxGuests = property.maxGuests ?? 32;
   const pricePerHour = property.pricePerHour != null ? Number(property.pricePerHour) : null;

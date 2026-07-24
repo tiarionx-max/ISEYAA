@@ -32,6 +32,7 @@ import { DeliveryModule } from './modules/delivery/delivery.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { WaitlistClientModule } from './modules/waitlist-client/waitlist-client.module';
 import { NewsClientModule } from './modules/news-client/news-client.module';
+import { NewsAdminModule } from './modules/news/news-admin.module';
 import { SearchModule } from './search/search.module';
 import { HealthModule } from './health/health.module';
 import { KafkaModule } from './kafka/kafka.module';
@@ -70,6 +71,7 @@ import { KafkaModule } from './kafka/kafka.module';
     WebhooksModule,
     WaitlistClientModule,
     NewsClientModule,
+    NewsAdminModule,
     SearchModule,
     HealthModule,
     KafkaModule,

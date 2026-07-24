@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
 import { ClientGrpc } from '@nestjs/microservices';
 import { firstValueFrom } from 'rxjs';
 import { notifications } from '@iseyaa/proto';
@@ -43,12 +43,34 @@ export class NotificationsClientService implements OnModuleInit {
     return cfg?.value !== false;
   }
 
-  // D-03: local no-op stub — no proto RPC exists for this, no network call. There is no
-  // persistence behind it today in the in-process NotificationsService either
-  // (// TODO: persistence not yet wired), so there's nothing to fetch from the extracted
-  // service.
-  async listForUser(_userId: string): Promise<any[]> {
-    return [];
+  // D-03: reads directly against the shared Postgres — no proto RPC exists for this (a
+  // plain read doesn't need cross-process routing), matching the same reasoning for
+  // markRead/markAllRead below.
+  async listForUser(userId: string) {
+    return this.prisma.notification.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+  }
+
+  async markRead(userId: string, notificationId: string) {
+    const notification = await this.prisma.notification.findFirst({
+      where: { id: notificationId, userId },
+    });
+    if (!notification) throw new NotFoundException('Notification not found');
+    return this.prisma.notification.update({
+      where: { id: notificationId },
+      data: { readAt: new Date() },
+    });
+  }
+
+  async markAllRead(userId: string) {
+    const { count } = await this.prisma.notification.updateMany({
+      where: { userId, readAt: null },
+      data: { readAt: new Date() },
+    });
+    return { updated: count };
   }
 
   async registerToken(userId: string, token: string) {

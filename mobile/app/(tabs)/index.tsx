@@ -23,7 +23,6 @@ import {
   Bell,
   Search,
   Mic,
-  Sun,
   Car,
   Home,
   Ticket,
@@ -390,11 +389,11 @@ function getFirstName(name?: string): string {
 // ── Quick action definitions ──────────────────────────────────────────────────
 
 const QUICK_ACTIONS = [
-  { label: 'Book Ride', Icon: Car, route: '/(tabs)/concierge' },
-  { label: 'Find Stay', Icon: Home, route: '/(tabs)/book' },
-  { label: 'Buy Ticket', Icon: Ticket, route: '/(tabs)/book' },
-  { label: 'Order Food', Icon: ShoppingBag, route: '/(tabs)/book' },
-  { label: 'Scan', Icon: QrCode, route: '/(tabs)/book' },
+  { label: 'Book Ride', Icon: Car, route: '/(tabs)/concierge?mode=ride' },
+  { label: 'Find Stay', Icon: Home, route: '/(tabs)/book?section=stays' },
+  { label: 'Buy Ticket', Icon: Ticket, route: '/(tabs)/book?section=events' },
+  { label: 'Order Food', Icon: ShoppingBag, route: '/(tabs)/book?section=marketplace' },
+  { label: 'Scan', Icon: QrCode, route: '/qr-checkin' },
 ] as const;
 
 // ── Main screen ───────────────────────────────────────────────────────────────
@@ -413,7 +412,7 @@ export default function DiscoverScreen() {
     retry: 1,
     staleTime: 5 * 60_000,
   });
-  const firstName = getFirstName(meData?.name) || getFirstName(meData?.data?.name);
+  const firstName = getFirstName(meData?.firstName);
 
   // Load cached attractions + bookmarks on mount
   useEffect(() => {
@@ -446,7 +445,7 @@ export default function DiscoverScreen() {
     queryFn: () => fetcher('/events?limit=10'),
   });
 
-  const events: any[] = eventsData?.data ?? [];
+  const events: any[] = Array.isArray(eventsData) ? eventsData : (eventsData?.data ?? []);
 
   const filteredAttractions = attractions.filter(
     (a) => !search || a.name.toLowerCase().includes(search.toLowerCase())
@@ -499,9 +498,6 @@ export default function DiscoverScreen() {
             <View style={styles.locationPill}>
               <MapPin size={13} color={GOLD} />
               <Text style={styles.locationPillText}>Abeokuta, Ogun</Text>
-              <View style={styles.locationPillDivider} />
-              <Sun size={12} color={INK_MID} />
-              <Text style={styles.locationPillTemp}>29°</Text>
             </View>
 
             {/* Bell button */}
@@ -621,18 +617,25 @@ export default function DiscoverScreen() {
               <Text style={styles.emptyBody}>Try a different area or check back later.</Text>
             </View>
           ) : (
-            <View style={styles.attractionGrid}>
-              {filteredAttractions.map((item, index) => (
+            <FlatList
+              data={filteredAttractions}
+              keyExtractor={(item) => item.id}
+              numColumns={2}
+              scrollEnabled={false}
+              columnWrapperStyle={styles.attractionRow}
+              ItemSeparatorComponent={() => <View style={{ height: SPACE_3 }} />}
+              initialNumToRender={6}
+              maxToRenderPerBatch={6}
+              renderItem={({ item, index }) => (
                 <AttractionCard
-                  key={item.id}
                   item={item}
                   index={index}
                   cardWidth={CARD_W}
                   isBookmarked={bookmarks.includes(item.id)}
                   onBookmark={handleBookmark}
                 />
-              ))}
-            </View>
+              )}
+            />
           )}
         </View>
       </ScrollView>
@@ -694,18 +697,6 @@ const styles = StyleSheet.create({
     fontWeight: '600' as const,
     color: INK,
     letterSpacing: 0.2,
-    marginLeft: 2,
-  },
-  locationPillDivider: {
-    width: 1,
-    height: 12,
-    backgroundColor: BORDER_MID,
-    marginHorizontal: SPACE_1,
-  },
-  locationPillTemp: {
-    fontFamily: FONT_MONO,
-    fontSize: 12,
-    color: INK_MID,
     marginLeft: 2,
   },
   bellBtn: {
@@ -999,6 +990,10 @@ const styles = StyleSheet.create({
   attractionGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    paddingHorizontal: SPACE_4,
+    gap: SPACE_3,
+  },
+  attractionRow: {
     paddingHorizontal: SPACE_4,
     gap: SPACE_3,
   },

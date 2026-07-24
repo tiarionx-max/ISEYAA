@@ -1,642 +1,414 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
-  Animated,
+  TextInput,
   TouchableOpacity,
-  Dimensions,
-  StatusBar,
+  StyleSheet,
+  ScrollView,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Path, Circle, G } from 'react-native-svg';
-import { ArrowLeft, MessageCircle, Bell } from 'lucide-react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Package, X, Truck, CheckCircle2 } from 'lucide-react-native';
+import type { Socket } from 'socket.io-client';
+import { api, fetcher, getErrorMessage } from '../lib/api';
+import { getSocket } from '../lib/socket';
+import { LocationPicker, type PickedLocation } from '../components/LocationPicker';
 import {
   SURFACE_DEEP,
   SURFACE_MID,
   SURFACE_ELEV,
-  FOREST,
-  FOREST_LIGHT,
   GOLD,
   GOLD_LINE,
-  CARD_GRADIENTS,
   CREAM,
   INK,
   INK_MID,
   INK_FAINT,
   BORDER,
   BORDER_MID,
-  SUCCESS,
   SUCCESS_TEXT,
+  ERROR_TEXT,
   FONT_DISPLAY,
   FONT_MONO,
 } from '../lib/tokens';
 
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+// ── Types ──────────────────────────────────────────────────────────────────────
 
-// ── Animated SVG circle wrapper ────────────────────
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+type Stage = 'form' | 'searching' | 'matched' | 'collecting' | 'in_transit' | 'delivered' | 'ended';
 
-// ── Courier Pulse (gold inner dot) ────────────────
-function CourierPulse({ cx, cy }: { cx: number; cy: number }) {
-  const pulseAnim = useRef(new Animated.Value(0.4)).current;
-
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 0,
-          duration: 1200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 0.4,
-          duration: 1200,
-          useNativeDriver: true,
-        }),
-      ]),
-    ).start();
-  }, [pulseAnim]);
-
-  return (
-    <G>
-      <AnimatedCircle
-        cx={cx}
-        cy={cy}
-        r={22}
-        fill="rgba(212,168,67,0.20)"
-        opacity={pulseAnim}
-      />
-      <Circle cx={cx} cy={cy} r={10} fill={GOLD} />
-    </G>
-  );
+function fmtNGN(n: number): string {
+  return `₦${Math.round(n).toLocaleString('en-NG')}`;
 }
 
-// ── Gold live dot ──────────────────────────────────
-function LiveDotGold() {
-  const anim = useRef(new Animated.Value(1)).current;
+const NG_PHONE_RE = /^(\+234|0)\d{10}$/;
 
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(anim, { toValue: 0.3, duration: 700, useNativeDriver: true }),
-        Animated.timing(anim, { toValue: 1, duration: 700, useNativeDriver: true }),
-      ]),
-    ).start();
-  }, [anim]);
+// ── Screen ─────────────────────────────────────────────────────────────────────
 
-  return (
-    <Animated.View style={[styles.liveDot, { opacity: anim }]} />
-  );
-}
-
-// ── Map Layer ──────────────────────────────────────
-function MapLayer() {
-  return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      <LinearGradient
-        colors={['#0d2018', '#1a3a2a', '#0d2018']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
-      <Svg
-        width={SCREEN_W}
-        height={SCREEN_H}
-        viewBox={`0 0 ${SCREEN_W} ${SCREEN_H}`}
-        style={StyleSheet.absoluteFill}
-      >
-        {/* Street lines */}
-        <Path
-          d="M -20 200 Q 120 220, 200 250 T 420 280"
-          stroke="rgba(245,237,214,0.10)"
-          strokeWidth={1}
-          fill="none"
-        />
-        <Path
-          d="M -20 360 Q 150 380, 240 360 T 420 410"
-          stroke="rgba(245,237,214,0.10)"
-          strokeWidth={1}
-          fill="none"
-        />
-        <Path
-          d="M -20 540 Q 100 520, 200 560 T 420 540"
-          stroke="rgba(245,237,214,0.10)"
-          strokeWidth={1}
-          fill="none"
-        />
-        <Path
-          d="M 80 -20 L 100 900"
-          stroke="rgba(245,237,214,0.10)"
-          strokeWidth={1}
-          fill="none"
-        />
-        <Path
-          d="M 300 -20 L 280 900"
-          stroke="rgba(245,237,214,0.10)"
-          strokeWidth={1}
-          fill="none"
-        />
-
-        {/* Dashed gold delivery route */}
-        <Path
-          d="M 90 580 Q 180 450, 220 340 T 320 200"
-          stroke={GOLD}
-          strokeWidth={3.5}
-          strokeLinecap="round"
-          strokeDasharray="2 6"
-          fill="none"
-        />
-
-        {/* Restaurant dot at (90, 580) */}
-        <Circle cx={90} cy={580} r={14} fill={FOREST_LIGHT} stroke="#050E0E" strokeWidth={2} />
-
-        {/* Courier pulse at (220, 340) */}
-        <CourierPulse cx={220} cy={340} />
-
-        {/* Home destination at (320, 200) */}
-        <Circle cx={320} cy={200} r={14} fill={GOLD} stroke="#050E0E" strokeWidth={2} />
-      </Svg>
-    </View>
-  );
-}
-
-// ── Progress steps data ────────────────────────────
-const STEPS = [
-  { label: 'Ordered', done: true },
-  { label: 'Prepared', done: true },
-  { label: 'En route', done: false, active: true },
-  { label: 'Delivered', done: false },
-];
-
-// ── Order items data ───────────────────────────────
-const ORDER_ITEMS = [
-  { q: '1×', name: 'Ofada rice & ayamashe', price: '₦2,400' },
-  { q: '1×', name: 'Suya wrap (beef, hot)', price: '₦1,400' },
-  { q: '2×', name: 'Zobo drink', price: '₦450 ea' },
-];
-
-// ── Main Screen ────────────────────────────────────
 export default function DeliveryFlowScreen() {
-  const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
+  const socketRef = useRef<Socket | null>(null);
+
+  const [pickup, setPickup] = useState<PickedLocation | null>(null);
+  const [dropoff, setDropoff] = useState<PickedLocation | null>(null);
+  const [pickingField, setPickingField] = useState<'pickup' | 'dropoff' | null>(null);
+  const [itemDescription, setItemDescription] = useState('');
+  const [weightKg, setWeightKg] = useState('1');
+  const [recipientPhone, setRecipientPhone] = useState('');
+
+  const [stage, setStage] = useState<Stage>('form');
+  const [orderId, setOrderId] = useState<string | null>(null);
+  const [endedMessage, setEndedMessage] = useState<string | null>(null);
+  const [riderInfo, setRiderInfo] = useState<any>(null);
+  const [riderLocation, setRiderLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [completedEarnings, setCompletedEarnings] = useState<number | null>(null);
+
+  const numericWeight = parseFloat(weightKg) || 0;
+  const validPhone = NG_PHONE_RE.test(recipientPhone.trim());
+  const canRequest =
+    !!pickup && !!dropoff && itemDescription.trim().length > 0 &&
+    numericWeight >= 0.1 && numericWeight <= 500 && validPhone;
+
+  const { data: feeData, isFetching: feeLoading } = useQuery({
+    queryKey: ['fee-estimate', pickup, dropoff, numericWeight],
+    queryFn: () =>
+      fetcher(
+        `/delivery/fee-estimate?pickupLat=${pickup!.lat}&pickupLng=${pickup!.lng}&dropoffLat=${dropoff!.lat}&dropoffLng=${dropoff!.lng}&weightKg=${numericWeight}`,
+      ),
+    enabled: !!pickup && !!dropoff && numericWeight >= 0.1,
+  });
+
+  const requestMutation = useMutation({
+    mutationFn: () =>
+      api
+        .post('/delivery/orders', {
+          pickupLat: pickup!.lat,
+          pickupLng: pickup!.lng,
+          pickupAddress: pickup!.address,
+          dropoffLat: dropoff!.lat,
+          dropoffLng: dropoff!.lng,
+          dropoffAddress: dropoff!.address,
+          itemDescription: itemDescription.trim(),
+          weightKg: numericWeight,
+          recipientPhone: recipientPhone.trim(),
+        })
+        .then((r) => r.data),
+    onSuccess: async (order: any) => {
+      setOrderId(order.id);
+      setStage('searching');
+      try {
+        const socket = await getSocket();
+        socketRef.current = socket;
+        socket.emit('join:delivery', order.id);
+        attachOrderListeners(socket);
+      } catch {
+        Alert.alert('Connection issue', 'Could not connect for live updates — pull to refresh order status.');
+      }
+    },
+    onError: (err: any) => {
+      Alert.alert('Could not request delivery', getErrorMessage(err, 'Please try again.'));
+    },
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: () => api.patch(`/delivery/orders/${orderId}/cancel`),
+    onSuccess: () => {
+      setStage('ended');
+      setEndedMessage('Delivery cancelled.');
+    },
+    onError: (err: any) => {
+      Alert.alert('Could not cancel', getErrorMessage(err, 'Please try again.'));
+    },
+  });
+
+  function attachOrderListeners(socket: Socket) {
+    socket.on('rider:assigned', (payload: { rider: any; order: any }) => {
+      setRiderInfo(payload.rider);
+      setStage('matched');
+    });
+    socket.on('delivery:collecting', () => setStage('collecting'));
+    socket.on('delivery:in_transit', () => setStage('in_transit'));
+    socket.on('delivery:completed', (payload: { riderEarnings: number }) => {
+      setCompletedEarnings(payload?.riderEarnings ?? null);
+      setStage('delivered');
+      queryClient.invalidateQueries({ queryKey: ['wallet'] });
+    });
+    socket.on('delivery:cancelled', () => {
+      setStage('ended');
+      setEndedMessage('The rider cancelled this delivery.');
+    });
+    socket.on('delivery:expired', () => {
+      setStage('ended');
+      setEndedMessage('No rider was found nearby. Please try again.');
+    });
+    socket.on('rider:location', (payload: { lat: number; lng: number }) => {
+      setRiderLocation({ lat: payload.lat, lng: payload.lng });
+    });
+  }
+
+  useEffect(() => {
+    return () => {
+      const socket = socketRef.current;
+      if (socket) {
+        socket.off('rider:assigned');
+        socket.off('delivery:collecting');
+        socket.off('delivery:in_transit');
+        socket.off('delivery:completed');
+        socket.off('delivery:cancelled');
+        socket.off('delivery:expired');
+        socket.off('rider:location');
+      }
+    };
+  }, []);
+
+  function resetToForm() {
+    setStage('form');
+    setOrderId(null);
+    setRiderInfo(null);
+    setRiderLocation(null);
+    setCompletedEarnings(null);
+    setEndedMessage(null);
+  }
+
+  const fee = feeData ? Number(feeData.totalFee ?? feeData.total ?? 0) : null;
 
   return (
-    <View style={styles.root}>
-      <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
-
-      {/* Map Layer */}
-      <MapLayer />
-
-      {/* Top Status Bar */}
-      <View style={[styles.topBar, { top: insets.top + 12 }]}>
-        {/* Back button */}
-        <TouchableOpacity style={styles.backBtn} activeOpacity={0.75} onPress={() => router.back()}>
-          <ArrowLeft size={18} color={INK_MID} strokeWidth={1.8} />
+    <SafeAreaView style={styles.root} edges={['top']}>
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} accessibilityRole="button">
+          <X size={18} color={INK} />
         </TouchableOpacity>
-
-        {/* Status pill */}
-        <View style={styles.statusPill}>
-          <LiveDotGold />
-          <Text style={styles.statusPillText}>On the way</Text>
-          <Text style={styles.statusArrival}>ARR 12:18 PM</Text>
-        </View>
+        <Text style={styles.headerTitle}>Send a delivery</Text>
       </View>
 
-      {/* Bottom Sheet */}
-      <View style={[styles.bottomSheet, { paddingBottom: Math.max(insets.bottom, 20) + 20 }]}>
-        {/* Drag handle */}
-        <View style={styles.dragHandleRow}>
-          <View style={styles.dragHandle} />
-        </View>
+      {stage === 'form' && (
+        <ScrollView contentContainerStyle={styles.scroll}>
+          <TouchableOpacity style={styles.locationRow} onPress={() => setPickingField('pickup')} activeOpacity={0.8}>
+            <View style={[styles.locationDot, { backgroundColor: SUCCESS_TEXT }]} />
+            <Text style={styles.locationLabel} numberOfLines={1}>
+              {pickup?.address ?? 'Set pickup location'}
+            </Text>
+          </TouchableOpacity>
+          <View style={styles.locationDivider} />
+          <TouchableOpacity style={styles.locationRow} onPress={() => setPickingField('dropoff')} activeOpacity={0.8}>
+            <View style={[styles.locationDot, { backgroundColor: GOLD }]} />
+            <Text style={styles.locationLabel} numberOfLines={1}>
+              {dropoff?.address ?? 'Set drop-off location'}
+            </Text>
+          </TouchableOpacity>
 
-        {/* Header */}
-        <View style={styles.headerRow}>
-          {/* Restaurant photo box */}
-          <LinearGradient
-            colors={CARD_GRADIENTS.gold}
-            style={styles.restaurantBox}
-          >
-            <View style={styles.restaurantBoxInner} />
-          </LinearGradient>
-
-          {/* Restaurant info */}
-          <View style={styles.headerInfo}>
-            <Text style={styles.restaurantName}>Iya Eba Kitchen</Text>
-            <Text style={styles.orderMeta}>3 items · ₦4,250 · paid</Text>
-          </View>
-        </View>
-
-        {/* Progress Steps */}
-        <View style={styles.progressSection}>
-          {/* Background track */}
-          <View style={styles.progressTrack} />
-          {/* Progress fill — 3 of 4 steps complete (active on step 3 = ~60%) */}
-          <LinearGradient
-            colors={[FOREST_LIGHT, GOLD]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.progressFill}
+          <Text style={styles.sectionLabel}>WHAT ARE YOU SENDING?</Text>
+          <TextInput
+            style={styles.input}
+            value={itemDescription}
+            onChangeText={setItemDescription}
+            placeholder="e.g. Sealed food parcel"
+            placeholderTextColor={INK_FAINT}
           />
 
-          {/* Step dots + labels */}
-          <View style={styles.stepsRow}>
-            {STEPS.map((step, i) => (
-              <View key={i} style={styles.stepItem}>
-                <View
-                  style={[
-                    styles.stepDot,
-                    step.done
-                      ? styles.stepDotDone
-                      : step.active
-                        ? styles.stepDotActive
-                        : styles.stepDotPending,
-                  ]}
-                >
-                  {step.done && (
-                    <Text style={styles.stepCheckmark}>✓</Text>
-                  )}
-                </View>
-                <Text
-                  style={[
-                    styles.stepLabel,
-                    step.done || step.active ? styles.stepLabelActive : styles.stepLabelPending,
-                  ]}
-                >
-                  {step.label}
+          <Text style={styles.sectionLabel}>WEIGHT (KG)</Text>
+          <TextInput
+            style={styles.input}
+            value={weightKg}
+            onChangeText={setWeightKg}
+            keyboardType="decimal-pad"
+            placeholder="1"
+            placeholderTextColor={INK_FAINT}
+          />
+
+          <Text style={styles.sectionLabel}>RECIPIENT PHONE (OTP SENT HERE)</Text>
+          <TextInput
+            style={styles.input}
+            value={recipientPhone}
+            onChangeText={setRecipientPhone}
+            keyboardType="phone-pad"
+            placeholder="0801 234 5678"
+            placeholderTextColor={INK_FAINT}
+          />
+          {recipientPhone.length > 0 && !validPhone && (
+            <Text style={styles.errorText}>Enter a full Nigerian phone number</Text>
+          )}
+
+          {!!pickup && !!dropoff && numericWeight >= 0.1 && (
+            <View style={styles.feeBox}>
+              {feeLoading ? (
+                <ActivityIndicator color={GOLD} />
+              ) : fee != null ? (
+                <>
+                  <Text style={styles.feeLabel}>ESTIMATED FEE</Text>
+                  <Text style={styles.feeValue}>{fmtNGN(fee)}</Text>
+                </>
+              ) : (
+                <Text style={styles.feeLabel}>Could not estimate fee</Text>
+              )}
+            </View>
+          )}
+
+          <TouchableOpacity
+            style={[styles.ctaBtn, (!canRequest || requestMutation.isPending) && styles.ctaBtnDisabled]}
+            onPress={() => requestMutation.mutate()}
+            disabled={!canRequest || requestMutation.isPending}
+            activeOpacity={0.85}
+          >
+            {requestMutation.isPending ? (
+              <ActivityIndicator color="#050E0E" />
+            ) : (
+              <Text style={styles.ctaBtnText}>Request delivery</Text>
+            )}
+          </TouchableOpacity>
+        </ScrollView>
+      )}
+
+      {(stage === 'searching' || stage === 'matched' || stage === 'collecting' || stage === 'in_transit') && (
+        <View style={styles.statusScreen}>
+          {stage === 'searching' && (
+            <>
+              <ActivityIndicator color={GOLD} size="large" />
+              <Text style={styles.statusTitle}>Finding you a rider…</Text>
+              <Text style={styles.statusSub}>This usually takes under a minute.</Text>
+            </>
+          )}
+          {stage === 'matched' && (
+            <>
+              <Truck size={40} color={GOLD} />
+              <Text style={styles.statusTitle}>Rider is heading to pickup</Text>
+              {riderLocation && (
+                <Text style={styles.statusSub}>
+                  Rider location: {riderLocation.lat.toFixed(4)}, {riderLocation.lng.toFixed(4)}
                 </Text>
-              </View>
-            ))}
-          </View>
-        </View>
+              )}
+            </>
+          )}
+          {stage === 'collecting' && (
+            <>
+              <Package size={40} color={GOLD} />
+              <Text style={styles.statusTitle}>Parcel collected</Text>
+              <Text style={styles.statusSub}>Your rider is packing up before heading to drop-off.</Text>
+            </>
+          )}
+          {stage === 'in_transit' && (
+            <>
+              <Truck size={40} color={GOLD} />
+              <Text style={styles.statusTitle}>On the way to drop-off</Text>
+              <Text style={styles.statusSub}>
+                The recipient will confirm delivery with the OTP sent to their phone.
+              </Text>
+              {riderLocation && (
+                <Text style={styles.statusSub}>
+                  Rider location: {riderLocation.lat.toFixed(4)}, {riderLocation.lng.toFixed(4)}
+                </Text>
+              )}
+            </>
+          )}
 
-        {/* Courier Row */}
-        <View style={styles.courierRow}>
-          {/* Avatar */}
-          <View style={styles.avatar}>
-            <Text style={styles.avatarInitials}>SO</Text>
-          </View>
-
-          {/* Info */}
-          <View style={styles.courierInfo}>
-            <View style={styles.courierNameRow}>
-              <Text style={styles.courierName}>Sola Ogundimu</Text>
-              <View style={styles.ratingChip}>
-                <Text style={styles.ratingChipText}>4.8 ★</Text>
-              </View>
-            </View>
-            <Text style={styles.courierVehicle}>Honda CG · ABJ-441 KJA · Courier</Text>
-          </View>
-
-          {/* Action buttons */}
-          <View style={styles.courierActions}>
-            <TouchableOpacity style={styles.msgBtn} activeOpacity={0.75}>
-              <MessageCircle size={16} color={CREAM} strokeWidth={1.8} />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.notifyBtn} activeOpacity={0.75}>
-              <Bell size={14} color={SURFACE_DEEP} strokeWidth={2} />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Order Items */}
-        <View style={styles.orderItems}>
-          {ORDER_ITEMS.map((item, i) => (
-            <View
-              key={i}
-              style={[
-                styles.orderItemRow,
-                i < ORDER_ITEMS.length - 1 && styles.orderItemBorder,
-              ]}
+          {(stage === 'searching' || stage === 'matched') && (
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={() => cancelMutation.mutate()}
+              disabled={cancelMutation.isPending}
+              activeOpacity={0.8}
             >
-              <Text style={styles.orderItemQty}>{item.q}</Text>
-              <Text style={styles.orderItemName}>{item.name}</Text>
-              <Text style={styles.orderItemPrice}>{item.price}</Text>
-            </View>
-          ))}
+              <Text style={styles.cancelBtnText}>
+                {cancelMutation.isPending ? 'Cancelling…' : 'Cancel delivery'}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
-      </View>
-    </View>
+      )}
+
+      {stage === 'delivered' && (
+        <View style={styles.statusScreen}>
+          <CheckCircle2 size={40} color={SUCCESS_TEXT} />
+          <Text style={styles.statusTitle}>Delivered!</Text>
+          {completedEarnings != null && (
+            <Text style={styles.statusSub}>Delivery fee charged: {fmtNGN(completedEarnings)}</Text>
+          )}
+          <TouchableOpacity style={styles.ctaBtn} onPress={() => router.back()} activeOpacity={0.85}>
+            <Text style={styles.ctaBtnText}>Done</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {stage === 'ended' && (
+        <View style={styles.statusScreen}>
+          <Text style={[styles.statusTitle, { color: ERROR_TEXT }]}>{endedMessage}</Text>
+          <TouchableOpacity style={styles.ctaBtn} onPress={resetToForm} activeOpacity={0.85}>
+            <Text style={styles.ctaBtnText}>Try again</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      <LocationPicker
+        visible={pickingField !== null}
+        title={pickingField === 'pickup' ? 'Set pickup location' : 'Set drop-off location'}
+        onSelect={(loc) => {
+          if (pickingField === 'pickup') setPickup(loc);
+          else setDropoff(loc);
+          setPickingField(null);
+        }}
+        onClose={() => setPickingField(null)}
+      />
+    </SafeAreaView>
   );
 }
 
-// ── Styles ─────────────────────────────────────────
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: '#0d2018',
-  },
+// ── Styles ─────────────────────────────────────────────────────────────────────
 
-  // ── Top bar ──────────────────────────────
-  topBar: {
-    position: 'absolute',
-    left: 20,
-    right: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: SURFACE_DEEP },
+  header: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 20, paddingVertical: 14,
   },
   backBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: 'rgba(13,31,31,0.85)',
-    borderWidth: 1,
-    borderColor: BORDER_MID,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 36, height: 36, borderRadius: 12, backgroundColor: SURFACE_MID,
+    borderWidth: 1, borderColor: BORDER, alignItems: 'center', justifyContent: 'center',
   },
-  statusPill: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(13,31,31,0.85)',
-    borderWidth: 1,
-    borderColor: BORDER_MID,
-    borderRadius: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    gap: 8,
-  },
-  liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: GOLD,
-  },
-  statusPillText: {
-    flex: 1,
-    fontSize: 11.5,
-    fontWeight: '600',
-    color: CREAM,
-  },
-  statusArrival: {
-    fontFamily: FONT_MONO,
-    fontSize: 11,
-    color: GOLD,
-    letterSpacing: 0.3,
-  },
+  headerTitle: { fontFamily: FONT_DISPLAY, fontSize: 20, color: CREAM },
+  scroll: { padding: 20, gap: 4 },
 
-  // ── Bottom sheet ─────────────────────────
-  bottomSheet: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: SURFACE_MID,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderWidth: 1,
-    borderBottomWidth: 0,
-    borderColor: BORDER,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -8 },
-    shadowOpacity: 0.45,
-    shadowRadius: 24,
-    elevation: 24,
+  locationRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: SURFACE_MID, borderWidth: 1, borderColor: BORDER,
+    borderRadius: 14, padding: 14,
   },
-  dragHandleRow: {
-    alignItems: 'center',
-    paddingTop: 10,
-    paddingBottom: 4,
-  },
-  dragHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: BORDER,
-  },
+  locationDot: { width: 10, height: 10, borderRadius: 5 },
+  locationLabel: { flex: 1, fontSize: 14, color: INK, fontWeight: '600' },
+  locationDivider: { width: 1, height: 14, backgroundColor: BORDER_MID, marginLeft: 24 },
 
-  // ── Header ───────────────────────────────
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    paddingHorizontal: 20,
-    paddingTop: 14,
+  sectionLabel: {
+    fontFamily: FONT_MONO, fontSize: 10, fontWeight: '600', letterSpacing: 1.6,
+    color: GOLD, textTransform: 'uppercase', marginTop: 20, marginBottom: 8,
   },
-  restaurantBox: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: GOLD_LINE,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
+  input: {
+    height: 48, borderRadius: 12, backgroundColor: SURFACE_MID,
+    borderWidth: 1, borderColor: BORDER, paddingHorizontal: 14,
+    fontSize: 14, color: INK,
   },
-  restaurantBoxInner: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(212,168,67,0.30)',
-  },
-  headerInfo: {
-    flex: 1,
-    gap: 4,
-  },
-  restaurantName: {
-    fontFamily: FONT_DISPLAY,
-    fontSize: 22,
-    color: CREAM,
-    lineHeight: 24,
-  },
-  orderMeta: {
-    fontSize: 11,
-    color: INK_MID,
-  },
+  errorText: { fontSize: 11, color: ERROR_TEXT, marginTop: 6 },
 
-  // ── Progress steps ───────────────────────
-  progressSection: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 4,
-    position: 'relative',
+  feeBox: {
+    marginTop: 24, alignItems: 'center', backgroundColor: SURFACE_ELEV,
+    borderWidth: 1, borderColor: GOLD_LINE, borderRadius: 14, padding: 18, gap: 4,
   },
-  progressTrack: {
-    position: 'absolute',
-    top: 32,
-    left: 32,
-    right: 32,
-    height: 2,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  progressFill: {
-    position: 'absolute',
-    top: 32,
-    left: 32,
-    width: '60%',
-    height: 2,
-  },
-  stepsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  stepItem: {
-    alignItems: 'center',
-    gap: 6,
-    flex: 1,
-  },
-  stepDot: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepDotDone: {
-    backgroundColor: GOLD,
-  },
-  stepDotActive: {
-    backgroundColor: GOLD,
-    shadowColor: GOLD,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  stepDotPending: {
-    backgroundColor: SURFACE_ELEV,
-    borderWidth: 1.5,
-    borderColor: INK_FAINT,
-    borderStyle: 'dashed',
-  },
-  stepCheckmark: {
-    fontSize: 11,
-    color: SURFACE_DEEP,
-    fontWeight: '700',
-  },
-  stepLabel: {
-    fontFamily: FONT_MONO,
-    fontSize: 8.5,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    textAlign: 'center',
-  },
-  stepLabelActive: {
-    color: GOLD,
-  },
-  stepLabelPending: {
-    color: INK_FAINT,
-  },
+  feeLabel: { fontFamily: FONT_MONO, fontSize: 10, color: INK_MID, letterSpacing: 1.4 },
+  feeValue: { fontFamily: FONT_DISPLAY, fontSize: 30, color: GOLD },
 
-  // ── Courier row ──────────────────────────
-  courierRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginHorizontal: 20,
-    marginTop: 20,
-    backgroundColor: SURFACE_DEEP,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 14,
-    padding: 12,
-    paddingHorizontal: 14,
+  ctaBtn: {
+    marginTop: 28, height: 52, borderRadius: 14, backgroundColor: GOLD,
+    alignItems: 'center', justifyContent: 'center',
   },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: SURFACE_ELEV,
-    borderWidth: 2,
-    borderColor: GOLD,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitials: {
-    fontFamily: FONT_DISPLAY,
-    fontSize: 16,
-    color: CREAM,
-  },
-  courierInfo: {
-    flex: 1,
-    gap: 3,
-  },
-  courierNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  courierName: {
-    fontSize: 13.5,
-    fontWeight: '700',
-    color: INK,
-  },
-  ratingChip: {
-    backgroundColor: 'rgba(42,139,82,0.22)',
-    borderRadius: 6,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-  },
-  ratingChipText: {
-    fontSize: 10.5,
-    color: '#7DD49E',
-    fontWeight: '500',
-  },
-  courierVehicle: {
-    fontSize: 11,
-    color: INK_MID,
-  },
-  courierActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  msgBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    backgroundColor: FOREST,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  notifyBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    backgroundColor: GOLD,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  ctaBtnDisabled: { opacity: 0.45 },
+  ctaBtnText: { fontSize: 16, fontWeight: '700', color: '#050E0E' },
 
-  // ── Order items ──────────────────────────
-  orderItems: {
-    marginHorizontal: 20,
-    marginTop: 14,
-    backgroundColor: SURFACE_DEEP,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 14,
-    padding: 12,
-    paddingHorizontal: 14,
+  statusScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 40 },
+  statusTitle: { fontFamily: FONT_DISPLAY, fontSize: 22, color: CREAM, textAlign: 'center' },
+  statusSub: { fontSize: 13, color: INK_MID, textAlign: 'center' },
+  cancelBtn: {
+    marginTop: 24, borderWidth: 1, borderColor: GOLD_LINE, borderRadius: 12,
+    paddingHorizontal: 20, paddingVertical: 12,
   },
-  orderItemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    gap: 8,
-  },
-  orderItemBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: BORDER,
-  },
-  orderItemQty: {
-    fontFamily: FONT_MONO,
-    fontSize: 12,
-    color: GOLD,
-    minWidth: 22,
-  },
-  orderItemName: {
-    flex: 1,
-    fontSize: 12.5,
-    color: INK,
-  },
-  orderItemPrice: {
-    fontFamily: FONT_MONO,
-    fontSize: 11.5,
-    color: INK_MID,
-  },
+  cancelBtnText: { fontSize: 13, fontWeight: '700', color: GOLD },
 });

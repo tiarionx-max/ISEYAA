@@ -10,8 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
-import Svg, { Path, Circle } from 'react-native-svg';
+import { router, useLocalSearchParams } from 'expo-router';
 import {
   Sparkles,
   Car,
@@ -27,11 +26,8 @@ import {
   SURFACE_DEEP,
   SURFACE_MID,
   SURFACE_RAISED,
-  FOREST,
   FOREST_LIGHT,
-  FOREST_DEEP,
   GOLD,
-  GOLD_DIM,
   GOLD_LINE,
   CREAM,
   INK,
@@ -85,88 +81,6 @@ function AiAvatar() {
   );
 }
 
-// ── Map preview (SVG dotted route) ──────────────────────────────────────
-function MapPreview() {
-  return (
-    <LinearGradient
-      colors={[FOREST_DEEP, FOREST, '#0d2018']}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={styles.mapPreview}
-    >
-      <Svg width="100%" height="70" viewBox="0 0 280 70">
-        {/* Dotted route path */}
-        <Path
-          d="M 20 55 Q 60 15 120 30 Q 180 48 230 20 L 260 12"
-          stroke={GOLD}
-          strokeWidth={2}
-          strokeDasharray="5,5"
-          fill="none"
-          opacity={0.75}
-        />
-        {/* Origin dot */}
-        <Circle cx={20} cy={55} r={5} fill={GOLD} opacity={0.9} />
-        {/* Destination dot */}
-        <Circle cx={260} cy={12} r={5} fill={GOLD} opacity={0.9} />
-        {/* Inner dots */}
-        <Circle cx={20} cy={55} r={2.5} fill="#050E0E" />
-        <Circle cx={260} cy={12} r={2.5} fill="#050E0E" />
-      </Svg>
-    </LinearGradient>
-  );
-}
-
-// ── Itinerary card ──────────────────────────────────────────────────────
-function ItineraryCard() {
-  const items = [
-    { time: '6:30AM', icon: '🧗', title: 'Olumo Rock Summit', sub: 'Abeokuta North', tint: GOLD_DIM },
-    { time: '9:00AM', icon: '🍽️', title: 'Iya Eba Kitchen', sub: 'Local breakfast', tint: 'rgba(26,107,60,0.18)' },
-    { time: '11:30AM', icon: '🎨', title: 'Adire Itoku Market', sub: 'Textile crafts', tint: 'rgba(26,107,60,0.18)' },
-  ];
-  return (
-    <View style={styles.itineraryCard}>
-      {items.map((item, i) => (
-        <View key={i} style={[styles.itineraryRow, i < items.length - 1 && styles.itineraryRowBorder]}>
-          <View style={[styles.itineraryIconBox, { backgroundColor: item.tint }]}>
-            <Text style={{ fontSize: 14 }}>{item.icon}</Text>
-          </View>
-          <View style={styles.itineraryTextBlock}>
-            <Text style={styles.itineraryTitle}>{item.title}</Text>
-            <Text style={styles.itinerarySub}>{item.sub}</Text>
-          </View>
-          <Text style={styles.itineraryTime}>{item.time}</Text>
-        </View>
-      ))}
-    </View>
-  );
-}
-
-// ── Ride card ────────────────────────────────────────────────────────────
-function RideCard() {
-  return (
-    <View style={styles.rideCard}>
-      <View style={styles.rideCardTop}>
-        <View style={styles.rideIconBox}>
-          <Car size={18} color={GOLD} />
-        </View>
-        <View style={styles.rideInfo}>
-          <Text style={styles.rideName}>Iṣẹ́yáá Comfort</Text>
-          <Text style={styles.rideMeta}>14 min · 4.2 km</Text>
-        </View>
-        <Text style={styles.ridePrice}>₦2,450</Text>
-      </View>
-      <MapPreview />
-      <TouchableOpacity
-        style={styles.confirmRideBtn}
-        activeOpacity={0.82}
-        onPress={() => router.push('/transport-flow' as any)}
-      >
-        <Text style={styles.confirmRideBtnText}>Confirm ride →</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
 // ── Time greeting ────────────────────────────────────────────────────────
 function getYorubaTimeGreeting(): string {
   const h = new Date().getHours();
@@ -176,11 +90,27 @@ function getYorubaTimeGreeting(): string {
 }
 
 // ── Main screen ─────────────────────────────────────────────────────────
+const VALID_MODES = ['chat', 'ride', 'delivery'] as const;
+type ConciergeMode = (typeof VALID_MODES)[number];
+
 export default function ConciergeScreen() {
-  const [mode, setMode] = useState<'chat' | 'ride' | 'delivery'>('chat');
+  // Discover's "Book Ride" quick action deep-links here with ?mode=ride — without
+  // this, it always landed on the generic Chat tab regardless of intent.
+  const { mode: modeParam } = useLocalSearchParams<{ mode?: string }>();
+  const [mode, setMode] = useState<ConciergeMode>('chat');
+
+  // expo-router's bottom-tab screens stay mounted across tab switches — a plain
+  // useState initializer only runs once on first mount, so returning here with a
+  // *different* ?mode= after the screen is already mounted would be silently
+  // ignored. Re-sync on every param change instead.
+  useEffect(() => {
+    if ((VALID_MODES as readonly string[]).includes(modeParam ?? '')) {
+      setMode(modeParam as ConciergeMode);
+    }
+  }, [modeParam]);
 
   const { data: userData } = useQuery({ queryKey: ['me'], queryFn: () => fetcher('/users/me') });
-  const firstName = ((userData?.data?.name ?? userData?.name) ?? '').split(' ')[0];
+  const firstName = userData?.firstName ?? '';
 
   const handlePrompt = (prompt: string) => {
     router.push({ pathname: '/ai-chat', params: { prompt } });
@@ -204,12 +134,18 @@ export default function ConciergeScreen() {
             <Text style={styles.headerTitle}>Concierge</Text>
             <View style={styles.headerStatusRow}>
               <LiveDot />
-              <Text style={styles.headerStatus}>Online · responds in 2s</Text>
+              <Text style={styles.headerStatus}>Ready to help</Text>
             </View>
           </View>
         </View>
-        {/* Right: history button */}
-        <TouchableOpacity style={styles.historyBtn} activeOpacity={0.8}>
+        {/* Right: history button — opens the real chat, which has its own persisted history */}
+        <TouchableOpacity
+          style={styles.historyBtn}
+          activeOpacity={0.8}
+          onPress={() => router.push('/ai-chat' as any)}
+          accessibilityRole="button"
+          accessibilityLabel="Chat history"
+        >
           <Clock size={16} color={INK_MID} />
         </TouchableOpacity>
       </View>
@@ -232,60 +168,39 @@ export default function ConciergeScreen() {
           </View>
         </View>
 
-        {/* Message 2 – User */}
-        <View style={styles.msgRowUser}>
-          <View style={styles.bubbleUser}>
-            <Text style={styles.bubbleUserText}>
-              I'm visiting this weekend — what should I do Saturday?
-            </Text>
-          </View>
-        </View>
-
-        {/* Message 3 – AI with itinerary */}
+        {/* AI – real quick actions, not a scripted conversation */}
         <View style={styles.msgRowAI}>
           <AiAvatar />
           <View style={[styles.bubbleAI, { maxWidth: '90%' }]}>
             <Text style={styles.bubbleBody}>
-              Here's a curated Saturday in Abeokuta — sunrise at the rock, local breakfast, and a craft market stroll:
+              Tell me what you're after, or tap a quick action below to jump straight in.
             </Text>
-            <ItineraryCard />
-            <View style={styles.itineraryActions}>
-              <TouchableOpacity
-                style={styles.actionBtnPrimary}
-                activeOpacity={0.82}
-                onPress={() => router.push('/ai-chat' as any)}
-              >
-                <Text style={styles.actionBtnPrimaryText}>Save to plans</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.actionBtnSecondary}
-                activeOpacity={0.82}
-                onPress={() => router.push('/ai-chat' as any)}
-              >
-                <Text style={styles.actionBtnSecondaryText}>Tweak</Text>
-              </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={styles.quickActionsRow}>
+          <TouchableOpacity
+            style={styles.quickActionCard}
+            activeOpacity={0.85}
+            onPress={() => handlePrompt('Plan my day in Ogun State')}
+          >
+            <View style={styles.quickActionIconBox}>
+              <Sparkles size={16} color={GOLD} />
             </View>
-          </View>
-        </View>
-
-        {/* Message 4 – User */}
-        <View style={styles.msgRowUser}>
-          <View style={styles.bubbleUser}>
-            <Text style={styles.bubbleUserText}>
-              Book me a ride for 6 AM to Olumo Rock.
-            </Text>
-          </View>
-        </View>
-
-        {/* Message 5 – AI with ride card */}
-        <View style={styles.msgRowAI}>
-          <AiAvatar />
-          <View style={[styles.bubbleAI, { maxWidth: '90%' }]}>
-            <Text style={styles.bubbleBody}>
-              Found the best option for your 6 AM pickup — arrives in 14 minutes once you confirm:
-            </Text>
-            <RideCard />
-          </View>
+            <Text style={styles.quickActionTitle}>Plan my day</Text>
+            <Text style={styles.quickActionSub}>AI itinerary from real attractions & events</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.quickActionCard}
+            activeOpacity={0.85}
+            onPress={() => router.push('/transport-flow' as any)}
+          >
+            <View style={styles.quickActionIconBox}>
+              <Car size={16} color={GOLD} />
+            </View>
+            <Text style={styles.quickActionTitle}>Book a ride</Text>
+            <Text style={styles.quickActionSub}>Real fare estimate & driver matching</Text>
+          </TouchableOpacity>
         </View>
 
         {/* ── Suggested prompts ──────────────────────────────────────── */}
@@ -530,161 +445,38 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  // ── Itinerary card ────────────────────────────────────────────────────
-  itineraryCard: {
-    backgroundColor: SURFACE_DEEP,
+  // ── Quick action cards ─────────────────────────────────────────────────
+  quickActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 2,
+  },
+  quickActionCard: {
+    flex: 1,
+    backgroundColor: SURFACE_MID,
     borderWidth: 1,
     borderColor: BORDER,
     borderRadius: 14,
-    overflow: 'hidden',
-    marginTop: 4,
-  },
-  itineraryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    gap: 10,
-  },
-  itineraryRowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: BORDER,
-  },
-  itineraryIconBox: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  itineraryTextBlock: {
-    flex: 1,
-    gap: 1,
-  },
-  itineraryTitle: {
-    fontSize: 12.5,
-    fontWeight: '700',
-    color: INK,
-    lineHeight: 17,
-  },
-  itinerarySub: {
-    fontSize: 10.5,
-    color: INK_MID,
-    lineHeight: 14,
-  },
-  itineraryTime: {
-    fontFamily: FONT_MONO,
-    fontSize: 10.5,
-    color: GOLD,
-    lineHeight: 14,
-    flexShrink: 0,
-  },
-
-  // ── Itinerary action buttons ──────────────────────────────────────────
-  itineraryActions: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 4,
-  },
-  actionBtnPrimary: {
-    flex: 1,
-    height: 36,
-    backgroundColor: GOLD,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionBtnPrimaryText: {
-    fontSize: 12.5,
-    fontWeight: '700',
-    color: '#050E0E',
-  },
-  actionBtnSecondary: {
-    flex: 1,
-    height: 36,
-    backgroundColor: 'transparent',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: GOLD_LINE,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionBtnSecondaryText: {
-    fontSize: 12.5,
-    fontWeight: '600',
-    color: GOLD,
-  },
-
-  // ── Ride card ─────────────────────────────────────────────────────────
-  rideCard: {
-    backgroundColor: SURFACE_DEEP,
-    borderWidth: 1,
-    borderColor: GOLD_LINE,
-    borderRadius: 14,
     padding: 12,
-    gap: 10,
-    marginTop: 4,
+    gap: 6,
   },
-  rideCardTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  rideIconBox: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
+  quickActionIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 9,
     backgroundColor: 'rgba(212,168,67,0.15)',
     alignItems: 'center',
     justifyContent: 'center',
-    flexShrink: 0,
   },
-  rideInfo: {
-    flex: 1,
-    gap: 2,
-  },
-  rideName: {
+  quickActionTitle: {
     fontSize: 13,
     fontWeight: '700',
     color: INK,
-    lineHeight: 18,
   },
-  rideMeta: {
-    fontSize: 11.5,
+  quickActionSub: {
+    fontSize: 10.5,
     color: INK_MID,
-    lineHeight: 15,
-  },
-  ridePrice: {
-    fontFamily: FONT_MONO,
-    fontSize: 16,
-    color: GOLD,
-    fontWeight: '700',
-    lineHeight: 20,
-  },
-
-  // ── Map preview ───────────────────────────────────────────────────────
-  mapPreview: {
-    height: 70,
-    borderRadius: 10,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // ── Confirm ride button ───────────────────────────────────────────────
-  confirmRideBtn: {
-    height: 40,
-    backgroundColor: GOLD,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  confirmRideBtnText: {
-    fontSize: 13.5,
-    fontWeight: '700',
-    color: '#050E0E',
-    letterSpacing: 0.2,
+    lineHeight: 14,
   },
 
   // ── Suggested prompts ─────────────────────────────────────────────────

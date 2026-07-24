@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSession } from 'next-auth/react';
 import { redirect } from 'next/navigation';
 import { toast } from 'sonner';
-import { CheckCircle, XCircle, Clock, MapPin, UserCheck, Shield } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, UserCheck, Shield } from 'lucide-react';
 import { fetcher, api } from '@/lib/api';
 
 const ALLOWED_ROLES = ['LGA_ADMIN', 'STATE_ADMIN', 'SUPER_ADMIN'];
@@ -13,10 +13,8 @@ const ALLOWED_ROLES = ['LGA_ADMIN', 'STATE_ADMIN', 'SUPER_ADMIN'];
 interface TourGuide {
   id: string;
   user?: { firstName: string; lastName: string };
-  lga?: { name: string };
-  lgaId: string;
   yearsExperience?: number;
-  languages?: string[];
+  languagesSpoken?: string[];
   kycTier?: number;
   createdAt: string;
 }
@@ -145,9 +143,8 @@ export default function TourGuidesQueuePage() {
           </div>
         ) : (
           <div className="glass rounded-2xl border border-white/6 overflow-hidden">
-            <div className="grid grid-cols-[1fr_1fr_80px_1fr_80px_100px_160px] gap-3 px-5 py-3 border-b border-white/6 text-[10px] font-bold text-white/30 uppercase tracking-widest">
+            <div className="grid grid-cols-[1fr_80px_1fr_80px_100px_160px] gap-3 px-5 py-3 border-b border-white/6 text-[10px] font-bold text-white/30 uppercase tracking-widest">
               <span>Name</span>
-              <span>LGA</span>
               <span>Exp.</span>
               <span>Languages</span>
               <span>KYC Tier</span>
@@ -158,17 +155,13 @@ export default function TourGuidesQueuePage() {
               const name = guide.user
                 ? `${guide.user.firstName} ${guide.user.lastName}`
                 : guide.id.slice(0, 8) + '…';
-              const langs = (guide.languages ?? []).join(', ') || '—';
+              const langs = (guide.languagesSpoken ?? []).join(', ') || '—';
               return (
                 <div
                   key={guide.id}
-                  className="grid grid-cols-[1fr_1fr_80px_1fr_80px_100px_160px] gap-3 items-center px-5 py-4 hover:bg-white/2 transition-colors border-b border-white/5 last:border-0"
+                  className="grid grid-cols-[1fr_80px_1fr_80px_100px_160px] gap-3 items-center px-5 py-4 hover:bg-white/2 transition-colors border-b border-white/5 last:border-0"
                 >
                   <p className="text-white font-semibold text-sm truncate">{name}</p>
-                  <p className="text-white/55 text-sm flex items-center gap-1 truncate">
-                    <MapPin size={11} className="text-white/25 shrink-0" />
-                    {guide.lga?.name ?? guide.lgaId}
-                  </p>
                   <p className="text-white/55 text-sm">
                     {guide.yearsExperience != null ? `${guide.yearsExperience}y` : '—'}
                   </p>

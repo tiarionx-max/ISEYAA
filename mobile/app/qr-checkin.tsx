@@ -30,11 +30,14 @@ export default function QrCheckinScreen() {
         ? data.replace('ISEYAA_TICKET:', '')
         : data;
 
+      // Backend responds 200 with { result: 'VALID' | 'ALREADY_USED' | 'NOT_FOUND', usedAt? }
+      // — it never 404s for an unknown QR hash (see events.service.ts checkin()).
       const response = await api.post(`/tickets/${qrHash}/checkin`);
-      setResult(response.data.status as CheckinResult);
+      setResult(response.data.result as CheckinResult);
     } catch (err: any) {
-      if (err?.response?.status === 404) {
-        setResult('NOT_FOUND');
+      if (err?.response?.status === 403) {
+        Alert.alert('Not Your Event', 'This ticket belongs to an event you do not organise.');
+        setScanned(false);
       } else {
         Alert.alert('Error', 'Failed to check in. Please try again.');
         setScanned(false);

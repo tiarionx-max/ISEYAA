@@ -31,9 +31,9 @@ export class WebhooksService {
     }
 
     if (body.event === 'charge.success') {
-      const { reference, metadata, amount } = body.data;
+      const { reference, metadata, amount, authorization } = body.data;
       const type: string = metadata?.type ?? '';
-      const eventPayload = { reference, metadata, amount };
+      const eventPayload = { reference, metadata, amount, authorization };
 
       switch (type) {
         case 'ticket_purchase':
@@ -47,6 +47,13 @@ export class WebhooksService {
           this.eventEmitter.emit('payment.stay_booking', eventPayload);
           await this.kafka.emit('payment.stay_booking', eventPayload).catch((err) =>
             this.logger.error('Kafka emit failed for stay_booking', err),
+          );
+          break;
+
+        case 'membership_signup':
+          this.eventEmitter.emit('payment.membership_signup', eventPayload);
+          await this.kafka.emit('payment.membership_signup', eventPayload).catch((err) =>
+            this.logger.error('Kafka emit failed for membership_signup', err),
           );
           break;
 

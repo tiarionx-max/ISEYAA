@@ -1,10 +1,12 @@
 import {
-  View, Text, StyleSheet, TouchableOpacity, StatusBar, Alert,
+  View, Text, StyleSheet, TouchableOpacity, StatusBar, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
+import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft, Car, MapPin, Clock } from 'lucide-react-native';
+import { fetcher } from '../lib/api';
 import {
   SURFACE_DEEP, SURFACE_MID,
   GOLD, GOLD_DIM, GOLD_LINE,
@@ -14,7 +16,26 @@ import {
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
+const ACTIVE_STATUSES = ['SEARCHING', 'MATCHED', 'ARRIVED', 'IN_PROGRESS'];
+
+function statusLabel(status: string): string {
+  switch (status) {
+    case 'SEARCHING': return 'Finding a driver…';
+    case 'MATCHED': return 'Driver on the way';
+    case 'ARRIVED': return 'Driver has arrived';
+    case 'IN_PROGRESS': return 'Trip in progress';
+    default: return status;
+  }
+}
+
 export default function RiderDashboardScreen() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['my-trips'],
+    queryFn: () => fetcher('/transport/trips/me'),
+  });
+  const trips: any[] = data?.data ?? data ?? [];
+  const activeTrip = trips.find((t) => ACTIVE_STATUSES.includes(t.status));
+
   return (
     <View style={styles.root}>
       <StatusBar barStyle="light-content" />
@@ -42,32 +63,57 @@ export default function RiderDashboardScreen() {
           </View>
         </View>
 
-        {/* No active ride state */}
-        <View style={styles.emptyState}>
-          <View style={styles.iconCircle}>
-            <Car size={40} color={GOLD} strokeWidth={1.5} />
+        {isLoading ? (
+          <View style={styles.emptyState}>
+            <ActivityIndicator color={GOLD} />
           </View>
-          <Text style={styles.emptyTitle}>No active ride</Text>
-          <Text style={styles.emptySub}>Book a ride to get moving around Ogun State</Text>
+        ) : activeTrip ? (
+          <View style={styles.emptyState}>
+            <View style={styles.iconCircle}>
+              <Car size={40} color={GOLD} strokeWidth={1.5} />
+            </View>
+            <Text style={styles.emptyTitle}>{statusLabel(activeTrip.status)}</Text>
+            <Text style={styles.emptySub}>
+              {activeTrip.dropoffAddress ?? 'Trip in progress'}
+            </Text>
+            <TouchableOpacity
+              style={styles.ctaBtn}
+              onPress={() => {
+                router.back();
+                router.push({ pathname: '/transport-flow', params: { tripId: activeTrip.id } } as any);
+              }}
+              activeOpacity={0.88}
+            >
+              <Text style={styles.ctaBtnText}>View ride</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.emptyState}>
+            <View style={styles.iconCircle}>
+              <Car size={40} color={GOLD} strokeWidth={1.5} />
+            </View>
+            <Text style={styles.emptyTitle}>No active ride</Text>
+            <Text style={styles.emptySub}>Book a ride to get moving around Ogun State</Text>
 
-          <TouchableOpacity
-            style={styles.ctaBtn}
-            onPress={() => {
-              router.back();
-              router.push('/transport-flow' as any);
-            }}
-            activeOpacity={0.88}
-          >
-            <Text style={styles.ctaBtnText}>Book a Ride</Text>
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity
+              style={styles.ctaBtn}
+              onPress={() => {
+                router.back();
+                router.push('/transport-flow' as any);
+              }}
+              activeOpacity={0.88}
+            >
+              <Text style={styles.ctaBtnText}>Book a Ride</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Quick stats row */}
         <View style={styles.statsRow}>
           {[
             { Icon: Clock, label: 'Avg wait', value: '< 5 min' },
             { Icon: MapPin, label: 'Coverage', value: 'All Ogun LGAs' },
-            { Icon: Car, label: 'Vehicle types', value: 'Keke · Car' },
+            { Icon: Car, label: 'Vehicle types', value: 'Bike · Keke · Car · Bus' },
           ].map(({ Icon, label, value }) => (
             <View key={label} style={styles.statChip}>
               <Icon size={14} color={GOLD} strokeWidth={1.8} />

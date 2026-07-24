@@ -4,7 +4,9 @@ import {
   Get,
   HttpCode,
   Param,
+  ParseIntPipe,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -84,6 +86,17 @@ export class TourBookingsController {
   @ApiOperation({ summary: 'List the current user\'s tour bookings (past + upcoming)' })
   findMine(@CurrentUser() user: { userId: string }) {
     return this.service.findMine(user.userId);
+  }
+
+  @Get('quote')
+  @ApiOperation({
+    summary: 'Live price quote for a passenger count (applies the real PlatformConfig-sourced bulk discount)',
+  })
+  getQuote(
+    @Query('tourPackageId') tourPackageId: string,
+    @Query('passengerCount', ParseIntPipe) passengerCount: number,
+  ) {
+    return this.service.getQuote(tourPackageId, passengerCount);
   }
 
   @Get(':id')

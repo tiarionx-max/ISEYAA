@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -11,8 +11,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useQuery } from '@tanstack/react-query';
 import { fetcher } from '../../lib/api';
+import { getBookmarks } from '../../lib/storage';
 import * as SecureStore from 'expo-secure-store';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import Svg, { G, Rect, Path, Circle } from 'react-native-svg';
 import { PressableScale } from '../../components/ui/PressableScale';
 
@@ -70,17 +71,13 @@ import {
 
 interface UserProfile {
   id: string;
-  name?: string;
+  firstName?: string;
+  lastName?: string;
   phone?: string;
   role: string;
-  kyc_tier?: number;
-  kyc_verified?: boolean;
-  created_at?: string;
-  trips_count?: number;
-  stays_count?: number;
+  createdAt?: string;
   // 08-07: host detection — backend GET /users/me returns these.
   registeredRoles?: string[];
-  isHost?: boolean;
   otpChannel?: 'SMS' | 'WHATSAPP' | 'EMAIL';
 }
 
@@ -355,6 +352,39 @@ export default function ProfileScreen() {
     queryFn: () => fetcher('/users/me'),
   });
 
+  const { data: tourBookings } = useQuery({
+    queryKey: ['tour-bookings-me'],
+    queryFn: () => fetcher('/tour-bookings/me'),
+  });
+  const bookingsList: any[] = tourBookings?.data ?? tourBookings ?? [];
+  const now = new Date();
+  const upcomingBookings = bookingsList.filter(
+    (b) => new Date(b.tourDate) >= now && ['PENDING', 'CONFIRMED'].includes(b.status),
+  ).length;
+  const pastBookings = bookingsList.length - upcomingBookings;
+
+  const { data: myOrders } = useQuery({
+    queryKey: ['my-orders'],
+    queryFn: () => fetcher('/orders/mine'),
+  });
+  const ordersList: any[] = myOrders?.data ?? myOrders ?? [];
+  const ordersInProgress = ordersList.filter((o) =>
+    ['PENDING', 'PROCESSING', 'SHIPPED'].includes(o.status),
+  ).length;
+
+  const { data: myStays } = useQuery({
+    queryKey: ['bookings-mine'],
+    queryFn: () => fetcher('/bookings/mine'),
+  });
+  const staysList: any[] = myStays?.data ?? myStays ?? [];
+
+  const [savedCount, setSavedCount] = useState(0);
+  useFocusEffect(
+    useCallback(() => {
+      getBookmarks().then((ids) => setSavedCount(ids.length));
+    }, []),
+  );
+
   async function handleLogout() {
     Alert.alert(
       'Sign out?',
@@ -379,21 +409,21 @@ export default function ProfileScreen() {
     );
   }
 
-  const tier = balance?.kyc_tier ?? user?.kyc_tier ?? 0;
-  const initials = getInitials(user?.name, user?.phone);
-  const displayName = user?.name ?? user?.phone ?? 'Damiola A.';
-  const handle = getHandle(user?.name, user?.phone);
-  const memberSince = getMemberSince(user?.created_at);
+  const tier = balance?.kyc_tier ?? 0;
+  const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(' ');
+  const initials = getInitials(fullName, user?.phone);
+  const displayName = fullName || user?.phone || 'Damiola A.';
+  const handle = getHandle(fullName, user?.phone);
+  const memberSince = getMemberSince(user?.createdAt);
   const role = user?.role ?? 'CITIZEN';
   const isDriverOrAdmin = role === 'DRIVER' || role === 'ADMIN';
 
   // 08-07: Host onboarding entry point — hide once user is already a HOST.
-  const alreadyHost =
-    (user?.registeredRoles ?? []).includes('HOST') || user?.isHost === true;
+  const alreadyHost = (user?.registeredRoles ?? []).includes('HOST');
 
-  // Stats
-  const tripsCount = user?.trips_count ?? 0;
-  const staysCount = user?.stays_count ?? 0;
+  // Stats — "Trips" = tour bookings (/tour-bookings/me), "Stays" = property bookings (/bookings/mine)
+  const tripsCount = bookingsList.length;
+  const staysCount = staysList.length;
 
   // KYC tier data
   const tierData = [
@@ -406,26 +436,26 @@ export default function ProfileScreen() {
     {
       icon: Ticket,
       label: 'My Bookings',
-      sub: '3 upcoming · 12 past',
-      onPress: () => {},
+      sub: bookingsList.length > 0 ? `${upcomingBookings} upcoming · ${pastBookings} past` : 'No bookings yet',
+      onPress: () => router.push('/trips' as any),
     },
     {
       icon: ShoppingBag,
       label: 'My Orders',
-      sub: '1 in progress',
-      onPress: () => {},
+      sub: ordersList.length > 0 ? `${ordersInProgress} in progress` : 'No orders yet',
+      onPress: () => router.push('/orders' as any),
     },
     {
       icon: Heart,
       label: 'Saved Places',
-      sub: '8 saved',
-      onPress: () => {},
+      sub: savedCount > 0 ? `${savedCount} saved` : 'Nothing saved yet',
+      onPress: () => router.push('/saved-places' as any),
     },
     {
       icon: Clock,
       label: 'Activity',
-      sub: 'All app activity',
-      onPress: () => {},
+      sub: 'Wallet & transaction history',
+      onPress: () => router.push('/(tabs)/wallet' as any),
     },
     {
       icon: MessageSquare,

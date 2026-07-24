@@ -132,6 +132,14 @@ export class TransportController {
 
   // ── Trip Lifecycle ────────────────────────────────────────────────────────
 
+  @Get('trips/me')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List the current user’s trips (active first, then most recent)' })
+  findMine(@CurrentUser() user: any) {
+    return this.transportService.findMine(user.userId);
+  }
+
   @Post('trips')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.CITIZEN, UserRole.TOURIST)

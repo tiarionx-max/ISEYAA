@@ -52,7 +52,7 @@ const FAQS = [
   },
   {
     q: 'What is the platform fee?',
-    a: '85% is yours — we take 15%. After your first 100 bookings the rate drops to 12%.',
+    a: 'There is no fixed platform cut for guides — your share is set when you list a tour package, and shown on your dashboard before you publish. A government levy applies to every booking.',
   },
   {
     q: 'Can I set a group minimum?',

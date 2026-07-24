@@ -10,6 +10,7 @@ import { ImageService } from '../../../common/services/image.service';
 import { KafkaService } from '../../../kafka/kafka.service';
 import { SettlementService } from '../../../common/services/settlement.service';
 import { VisitorLogService } from '../../../common/services/visitor-log.service';
+import { NotificationsClientService } from '../../notifications-client/notifications-client.service';
 
 const mockKafka = { emit: jest.fn().mockResolvedValue(undefined), consume: jest.fn().mockResolvedValue(undefined) };
 
@@ -109,6 +110,7 @@ const mockSettlement = {
   resolveSplit: jest.fn().mockResolvedValue({ earnerPct: 0.85, ministryPct: 0.05, platformPct: 0.1 }),
 };
 const mockVisitorLog = { record: jest.fn().mockResolvedValue(undefined) };
+const mockNotifications = { sendPush: jest.fn().mockResolvedValue({ sent: true }) };
 
 describe('EventsService', () => {
   let service: EventsService;
@@ -133,6 +135,7 @@ describe('EventsService', () => {
         { provide: KafkaService, useValue: mockKafka },
         { provide: SettlementService, useValue: mockSettlement },
         { provide: VisitorLogService, useValue: mockVisitorLog },
+        { provide: NotificationsClientService, useValue: mockNotifications },
       ],
     }).compile();
 

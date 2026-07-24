@@ -41,7 +41,7 @@ const FAQS = [
   },
   {
     q: 'How much do I keep?',
-    a: '85% — we charge a 15% platform fee on the first 100 transactions, then 12% thereafter.',
+    a: 'You keep 95% of every booking. A 5% government levy applies — there is no separate Iṣẹ́yáá platform fee for hosts.',
   },
   {
     q: 'What about social clubs?',

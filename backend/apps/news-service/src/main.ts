@@ -10,17 +10,22 @@ async function bootstrap() {
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.GRPC,
     options: {
-      package: ['news', 'grpc.health.v1'],
+      package: 'news',
       protoPath: [
         join(__dirname, '../../../../../packages/proto/news.proto'),
         healthCheckProtoPath,
       ],
       url: '0.0.0.0:5009',
-      onLoadPackageDefinition: (pkg, server) => {
-        const healthImpl = new HealthImplementation({ '': 'UNKNOWN' });
-        healthImpl.addToServer(server);
-        healthImpl.setStatus('', 'SERVING');
-      },
+      onLoadPackageDefinition: (() => {
+        let registered = false;
+        return (pkg, server) => {
+          if (registered) return;
+          registered = true;
+          const healthImpl = new HealthImplementation({ '': 'UNKNOWN' });
+          healthImpl.addToServer(server);
+          healthImpl.setStatus('', 'SERVING');
+        };
+      })(),
     },
   });
 

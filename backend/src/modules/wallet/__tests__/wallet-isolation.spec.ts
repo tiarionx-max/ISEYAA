@@ -4,6 +4,7 @@ import { WalletService } from '../wallet.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { PaystackService } from '../../../common/services/paystack.service';
 import { RedisService } from '../../../redis/redis.service';
+import { NotificationsClientService } from '../../notifications-client/notifications-client.service';
 
 // ── Fixtures ───────────────────────────────────────────────────────────────
 
@@ -43,6 +44,7 @@ const mockTx = {
 
 const mockPaystack = { initiatePayment: jest.fn() };
 const mockRedis = { setNx: jest.fn().mockResolvedValue(true), del: jest.fn().mockResolvedValue(1) };
+const mockNotifications = { sendPush: jest.fn().mockResolvedValue({ sent: true }) };
 
 // ── Suite ─────────────────────────────────────────────────────────────────
 
@@ -63,6 +65,7 @@ describe('Wallet isolation', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: PaystackService, useValue: mockPaystack },
         { provide: RedisService, useValue: mockRedis },
+        { provide: NotificationsClientService, useValue: mockNotifications },
       ],
     }).compile();
 

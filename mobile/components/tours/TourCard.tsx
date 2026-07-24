@@ -38,7 +38,7 @@ export type TourPackage = {
   price?: number | null;
   coverImageUrl?: string | null;
   imageUrls?: string[];
-  averageRating?: number | null;
+  rating?: number | null;
   reviewCount?: number | null;
   lga?: { name?: string } | null;
   durationHours?: number | null;
@@ -65,7 +65,7 @@ export function TourCard({ pkg, index = 0, cardWidth, onPress }: TourCardProps):
   const cover = pkg.coverImageUrl ?? pkg.imageUrls?.[0] ?? null;
   const fallback = CARD_COLORS[index % CARD_COLORS.length];
   const badge = formatCategory(pkg.category);
-  const rating = pkg.averageRating;
+  const rating = pkg.rating;
   const priceStr = formatPrice(pkg);
 
   return (

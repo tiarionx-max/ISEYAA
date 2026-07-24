@@ -26,6 +26,9 @@ import { CreatePropertyDto } from './dto/create-property.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { CreateReviewDto } from './dto/create-review.dto';
+import { CreateMembershipDto } from './dto/create-membership.dto';
+
+const MEMBERSHIP_PERIOD_MS = 30 * 24 * 60 * 60 * 1000; // 30-day renewal period
 
 function slugify(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -325,6 +328,215 @@ export class StaysService implements OnModuleInit {
       }
     } catch (err) {
       this.logger.error(`handleStayPayment failed for ref ${payload.reference}`, err.message);
+    }
+  }
+
+  // ── Memberships (recurring monthly billing for MEMBERSHIP-mode properties) ──
+
+  async createMembership(userId: string, propertyId: string, dto: CreateMembershipDto) {
+    const property = await this.prisma.property.findFirst({
+      where: { id: propertyId, deletedAt: null, isActive: true },
+    });
+    if (!property) throw new NotFoundException('Property not found');
+    if (property.bookingMode !== 'MEMBERSHIP') {
+      throw new BadRequestException('This property does not offer memberships');
+    }
+    if (!property.membershipMonthlyPrice) {
+      throw new BadRequestException('Membership price is not configured for this property');
+    }
+
+    const existing = await this.prisma.membership.findFirst({
+      where: { propertyId, userId, status: { in: ['PENDING', 'ACTIVE', 'PAST_DUE'] }, deletedAt: null },
+    });
+    if (existing) throw new ConflictException('You already have a membership for this property');
+
+    const monthlyPriceNgn = Number(property.membershipMonthlyPrice);
+    const { ministryPct } = await this.settlementService.resolveSplit('stays', monthlyPriceNgn);
+    const paystackRef = `ISY-MEM-${uuidv4().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
+
+    const membership = await this.prisma.membership.create({
+      data: {
+        propertyId,
+        userId,
+        monthlyPriceNgn,
+        govtLevyPct: ministryPct,
+        paystackRef,
+        paystackEmail: dto.email,
+        status: 'PENDING',
+        metadata: { propertyName: property.name },
+      },
+    });
+
+    let payment;
+    try {
+      payment = await this.paystack.initiatePayment({
+        email: dto.email,
+        amountKobo: monthlyPriceNgn * 100,
+        reference: paystackRef,
+        metadata: { type: 'membership_signup', membershipId: membership.id, propertyId, userId },
+      });
+    } catch (err) {
+      await this.prisma.membership.delete({ where: { id: membership.id } }).catch(() => {});
+      this.logger.error(`Paystack init failed for membership ${membership.id}, rolled back`, err);
+      throw new ServiceUnavailableException('Payment gateway is currently unavailable. Please try again shortly.');
+    }
+
+    return { membership, payment };
+  }
+
+  @OnEvent('payment.membership_signup')
+  async handleMembershipSignup(payload: { reference: string; authorization?: { authorization_code?: string } }) {
+    try {
+      const membership = await this.prisma.membership.findUnique({
+        where: { paystackRef: payload.reference },
+        include: { property: { select: { name: true, hostId: true } }, user: { select: { email: true, firstName: true } } },
+      });
+      if (!membership || membership.status !== 'PENDING') return;
+
+      await this.prisma.membership.update({
+        where: { id: membership.id },
+        data: {
+          status: 'ACTIVE',
+          currentPeriodEnd: new Date(Date.now() + MEMBERSHIP_PERIOD_MS),
+          paystackAuthCode: payload.authorization?.authorization_code ?? null,
+        },
+      });
+
+      const total = Number(membership.monthlyPriceNgn);
+      const govtLevyPct = Number(membership.govtLevyPct);
+      const govtLevyNgn = +(total * govtLevyPct).toFixed(2);
+      const hostAmountNgn = +(total - govtLevyNgn).toFixed(2);
+
+      if (membership.property.hostId) {
+        const hostWallet = await this.prisma.wallet.findUnique({ where: { userId: membership.property.hostId } });
+        const ministryWallet = await this.settlementService.resolveMinistryWallet();
+        if (hostWallet) {
+          await this.settlementService.settle({
+            module: 'stays',
+            reference: `ISY-MEM-${membership.id.replace(/-/g, '').slice(0, 16).toUpperCase()}-P0`,
+            gateway: 'PAYSTACK',
+            amountKobo: total * 100,
+            recipients: [
+              { tag: 'HOST', refSuffix: 'HOST', walletId: hostWallet.id, amountNgn: hostAmountNgn, metadata: { membershipId: membership.id } },
+              { tag: 'MINISTRY', refSuffix: 'MINISTRY', walletId: ministryWallet?.id ?? null, amountNgn: govtLevyNgn, metadata: { membershipId: membership.id } },
+            ],
+            description: 'Membership sign-up — first period',
+          });
+        }
+      }
+
+      this.logger.log(`Membership ${membership.id} activated for property ${membership.property.name}`);
+    } catch (err) {
+      this.logger.error(`handleMembershipSignup failed for ref ${payload.reference}`, (err as Error).message);
+    }
+  }
+
+  async findMyMemberships(userId: string) {
+    return this.prisma.membership.findMany({
+      where: { userId, deletedAt: null },
+      include: { property: { include: { lga: { select: { name: true, slug: true } } } } },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async cancelMembership(id: string, userId: string) {
+    const membership = await this.prisma.membership.findFirst({ where: { id, deletedAt: null } });
+    if (!membership) throw new NotFoundException('Membership not found');
+    if (membership.userId !== userId) throw new ForbiddenException('Not your membership');
+    if (membership.status === 'CANCELLED' || membership.status === 'EXPIRED') {
+      throw new ConflictException('Membership is already inactive');
+    }
+
+    return this.prisma.membership.update({
+      where: { id },
+      data: { status: 'CANCELLED', cancelledAt: new Date() },
+    });
+  }
+
+  @Cron(CronExpression.EVERY_HOUR)
+  async renewMemberships(): Promise<void> {
+    const acquired = await this.redis.setNx('cron-lock:renewMemberships', '1', 3300);
+    if (!acquired) {
+      this.logger.debug('renewMemberships: lock held by another replica — skipping this tick');
+      return;
+    }
+
+    const dueMemberships = await this.prisma.membership.findMany({
+      where: {
+        status: { in: ['ACTIVE', 'PAST_DUE'] },
+        currentPeriodEnd: { lte: new Date() },
+        deletedAt: null,
+      },
+      include: { property: { select: { hostId: true } } },
+      take: 100,
+    });
+
+    for (const membership of dueMemberships) {
+      try {
+        if (!membership.paystackAuthCode) {
+          // No saved card on file — cannot renew silently; expire it.
+          await this.prisma.membership.update({ where: { id: membership.id }, data: { status: 'EXPIRED' } });
+          continue;
+        }
+
+        const total = Number(membership.monthlyPriceNgn);
+        const periodKey = membership.currentPeriodEnd!.toISOString().slice(0, 10).replace(/-/g, '');
+        const renewalRef = `ISY-MEM-${membership.id.replace(/-/g, '').slice(0, 12).toUpperCase()}-R${periodKey}`;
+
+        let charge;
+        try {
+          charge = await this.paystack.chargeAuthorization({
+            authorizationCode: membership.paystackAuthCode,
+            email: membership.paystackEmail,
+            amountKobo: total * 100,
+            reference: renewalRef,
+            metadata: { type: 'membership_renewal', membershipId: membership.id },
+          });
+        } catch (err) {
+          this.logger.error(`Membership renewal charge failed for ${membership.id}`, (err as Error).message);
+          charge = { status: 'failed', reference: renewalRef };
+        }
+
+        if (charge.status !== 'success') {
+          const nextStatus = membership.status === 'PAST_DUE' ? 'EXPIRED' : 'PAST_DUE';
+          await this.prisma.membership.update({ where: { id: membership.id }, data: { status: nextStatus } });
+          this.logger.warn(`Membership ${membership.id} renewal failed — now ${nextStatus}`);
+          continue;
+        }
+
+        const nextPeriodEnd = new Date(membership.currentPeriodEnd!.getTime() + MEMBERSHIP_PERIOD_MS);
+        await this.prisma.membership.update({
+          where: { id: membership.id },
+          data: { status: 'ACTIVE', currentPeriodEnd: nextPeriodEnd },
+        });
+
+        const govtLevyPct = Number(membership.govtLevyPct);
+        const govtLevyNgn = +(total * govtLevyPct).toFixed(2);
+        const hostAmountNgn = +(total - govtLevyNgn).toFixed(2);
+        const hostUserId = membership.property.hostId;
+
+        if (hostUserId) {
+          const hostWallet = await this.prisma.wallet.findUnique({ where: { userId: hostUserId } });
+          const ministryWallet = await this.settlementService.resolveMinistryWallet();
+          if (hostWallet) {
+            await this.settlementService.settle({
+              module: 'stays',
+              reference: renewalRef,
+              gateway: 'PAYSTACK',
+              amountKobo: total * 100,
+              recipients: [
+                { tag: 'HOST', refSuffix: 'HOST', walletId: hostWallet.id, amountNgn: hostAmountNgn, metadata: { membershipId: membership.id } },
+                { tag: 'MINISTRY', refSuffix: 'MINISTRY', walletId: ministryWallet?.id ?? null, amountNgn: govtLevyNgn, metadata: { membershipId: membership.id } },
+              ],
+              description: 'Membership renewal',
+            });
+          }
+        }
+
+        this.logger.log(`Membership ${membership.id} renewed through ${nextPeriodEnd.toISOString()}`);
+      } catch (err) {
+        this.logger.error(`renewMemberships failed for membership ${membership.id}`, (err as Error).message);
+      }
     }
   }
 

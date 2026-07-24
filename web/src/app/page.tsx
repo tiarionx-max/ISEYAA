@@ -137,7 +137,7 @@ export default function HomePage() {
 
   const STATS = [
     { value: lgasLoading || lgaCount === null ? '—' : String(lgaCount),                label: 'LGAs Covered',     icon: MapPin },
-    { value: '7M+',                                                                     label: 'Citizens served',  icon: Users  },
+    { value: '7M+',                                                                     label: 'Ogun State population', icon: Users  },
     { value: attractionsLoading || attractionCount === null ? '—' : String(attractionCount), label: 'Attractions', icon: Star   },
     { value: '100%',                                                                    label: 'Secure & NDPA',    icon: Shield },
   ];

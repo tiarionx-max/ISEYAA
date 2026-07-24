@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
   Search,
@@ -21,7 +21,7 @@ import {
   ChevronRight,
   Check,
 } from 'lucide-react-native';
-import { api, fetcher } from '../lib/api';
+import { api, fetcher, getErrorMessage } from '../lib/api';
 import {
   SURFACE_DEEP,
   SURFACE_MID,
@@ -48,24 +48,53 @@ import {
 type AvatarTone = keyof typeof CARD_GRADIENTS;
 
 interface Recipient {
+  userId: string;
   initials: string;
   name: string;
   sub: string;
   tone: AvatarTone;
+  phone: string;
 }
 
-// ── Seed recipients (real data comes from transaction history) ─────────────────
+const NG_PHONE_RE = /^(\+234|0)\d{10}$/;
 
-const RECENT_RECIPIENTS: Recipient[] = [
-  { initials: 'TA', name: 'Tunde A.', sub: '@tundez', tone: 'rock' },
-  { initials: 'BI', name: 'Bisi I.', sub: '@bisicode', tone: 'forest' },
-  { initials: 'FA', name: 'Femi A.', sub: '@femithedev', tone: 'dusk' },
-  { initials: 'AO', name: 'Adunni O.', sub: '@adunni', tone: 'indigo' },
-  { initials: 'KO', name: 'Kemi O.', sub: '@kemio', tone: 'gold' },
-];
+const AVATAR_TONES: AvatarTone[] = ['gold', 'forest', 'rock', 'dusk', 'indigo'];
+
+function toneForPhone(phone: string): AvatarTone {
+  const sum = phone.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+  return AVATAR_TONES[sum % AVATAR_TONES.length];
+}
+
+function initialsFor(firstName: string): string {
+  return firstName.trim().slice(0, 2).toUpperCase();
+}
+
+function maskPhone(phone: string): string {
+  return phone.length > 4 ? `••••${phone.slice(-4)}` : phone;
+}
+
+function toRecipient(r: { userId: string; firstName: string; phone: string }): Recipient {
+  return {
+    userId: r.userId,
+    initials: initialsFor(r.firstName),
+    name: r.firstName,
+    sub: maskPhone(r.phone),
+    tone: toneForPhone(r.phone),
+    phone: r.phone,
+  };
+}
 
 function formatBalance(n: number): string {
   return n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Per-attempt idempotency key for POST /wallet/transfer — never sent to a
+// security-sensitive context (it's a dedup key, not a secret), so Math.random()
+// is fine here. Avoids the `uuid` package's crypto.getRandomValues() dependency,
+// which Hermes doesn't provide without a native polyfill (react-native-get-random-values)
+// that isn't linked into this build. Same construction as ai-chat.tsx's uuidv4().
+function generateIdempotencyKey(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
 }
 
 // ── Components ─────────────────────────────────────────────────────────────────
@@ -101,26 +130,79 @@ function RecipientAvatar({
 export default function SendScreen() {
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
-  const [selectedRecipient, setSelectedRecipient] = useState<Recipient>(RECENT_RECIPIENTS[0]);
+  const [phoneInput, setPhoneInput] = useState('');
+  const [selectedRecipient, setSelectedRecipient] = useState<Recipient | null>(null);
   const queryClient = useQueryClient();
 
   const { data: walletData } = useQuery({
     queryKey: ['wallet'],
     queryFn: () => fetcher('/wallet/balance'),
   });
-  const balance: number = walletData?.data?.balance ?? walletData?.balance ?? 0;
+  const balance: number = Number(walletData?.balance_ngn ?? 0);
+
+  // ── Recent recipients — derived from real outgoing transfer history ────────
+  const { data: transferHistory } = useQuery({
+    queryKey: ['wallet-transfers-out'],
+    queryFn: () => fetcher('/wallet/transactions?type=TRANSFER&limit=50'),
+  });
+
+  const recentPhones: string[] = useMemo(() => {
+    const items: any[] = transferHistory?.data ?? [];
+    const phones = items
+      .filter((t) => t.metadata?.direction === 'out' && t.metadata?.recipientPhone)
+      .map((t) => t.metadata.recipientPhone as string);
+    return Array.from(new Set(phones)).slice(0, 5);
+  }, [transferHistory]);
+
+  const recentQueries = useQueries({
+    queries: recentPhones.map((phone) => ({
+      queryKey: ['resolve-recipient', phone],
+      queryFn: () => fetcher(`/wallet/resolve-recipient?phone=${encodeURIComponent(phone)}`),
+      enabled: !!phone,
+      staleTime: 5 * 60_000,
+    })),
+  });
+
+  const recentRecipients: Recipient[] = recentQueries
+    .map((q) => q.data)
+    .filter((d): d is { userId: string; firstName: string; phone: string } => !!d)
+    .map(toRecipient);
+
+  // ── Live recipient lookup as the user types a phone number ─────────────────
+  const [debouncedPhone, setDebouncedPhone] = useState('');
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedPhone(phoneInput.trim()), 400);
+    return () => clearTimeout(handle);
+  }, [phoneInput]);
+
+  const lookupEnabled = NG_PHONE_RE.test(debouncedPhone);
+  const { data: lookupData, isFetching: isLookingUp, error: lookupError } = useQuery({
+    queryKey: ['resolve-recipient', debouncedPhone],
+    queryFn: () => fetcher(`/wallet/resolve-recipient?phone=${encodeURIComponent(debouncedPhone)}`),
+    enabled: lookupEnabled,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (lookupData) setSelectedRecipient(toRecipient(lookupData));
+  }, [lookupData]);
 
   const transferMutation = useMutation({
-    mutationFn: (payload: { recipientHandle: string; amount: number; note: string }) =>
-      api.post('/wallet/transfer', payload).then((r) => r.data),
+    mutationFn: (payload: {
+      recipientPhone: string;
+      amount: number;
+      narration?: string;
+      idempotencyKey: string;
+    }) => api.post('/wallet/transfer', payload).then((r) => r.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['wallet'] });
-      Alert.alert('Sent!', `₦${amount} sent to ${selectedRecipient.name}.`, [
+      queryClient.invalidateQueries({ queryKey: ['wallet-transfers-out'] });
+      Alert.alert('Sent!', `₦${amount} sent to ${selectedRecipient?.name}.`, [
         { text: 'Done', onPress: () => router.back() },
       ]);
     },
     onError: (err: any) => {
-      Alert.alert('Failed', err.response?.data?.message ?? 'Transfer failed. Please try again.');
+      Alert.alert('Failed', getErrorMessage(err, 'Transfer failed. Please try again.'));
     },
   });
 
@@ -128,11 +210,12 @@ export default function SendScreen() {
   const canSend = numAmount > 0 && numAmount <= balance && !!selectedRecipient;
 
   function handleSend() {
-    if (!canSend || transferMutation.isPending) return;
+    if (!canSend || !selectedRecipient || transferMutation.isPending) return;
     transferMutation.mutate({
-      recipientHandle: selectedRecipient.sub,
+      recipientPhone: selectedRecipient.phone,
       amount: numAmount,
-      note,
+      narration: note || undefined,
+      idempotencyKey: generateIdempotencyKey(),
     });
   }
 
@@ -163,68 +246,92 @@ export default function SendScreen() {
             <Search size={16} color={INK_MID} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Phone, @username, or account number"
+              value={phoneInput}
+              onChangeText={(t) => {
+                setPhoneInput(t);
+                if (selectedRecipient) setSelectedRecipient(null);
+              }}
+              placeholder="Nigerian phone number (e.g. 0801 234 5678)"
               placeholderTextColor={INK_FAINT}
+              keyboardType="phone-pad"
               returnKeyType="search"
-              accessibilityLabel="Recipient search"
+              accessibilityLabel="Recipient phone number"
             />
+            {isLookingUp && <ActivityIndicator size="small" color={GOLD} />}
             <TouchableOpacity style={styles.qrBtn} accessibilityRole="button">
               <QrCode size={16} color={GOLD} />
             </TouchableOpacity>
           </View>
+          {!selectedRecipient && debouncedPhone.length > 0 && !isLookingUp && (
+            <Text style={styles.overBudget}>
+              {lookupEnabled
+                ? getErrorMessage(lookupError, 'No ISEYAA user found with that number')
+                : 'Enter a full Nigerian phone number'}
+            </Text>
+          )}
         </View>
 
         {/* ── Recent recipients ──────────────────────────────────────────────── */}
-        <View style={styles.recentSection}>
-          <View style={styles.recentHeader}>
-            <Text style={styles.recentKicker}>SEND AGAIN</Text>
-            <Text style={styles.recentTitle}>Recent</Text>
+        {recentRecipients.length > 0 && (
+          <View style={styles.recentSection}>
+            <View style={styles.recentHeader}>
+              <Text style={styles.recentKicker}>SEND AGAIN</Text>
+              <Text style={styles.recentTitle}>Recent</Text>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.recentScroll}
+            >
+              {recentRecipients.map((r) => (
+                <RecipientAvatar
+                  key={r.userId}
+                  recipient={r}
+                  isSelected={selectedRecipient?.userId === r.userId}
+                  onPress={() => {
+                    setSelectedRecipient(r);
+                    setPhoneInput(r.phone);
+                  }}
+                />
+              ))}
+            </ScrollView>
           </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.recentScroll}
-          >
-            {RECENT_RECIPIENTS.map((r) => (
-              <RecipientAvatar
-                key={r.sub}
-                recipient={r}
-                isSelected={selectedRecipient?.sub === r.sub}
-                onPress={() => setSelectedRecipient(r)}
-              />
-            ))}
-          </ScrollView>
-        </View>
+        )}
 
         {/* ── Selected recipient ─────────────────────────────────────────────── */}
-        <View style={styles.selectedSection}>
-          <View style={styles.selectedCard}>
-            <LinearGradient
-              colors={CARD_GRADIENTS[selectedRecipient.tone]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-              style={styles.selectedAvatar}
-            >
-              <Text style={styles.selectedAvatarInitials}>{selectedRecipient.initials}</Text>
-            </LinearGradient>
-            <View style={styles.selectedInfo}>
-              <View style={styles.selectedNameRow}>
-                <Text style={styles.selectedName}>{selectedRecipient.name}</Text>
-                <View style={styles.verifiedBadge}>
-                  <Check size={8} color="#050E0E" strokeWidth={3} />
+        {selectedRecipient && (
+          <View style={styles.selectedSection}>
+            <View style={styles.selectedCard}>
+              <LinearGradient
+                colors={CARD_GRADIENTS[selectedRecipient.tone]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0, y: 1 }}
+                style={styles.selectedAvatar}
+              >
+                <Text style={styles.selectedAvatarInitials}>{selectedRecipient.initials}</Text>
+              </LinearGradient>
+              <View style={styles.selectedInfo}>
+                <View style={styles.selectedNameRow}>
+                  <Text style={styles.selectedName}>{selectedRecipient.name}</Text>
+                  <View style={styles.verifiedBadge}>
+                    <Check size={8} color="#050E0E" strokeWidth={3} />
+                  </View>
                 </View>
+                <Text style={styles.selectedSub}>{selectedRecipient.sub}</Text>
               </View>
-              <Text style={styles.selectedSub}>{selectedRecipient.sub}</Text>
+              <TouchableOpacity
+                style={styles.changeBtn}
+                onPress={() => {
+                  setSelectedRecipient(null);
+                  setPhoneInput('');
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.changeBtnText}>Change</Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity
-              style={styles.changeBtn}
-              onPress={() => setSelectedRecipient(RECENT_RECIPIENTS[0])}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.changeBtnText}>Change</Text>
-            </TouchableOpacity>
           </View>
-        </View>
+        )}
 
         {/* ── Amount ────────────────────────────────────────────────────────── */}
         <View style={styles.amountSection}>

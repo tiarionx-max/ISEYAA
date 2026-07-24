@@ -30,6 +30,7 @@ export class TourismController {
   @ApiQuery({ name: 'lat', required: false, type: Number, description: 'Near latitude' })
   @ApiQuery({ name: 'lng', required: false, type: Number, description: 'Near longitude' })
   @ApiQuery({ name: 'radius', required: false, type: Number, description: 'Near radius in km (default 10)' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Max results (unbounded if omitted)' })
   findAll(
     @Query('lgaId') lgaId?: string,
     @Query('category') category?: string,
@@ -37,7 +38,10 @@ export class TourismController {
     @Query('lat') latStr?: string,
     @Query('lng') lngStr?: string,
     @Query('radius') radiusStr?: string,
+    @Query('limit') limitStr?: string,
   ) {
+    // Previously `limit` was accepted by callers (e.g. mobile's `/attractions?limit=50`)
+    // but silently dropped here — the service ran an unbounded query regardless.
     return this.tourismService.findAll({
       lgaId,
       category,
@@ -45,7 +49,19 @@ export class TourismController {
       lat: latStr !== undefined ? parseFloat(latStr) : undefined,
       lng: lngStr !== undefined ? parseFloat(lngStr) : undefined,
       radius: radiusStr !== undefined ? parseFloat(radiusStr) : undefined,
+      limit: limitStr !== undefined ? parseInt(limitStr, 10) : undefined,
     });
+  }
+
+  @Get('bookmarks')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Current user's bookmarked attractions" })
+  getBookmarks(@CurrentUser() user: { userId: string }) {
+    // Must be declared before ':id' — otherwise Nest matches 'bookmarks' as the :id
+    // param and this route is unreachable (TourismService.getUserBookmarks() was
+    // implemented and unit-tested but had no controller route exposing it over HTTP).
+    return this.tourismService.getUserBookmarks(user.userId);
   }
 
   @Get(':id')

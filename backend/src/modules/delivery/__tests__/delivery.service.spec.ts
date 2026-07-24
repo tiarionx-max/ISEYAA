@@ -7,12 +7,12 @@ import { DeliveryService } from '../delivery.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { RedisService } from '../../../redis/redis.service';
 import { WalletService } from '../../wallet/wallet.service';
-import { SchedulerRegistry } from '@nestjs/schedule';
 import { DeliveryGateway } from '../delivery.gateway';
 import { ConfigService } from '@nestjs/config';
 import { S3Service } from '../../../common/services/s3.service';
 import { ResilienceService } from '../../../resilience/resilience.service';
 import { SettlementService } from '../../../common/services/settlement.service';
+import { NotificationsClientService } from '../../notifications-client/notifications-client.service';
 
 // ── Fixture IDs ────────────────────────────────────────────────────────────────
 
@@ -138,11 +138,7 @@ const mockWallet = {
   creditWallet: jest.fn().mockResolvedValue(undefined),
 };
 
-const mockScheduler = {
-  addTimeout: jest.fn(),
-  deleteTimeout: jest.fn(),
-  doesExist: jest.fn().mockReturnValue(false),
-};
+const mockNotifications = { sendPush: jest.fn().mockResolvedValue({ sent: true }) };
 
 const mockGateway = {
   server: {
@@ -169,6 +165,23 @@ const mockResilience = {
 describe('DeliveryService', () => {
   let service: DeliveryService;
 
+  // Keyed platformConfig lookup — robust against call-order changes, unlike chained
+  // mockResolvedValueOnce(). Individual tests can override specific keys afterward.
+  const DEFAULT_CONFIG: Record<string, number> = {
+    delivery_base_fee: 300,
+    delivery_per_kg_rate: 50,
+    delivery_match_radius_km: 5,
+    'delivery.match_max_retry_attempts': 3,
+    'delivery.otp_ttl_seconds': 1800,
+  };
+
+  function mockConfigDefaults(overrides: Record<string, number> = {}) {
+    const merged = { ...DEFAULT_CONFIG, ...overrides };
+    mockPrisma.platformConfig.findUnique.mockImplementation(({ where }: any) =>
+      Promise.resolve(where.key in merged ? mockPlatformConfig(where.key, merged[where.key]) : null),
+    );
+  }
+
   beforeEach(async () => {
     jest.clearAllMocks();
     // Reset the to().emit chain after clearAllMocks
@@ -186,6 +199,10 @@ describe('DeliveryService', () => {
     mockSettlement.settle.mockResolvedValue({ status: 'SETTLED', platformAmountNgn: 0, recipientCredits: [] });
     mockSettlement.resolveMinistryWallet.mockResolvedValue({ id: 'WAL-MINISTRY' });
     mockSettlement.resolveSplit.mockResolvedValue({ earnerPct: 0.8, ministryPct: 0.05, platformPct: 0.15 });
+    mockConfigDefaults();
+    // Default: the CAS-guarded updateMany in attemptMatchOrder "wins the race" unless a
+    // specific test overrides this to simulate a concurrent call already advancing state.
+    mockPrisma.deliveryOrder.updateMany.mockResolvedValue({ count: 1 });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -193,12 +210,12 @@ describe('DeliveryService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: RedisService, useValue: mockRedis },
         { provide: WalletService, useValue: mockWallet },
-        { provide: SchedulerRegistry, useValue: mockScheduler },
         { provide: DeliveryGateway, useValue: mockGateway },
         { provide: ConfigService, useValue: mockConfig },
         { provide: S3Service, useValue: mockS3 },
         { provide: ResilienceService, useValue: mockResilience },
         { provide: SettlementService, useValue: mockSettlement },
+        { provide: NotificationsClientService, useValue: mockNotifications },
       ],
     }).compile();
 
@@ -208,85 +225,236 @@ describe('DeliveryService', () => {
   // ── requestDelivery ────────────────────────────────────────────────────────
 
   describe('requestDelivery', () => {
-    it('calls redis.geosearch("riders:online", ...) and creates a DeliveryOrder with SEARCHING status and sends OTP', async () => {
-      mockRedis.geosearch.mockResolvedValue([]);
-      mockPrisma.deliveryOrder.create.mockResolvedValue({
-        ...mockOrder,
-        status: 'SEARCHING',
-        riderId: null,
-        otpVerifiedAt: null,
-      });
-      mockPrisma.platformConfig.findUnique
-        .mockResolvedValueOnce(mockPlatformConfig('delivery_base_fee', 300))
-        .mockResolvedValueOnce(mockPlatformConfig('delivery_per_kg_rate', 50))
-        .mockResolvedValueOnce(mockPlatformConfig('delivery_match_radius_km', 5));
+    const dto = {
+      pickupLat: 7.1608,
+      pickupLng: 3.3475,
+      pickupAddress: '1 Ake Road, Abeokuta',
+      dropoffLat: 7.2571,
+      dropoffLng: 3.4167,
+      dropoffAddress: 'Olumo Rock, Abeokuta',
+      itemDescription: 'Electronics — laptop and charger',
+      weightKg: 2.5,
+      recipientPhone: '+2348012345678',
+    };
 
-      const dto = {
-        pickupLat: 7.1608,
-        pickupLng: 3.3475,
-        pickupAddress: '1 Ake Road, Abeokuta',
-        dropoffLat: 7.2571,
-        dropoffLng: 3.4167,
-        dropoffAddress: 'Olumo Rock, Abeokuta',
-        itemDescription: 'Electronics — laptop and charger',
-        weightKg: 2.5,
-        recipientPhone: '+2348012345678',
-      };
-
-      const result = await service.requestDelivery(USER_ID, dto as any);
-
-      expect(mockRedis.geosearch).toHaveBeenCalledWith(
-        'riders:online',
-        expect.any(Number), // pickupLng
-        expect.any(Number), // pickupLat
-        expect.any(Number), // radiusKm
-      );
-      expect(mockPrisma.deliveryOrder.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            senderId: USER_ID,
-            status: 'SEARCHING',
-          }),
-        }),
-      );
-      expect(result.status).toBe('SEARCHING');
-    });
-
-    it('emits "delivery:request" to gateway.server.to("rider:{riderId}") and schedules 60s timeout when geosearch returns a rider', async () => {
-      mockRedis.geosearch.mockResolvedValue([RIDER_ID]);
-      mockPrisma.deliveryOrder.create.mockResolvedValue({
+    function mockCreatedOrder(overrides: any = {}) {
+      return {
         ...mockOrder,
         id: ORDER_ID,
         status: 'SEARCHING',
         riderId: null,
         otpVerifiedAt: null,
-      });
-      mockPrisma.platformConfig.findUnique
-        .mockResolvedValueOnce(mockPlatformConfig('delivery_base_fee', 300))
-        .mockResolvedValueOnce(mockPlatformConfig('delivery_per_kg_rate', 50))
-        .mockResolvedValueOnce(mockPlatformConfig('delivery_match_radius_km', 5));
-
-      const dto = {
-        pickupLat: 7.1608,
-        pickupLng: 3.3475,
-        pickupAddress: '1 Ake Road, Abeokuta',
-        dropoffLat: 7.2571,
-        dropoffLng: 3.4167,
-        dropoffAddress: 'Olumo Rock, Abeokuta',
-        itemDescription: 'Electronics — laptop and charger',
-        weightKg: 2.5,
-        recipientPhone: '+2348012345678',
+        matchAttempts: 0,
+        excludedRiderIds: [],
+        pickupLat: dto.pickupLat,
+        pickupLng: dto.pickupLng,
+        senderId: USER_ID,
+        ...overrides,
       };
+    }
+
+    it('creates a DeliveryOrder with SEARCHING status, sends OTP, and calls redis.geosearch via the first match attempt', async () => {
+      mockRedis.geosearch.mockResolvedValue([]);
+      const created = mockCreatedOrder();
+      mockPrisma.deliveryOrder.create.mockResolvedValue(created);
+      mockPrisma.deliveryOrder.findFirst.mockResolvedValue(created);
+
+      const result = await service.requestDelivery(USER_ID, dto as any);
+
+      expect(mockPrisma.deliveryOrder.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ senderId: USER_ID, status: 'SEARCHING' }),
+        }),
+      );
+      expect(mockRedis.geosearch).toHaveBeenCalledWith('riders:online', dto.pickupLng, dto.pickupLat, 5);
+      expect(mockRedis.set).toHaveBeenCalledWith(`delivery:otp:${ORDER_ID}`, expect.any(String), 1800);
+      expect(result?.status).toBe('SEARCHING');
+    });
+
+    it('emits "delivery:request" to gateway.server.to("rider:{riderId}") and sets a 60s matchDeadlineAt when geosearch returns a rider', async () => {
+      mockRedis.geosearch.mockResolvedValue([RIDER_ID]);
+      const created = mockCreatedOrder();
+      mockPrisma.deliveryOrder.create.mockResolvedValue(created);
+      mockPrisma.deliveryOrder.findFirst.mockResolvedValue(created);
 
       await service.requestDelivery(USER_ID, dto as any);
 
       expect(mockGateway.server.to).toHaveBeenCalledWith(`rider:${RIDER_ID}`);
       const toReturn = mockGateway.server.to.mock.results[0]?.value;
       expect(toReturn?.emit).toHaveBeenCalledWith('delivery:request', expect.anything());
-      expect(mockScheduler.addTimeout).toHaveBeenCalledWith(
-        expect.stringContaining(ORDER_ID),
-        expect.anything(),
+      expect(mockPrisma.deliveryOrder.updateMany).toHaveBeenCalledWith({
+        where: { id: ORDER_ID, status: 'SEARCHING', matchAttempts: 0 },
+        data: { matchAttempts: 1, matchDeadlineAt: expect.any(Date), excludedRiderIds: { push: RIDER_ID } },
+      });
+    });
+
+    it('does not double-offer when a concurrent call already advanced the order (CAS guard loses the race)', async () => {
+      mockRedis.geosearch.mockResolvedValue([RIDER_ID]);
+      const created = mockCreatedOrder();
+      mockPrisma.deliveryOrder.create.mockResolvedValue(created);
+      mockPrisma.deliveryOrder.findFirst.mockResolvedValue(created);
+      mockPrisma.deliveryOrder.updateMany.mockResolvedValueOnce({ count: 0 });
+
+      await service.requestDelivery(USER_ID, dto as any);
+
+      expect(mockGateway.server.to).not.toHaveBeenCalledWith(`rider:${RIDER_ID}`);
+      expect(mockPrisma.deliveryEvent.create).not.toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ event: 'RIDER_OFFERED' }) }),
       );
+    });
+
+    it('respects a configured delivery.otp_ttl_seconds instead of a hardcoded value', async () => {
+      mockConfigDefaults({ 'delivery.otp_ttl_seconds': 900 });
+      mockRedis.geosearch.mockResolvedValue([]);
+      const created = mockCreatedOrder();
+      mockPrisma.deliveryOrder.create.mockResolvedValue(created);
+      mockPrisma.deliveryOrder.findFirst.mockResolvedValue(created);
+
+      await service.requestDelivery(USER_ID, dto as any);
+
+      expect(mockRedis.set).toHaveBeenCalledWith(`delivery:otp:${ORDER_ID}`, expect.any(String), 900);
+    });
+  });
+
+  // ── declineOrder ───────────────────────────────────────────────────────────
+
+  describe('declineOrder', () => {
+    it('logs RIDER_DECLINED and immediately attempts to re-match with the next rider', async () => {
+      mockPrisma.deliveryRider.findFirst.mockResolvedValue(mockRider);
+      const order = {
+        ...mockOrder,
+        id: ORDER_ID,
+        status: 'SEARCHING',
+        matchAttempts: 1,
+        excludedRiderIds: [RIDER_ID],
+        pickupLat: 7.1608,
+        pickupLng: 3.3475,
+      };
+      mockPrisma.deliveryOrder.findFirst.mockResolvedValue(order);
+      mockRedis.geosearch.mockResolvedValue(['rider-uuid-002']);
+
+      const result = await service.declineOrder(ORDER_ID, USER_ID);
+
+      expect(result).toEqual({ declined: true });
+      expect(mockPrisma.deliveryEvent.create).toHaveBeenCalledWith({
+        data: { orderId: ORDER_ID, event: 'RIDER_DECLINED', metadata: { riderId: RIDER_ID } },
+      });
+      expect(mockGateway.server.to).toHaveBeenCalledWith('rider:rider-uuid-002');
+    });
+  });
+
+  // ── sweepUnmatchedOrders ───────────────────────────────────────────────────
+
+  describe('sweepUnmatchedOrders', () => {
+    it('skips the tick when the distributed lock is already held by another replica', async () => {
+      mockRedis.setNx.mockResolvedValue(false);
+
+      await service.sweepUnmatchedOrders();
+
+      expect(mockPrisma.deliveryOrder.findMany).not.toHaveBeenCalled();
+    });
+
+    it('expires every due SEARCHING order that has exhausted its retry budget', async () => {
+      mockRedis.setNx.mockResolvedValue(true);
+      mockPrisma.deliveryOrder.findMany.mockResolvedValue([{ id: 'order-a' }]);
+      mockPrisma.deliveryOrder.findFirst.mockResolvedValue({
+        ...mockOrder,
+        status: 'SEARCHING',
+        matchAttempts: 3,
+        excludedRiderIds: [],
+      });
+
+      await service.sweepUnmatchedOrders();
+
+      expect(mockPrisma.deliveryOrder.findMany).toHaveBeenCalledWith({
+        where: { status: 'SEARCHING', matchDeadlineAt: { lte: expect.any(Date) } },
+        select: { id: true },
+      });
+      expect(mockPrisma.deliveryOrder.updateMany).toHaveBeenCalledWith({
+        where: { id: 'order-a', status: 'SEARCHING', matchAttempts: 3 },
+        data: { status: 'EXPIRED' },
+      });
+    });
+  });
+
+  // ── resendOtp ──────────────────────────────────────────────────────────────
+
+  describe('resendOtp', () => {
+    it('regenerates the OTP, resets its TTL and the attempt counter, and re-sends via Termii', async () => {
+      mockPrisma.deliveryRider.findFirst.mockResolvedValue(mockRider);
+      mockPrisma.deliveryOrder.findFirst.mockResolvedValue({
+        ...mockOrder,
+        status: 'COLLECTING',
+        riderId: RIDER_ID,
+      });
+
+      const result = await service.resendOtp(ORDER_ID, USER_ID);
+
+      expect(result).toEqual({ resent: true });
+      expect(mockRedis.set).toHaveBeenCalledWith(`delivery:otp:${ORDER_ID}`, expect.any(String), 1800);
+      expect(mockRedis.del).toHaveBeenCalledWith(`delivery:otp:attempts:${ORDER_ID}`);
+      expect(mockPrisma.deliveryEvent.create).toHaveBeenCalledWith({
+        data: { orderId: ORDER_ID, event: 'OTP_RESENT' },
+      });
+    });
+
+    it('throws ForbiddenException when the caller is not the assigned rider', async () => {
+      mockPrisma.deliveryRider.findFirst.mockResolvedValue({ ...mockRider, id: 'rider-uuid-999' });
+      mockPrisma.deliveryOrder.findFirst.mockResolvedValue({
+        ...mockOrder,
+        status: 'COLLECTING',
+        riderId: RIDER_ID,
+      });
+
+      await expect(service.resendOtp(ORDER_ID, USER_ID)).rejects.toThrow(
+        'You are not the assigned rider for this order',
+      );
+    });
+
+    it('throws BadRequestException for an order in a status that cannot receive OTP resend', async () => {
+      mockPrisma.deliveryRider.findFirst.mockResolvedValue(mockRider);
+      mockPrisma.deliveryOrder.findFirst.mockResolvedValue({
+        ...mockOrder,
+        status: 'DELIVERED',
+        riderId: RIDER_ID,
+      });
+
+      await expect(service.resendOtp(ORDER_ID, USER_ID)).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  // ── startTransit ───────────────────────────────────────────────────────────
+
+  describe('startTransit', () => {
+    it('transitions COLLECTING → IN_TRANSIT, logs TRANSIT_STARTED, emits delivery:in_transit', async () => {
+      mockPrisma.deliveryRider.findFirst.mockResolvedValue(mockRider);
+      mockPrisma.deliveryOrder.findFirst
+        .mockResolvedValueOnce({ ...mockOrder, status: 'COLLECTING', riderId: RIDER_ID })
+        .mockResolvedValueOnce({ ...mockOrder, status: 'IN_TRANSIT', riderId: RIDER_ID });
+      mockPrisma.deliveryOrder.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.startTransit(ORDER_ID, USER_ID);
+
+      expect(mockPrisma.deliveryOrder.updateMany).toHaveBeenCalledWith({
+        where: { id: ORDER_ID, status: 'COLLECTING' },
+        data: { status: 'IN_TRANSIT' },
+      });
+      expect(mockPrisma.deliveryEvent.create).toHaveBeenCalledWith({
+        data: { orderId: ORDER_ID, event: 'TRANSIT_STARTED' },
+      });
+      expect(mockGateway.server.to).toHaveBeenCalledWith(`delivery:${ORDER_ID}`);
+    });
+
+    it('throws BadRequestException when the order is not in COLLECTING', async () => {
+      mockPrisma.deliveryRider.findFirst.mockResolvedValue(mockRider);
+      mockPrisma.deliveryOrder.findFirst.mockResolvedValue({
+        ...mockOrder,
+        status: 'MATCHED',
+        riderId: RIDER_ID,
+      });
+      mockPrisma.deliveryOrder.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.startTransit(ORDER_ID, USER_ID)).rejects.toThrow(BadRequestException);
     });
   });
 

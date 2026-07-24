@@ -1,4 +1,4 @@
-import { IsEnum, IsMobilePhone, IsOptional, IsString, Length } from 'class-validator';
+import { IsBoolean, IsEnum, IsMobilePhone, IsOptional, IsString, Length } from 'class-validator';
 import { OtpChannel } from '../../../common/enums/otp-channel.enum';
 
 export class PhoneAuthDto {
@@ -12,4 +12,7 @@ export class PhoneAuthDto {
   @IsEnum(OtpChannel, { message: `channel must be one of: ${Object.values(OtpChannel).join(', ')}` })
   @IsOptional()
   channel?: OtpChannel;
+
+  @IsBoolean()
+  ndpaConsent: boolean;
 }

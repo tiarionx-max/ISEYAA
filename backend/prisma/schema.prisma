@@ -260,11 +260,13 @@ model User {
   wallet               Wallet?
   tickets              Ticket[]
   bookings             Booking[]
+  memberships          Membership[]
   orders               Order[]
   studioBookings       StudioBooking[]
   mediaContents        MediaContent[]
   auditLogs            AuditLog[]
   attractionBookmarks  AttractionBookmark[]
+  notifications        Notification[]
   driverProfile        Driver?
   riderTrips           Trip[]               @relation("RiderTrips")
   deliveryRiderProfile DeliveryRider?
@@ -444,6 +446,7 @@ model Property {
   maxGuests              Int
   amenities              String[]
   highlights             String[] // 3-5 key selling points shown on detail page
+  timeSlots              Json? // TIMED_EVENT only: [{label, startHour, startMin, endHour, endMin}]; null = mobile/web fall back to a default 3-slot day
   rating                 Decimal? // average review rating, populated by webhook/cron
   reviewCount            Int          @default(0)
   isActive               Boolean      @default(true)
@@ -454,6 +457,7 @@ model Property {
   deletedAt              DateTime?
 
   bookings Booking[]
+  memberships Membership[]
 
   @@index([type, isActive])
   @@index([bookingMode])
@@ -485,6 +489,38 @@ model Booking {
   @@index([propertyId, status, escrowReleasedAt])
   @@index([userId])
   @@map("bookings")
+}
+
+enum MembershipStatus {
+  PENDING // created, awaiting first Paystack charge
+  ACTIVE
+  PAST_DUE // renewal charge failed once, one more attempt before EXPIRED
+  CANCELLED // user-cancelled, no further renewals
+  EXPIRED // renewal failed while already PAST_DUE
+}
+
+model Membership {
+  id               String           @id @default(uuid())
+  propertyId       String
+  property         Property         @relation(fields: [propertyId], references: [id])
+  userId           String
+  user             User             @relation(fields: [userId], references: [id])
+  monthlyPriceNgn  Decimal
+  govtLevyPct      Decimal          @default(0.05)
+  status           MembershipStatus @default(PENDING)
+  paystackRef      String           @unique
+  paystackAuthCode String? // saved-card authorization_code from the first successful charge, used to silently re-charge on renewal
+  paystackEmail    String
+  currentPeriodEnd DateTime?
+  cancelledAt      DateTime?
+  metadata         Json?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  deletedAt        DateTime?
+
+  @@index([status, currentPeriodEnd])
+  @@index([userId])
+  @@map("memberships")
 }
 
 model Vendor {
@@ -793,6 +829,20 @@ model AttractionBookmark {
   @@map("attraction_bookmarks")
 }
 
+model Notification {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  title     String
+  body      String
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
 model Driver {
   id             String       @id @default(uuid())
   userId         String       @unique
@@ -869,6 +919,9 @@ model Trip {
   riderRating     Int?
   driverRating    Int?
   cancelReason    String?
+  matchAttempts     Int       @default(0)
+  matchDeadlineAt   DateTime?
+  excludedDriverIds String[]  @default([])
   metadata        Json?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
@@ -942,6 +995,9 @@ model DeliveryOrder {
   completedAt     DateTime?
   cancelReason    String?
   senderRating    Int?
+  matchAttempts     Int       @default(0)
+  matchDeadlineAt   DateTime?
+  excludedRiderIds  String[]  @default([])
   metadata        Json?
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt

@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException, ServiceUnavailableException } fr
 import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
 import { Response } from 'express';
+import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../prisma/prisma.service';
 import { VectorService } from '../../common/services/vector.service';
 import { ResilienceService } from '../../resilience/resilience.service';
@@ -249,6 +250,14 @@ Be concise, helpful, and culturally aware. Respond in the user's language (Engli
       res.end();
       return;
     }
+
+    // Client-side grouping id for this conversation — used to link a saved "bookable
+    // tour" draft (tour-packages.aiSourceConversationId) back to the chat it came from.
+    // There is no AiConversation table (no server-side persistence of turns beyond this
+    // request), so this must be generated here and echoed to the client; previously it
+    // was accepted on ChatDto but never read or returned, silently discarding it.
+    const conversationId = dto.conversationId ?? uuidv4();
+    res.write(`data: ${JSON.stringify({ conversationId })}\n\n`);
 
     try {
       // ── 1. Load user context ──────────────────────────────────────────────

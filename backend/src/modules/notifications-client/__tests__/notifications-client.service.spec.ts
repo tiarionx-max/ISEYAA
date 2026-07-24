@@ -27,7 +27,10 @@ interface MockGrpcService {
 let mockGrpcService: MockGrpcService;
 let mockClientGrpc: { getService: jest.Mock };
 let mockResilience: { execute: jest.Mock };
-let mockPrisma: { platformConfig: { findUnique: jest.Mock } };
+let mockPrisma: {
+  platformConfig: { findUnique: jest.Mock };
+  notification: { findMany: jest.Mock; findFirst: jest.Mock; update: jest.Mock; updateMany: jest.Mock };
+};
 
 // `canaryFlagValue`: undefined => findUnique resolves null (row absent, default enabled);
 // otherwise findUnique resolves `{ value: canaryFlagValue }` (mirrors SETTLE-09's
@@ -51,6 +54,12 @@ async function makeService(canaryFlagValue?: unknown): Promise<NotificationsClie
         .fn()
         .mockResolvedValue(canaryFlagValue === undefined ? null : { value: canaryFlagValue }),
     },
+    notification: {
+      findMany: jest.fn().mockResolvedValue([]),
+      findFirst: jest.fn(),
+      update: jest.fn(),
+      updateMany: jest.fn(),
+    },
   };
 
   const moduleRef: TestingModule = await Test.createTestingModule({
@@ -72,16 +81,55 @@ beforeEach(() => {
 });
 
 describe('NotificationsClientService', () => {
-  // 1. D-03 — listForUser stays a local no-op stub, zero network/resilience calls.
-  it('1. listForUser: resolves to [] with zero calls to resilience.execute or the gRPC client', async () => {
+  // 1. D-03 — listForUser reads directly from the shared Postgres, zero network/gRPC calls.
+  it('1. listForUser: queries prisma.notification.findMany directly, zero calls to resilience.execute or the gRPC client', async () => {
     const svc = await makeService();
+    const rows = [{ id: 'n-1' }];
+    mockPrisma.notification.findMany.mockResolvedValue(rows);
 
-    await expect(svc.listForUser(USER_ID)).resolves.toEqual([]);
+    await expect(svc.listForUser(USER_ID)).resolves.toBe(rows);
 
+    expect(mockPrisma.notification.findMany).toHaveBeenCalledWith({
+      where: { userId: USER_ID },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
     expect(mockResilience.execute).not.toHaveBeenCalled();
     expect(mockGrpcService.sendPush).not.toHaveBeenCalled();
     expect(mockGrpcService.registerToken).not.toHaveBeenCalled();
     expect(mockClientGrpc.getService).toHaveBeenCalledTimes(1); // only from onModuleInit
+  });
+
+  // 1b. markRead / markAllRead — same local-Postgres pattern as listForUser.
+  it('1b. markRead: throws NotFoundException for a notification that is not the caller’s', async () => {
+    const svc = await makeService();
+    mockPrisma.notification.findFirst.mockResolvedValue(null);
+
+    await expect(svc.markRead(USER_ID, 'n-404')).rejects.toThrow('Notification not found');
+  });
+
+  it('1c. markRead: sets readAt on the caller’s own notification', async () => {
+    const svc = await makeService();
+    mockPrisma.notification.findFirst.mockResolvedValue({ id: 'n-1', userId: USER_ID });
+
+    await svc.markRead(USER_ID, 'n-1');
+
+    expect(mockPrisma.notification.update).toHaveBeenCalledWith({
+      where: { id: 'n-1' },
+      data: { readAt: expect.any(Date) },
+    });
+  });
+
+  it('1d. markAllRead: only updates the caller’s unread notifications', async () => {
+    const svc = await makeService();
+    mockPrisma.notification.updateMany.mockResolvedValue({ count: 2 });
+
+    await expect(svc.markAllRead(USER_ID)).resolves.toEqual({ updated: 2 });
+
+    expect(mockPrisma.notification.updateMany).toHaveBeenCalledWith({
+      where: { userId: USER_ID, readAt: null },
+      data: { readAt: expect.any(Date) },
+    });
   });
 
   // 2. registerToken success path.

@@ -9,7 +9,9 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 import { PaystackService } from '../../common/services/paystack.service';
+import { NotificationsClientService } from '../notifications-client/notifications-client.service';
 import { TransferDto } from './dto/transfer.dto';
+import { TopupDto } from './dto/topup.dto';
 
 // Defensive fallback for phone-only tier — used only when PlatformConfig rows are absent.
 // Will be replaced by a seeded PlatformConfig row in Phase 6 per RESEARCH Open Question.
@@ -28,6 +30,7 @@ export class WalletService {
     private prisma: PrismaService,
     private paystack: PaystackService,
     private redis: RedisService,
+    private notifications: NotificationsClientService,
   ) {}
 
   // ── Private: async KYC tier resolution from PlatformConfig ────────────────
@@ -176,7 +179,7 @@ export class WalletService {
 
   // ── initiateTopup ──────────────────────────────────────────────────────────
 
-  async initiateTopup(userId: string, dto: { amount: number; email: string }) {
+  async initiateTopup(userId: string, dto: TopupDto) {
     const [wallet, user] = await Promise.all([
       this.prisma.wallet.findUnique({ where: { userId } }),
       this.prisma.user.findUnique({
@@ -246,6 +249,25 @@ export class WalletService {
     }
   }
 
+  // ── resolveRecipient ───────────────────────────────────────────────────────
+
+  /**
+   * Resolves a Nigerian phone number to a display name before a transfer is sent,
+   * so the sender can confirm who they're paying. Returns only firstName + phone —
+   * never exposes full profile data (NDPA minimal-disclosure).
+   */
+  async resolveRecipient(requesterId: string, phone: string) {
+    const recipientUser = await this.prisma.user.findFirst({
+      where: { phone, deletedAt: null },
+      select: { id: true, firstName: true },
+    });
+    if (!recipientUser) throw new NotFoundException('No ISEYAA user found with that phone number');
+    if (recipientUser.id === requesterId) {
+      throw new BadRequestException('Cannot transfer to yourself');
+    }
+    return { userId: recipientUser.id, firstName: recipientUser.firstName, phone };
+  }
+
   // ── transfer ───────────────────────────────────────────────────────────────
 
   async transfer(senderUserId: string, dto: TransferDto) {
@@ -266,83 +288,145 @@ export class WalletService {
     });
     if (!recipientWallet) throw new NotFoundException('Recipient wallet not found');
 
-    const reference = `ISY-TRF-${uuidv4().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
+    // Idempotency: deterministic reference derived from the client-supplied key
+    // (CLAUDE.md: idempotency key required on all wallet mutations) instead of a
+    // random uuid — a random reference would let a retried/duplicated request
+    // (network timeout, double-tap) double-debit the sender every time, since the
+    // unique constraint on Transaction.reference would never be hit twice.
+    const reference = `ISY-TRF-${dto.idempotencyKey.replace(/[^a-zA-Z0-9]/g, '').slice(0, 32).toUpperCase()}`;
     const amount = Number(dto.amount);
 
-    const result = await this.prisma.$transaction(async (tx) => {
-      // SELECT FOR UPDATE on sender wallet to prevent concurrent debits
-      await tx.$executeRaw`SELECT id FROM wallets WHERE id = ${senderWallet.id} FOR UPDATE`;
-      const lockedSender = await tx.wallet.findUnique({ where: { id: senderWallet.id } });
-      if (!lockedSender) throw new NotFoundException('Sender wallet not found');
-
-      const senderBalanceBefore = Number(lockedSender.balance);
-      if (senderBalanceBefore < amount) {
-        throw new BadRequestException('Insufficient wallet balance');
-      }
-      const senderBalanceAfter = senderBalanceBefore - amount;
-
-      // SELECT FOR UPDATE on recipient wallet to prevent concurrent credits
-      await tx.$executeRaw`SELECT id FROM wallets WHERE id = ${recipientWallet.id} FOR UPDATE`;
-      const lockedRecipient = await tx.wallet.findUnique({ where: { id: recipientWallet.id } });
-      if (!lockedRecipient) throw new NotFoundException('Recipient wallet not found');
-
-      const recipientBalanceBefore = Number(lockedRecipient.balance);
-      const recipientBalanceAfter = recipientBalanceBefore + amount;
-
-      await tx.wallet.update({
-        where: { id: senderWallet.id },
-        data: { balance: senderBalanceAfter },
-      });
-      await tx.wallet.update({
-        where: { id: recipientWallet.id },
-        data: { balance: recipientBalanceAfter },
-      });
-
-      await tx.transaction.create({
-        data: {
-          walletId: senderWallet.id,
-          type: 'TRANSFER',
-          status: 'SUCCESS',
-          amount,
-          currency: 'NGN',
-          reference: `${reference}-OUT`,
-          gateway: 'INTERNAL',
-          description: dto.narration ?? `Transfer to ${dto.recipientPhone}`,
-          balanceBefore: senderBalanceBefore,
-          balanceAfter: senderBalanceAfter,
-          metadata: {
-            module: 'wallet',
-            direction: 'out',
-            transferRef: reference,
-            recipientUserId: recipientUser.id,
-            recipientPhone: dto.recipientPhone,
-          },
-        },
-      });
-
-      await tx.transaction.create({
-        data: {
-          walletId: recipientWallet.id,
-          type: 'TRANSFER',
-          status: 'SUCCESS',
-          amount,
-          currency: 'NGN',
-          reference: `${reference}-IN`,
-          gateway: 'INTERNAL',
-          description: dto.narration ?? `Transfer from wallet`,
-          balanceBefore: recipientBalanceBefore,
-          balanceAfter: recipientBalanceAfter,
-          metadata: {
-            module: 'wallet',
-            direction: 'in',
-            transferRef: reference,
-            senderUserId: senderUserId,
-          },
-        },
-      });
-
-      return { newBalance: senderBalanceAfter };
+    // Precheck: an existing OUT leg for this reference means this exact transfer
+    // already ran — return its recorded result instead of re-debiting (mirrors
+    // SettlementService.settle()'s reference-prefix precheck).
+    const existingOut = await this.prisma.transaction.findFirst({
+      where: { reference: `${reference}-OUT` },
     });
+    if (existingOut) {
+      return {
+        reference,
+        amount: Number(existingOut.amount),
+        recipientPhone: dto.recipientPhone,
+        newBalance: Number(existingOut.balanceAfter),
+      };
+    }
+
+    let result;
+    try {
+      result = await this.prisma.$transaction(async (tx) => {
+        // SELECT FOR UPDATE on sender wallet to prevent concurrent debits
+        await tx.$executeRaw`SELECT id FROM wallets WHERE id = ${senderWallet.id} FOR UPDATE`;
+        const lockedSender = await tx.wallet.findUnique({ where: { id: senderWallet.id } });
+        if (!lockedSender) throw new NotFoundException('Sender wallet not found');
+
+        const senderBalanceBefore = Number(lockedSender.balance);
+        if (senderBalanceBefore < amount) {
+          throw new BadRequestException('Insufficient wallet balance');
+        }
+        const senderBalanceAfter = senderBalanceBefore - amount;
+
+        // SELECT FOR UPDATE on recipient wallet to prevent concurrent credits
+        await tx.$executeRaw`SELECT id FROM wallets WHERE id = ${recipientWallet.id} FOR UPDATE`;
+        const lockedRecipient = await tx.wallet.findUnique({ where: { id: recipientWallet.id } });
+        if (!lockedRecipient) throw new NotFoundException('Recipient wallet not found');
+
+        const recipientBalanceBefore = Number(lockedRecipient.balance);
+        const recipientBalanceAfter = recipientBalanceBefore + amount;
+
+        await tx.wallet.update({
+          where: { id: senderWallet.id },
+          data: { balance: senderBalanceAfter },
+        });
+        await tx.wallet.update({
+          where: { id: recipientWallet.id },
+          data: { balance: recipientBalanceAfter },
+        });
+
+        await tx.transaction.create({
+          data: {
+            walletId: senderWallet.id,
+            type: 'TRANSFER',
+            status: 'SUCCESS',
+            amount,
+            currency: 'NGN',
+            reference: `${reference}-OUT`,
+            gateway: 'INTERNAL',
+            description: dto.narration ?? `Transfer to ${dto.recipientPhone}`,
+            balanceBefore: senderBalanceBefore,
+            balanceAfter: senderBalanceAfter,
+            metadata: {
+              module: 'wallet',
+              direction: 'out',
+              transferRef: reference,
+              recipientUserId: recipientUser.id,
+              recipientPhone: dto.recipientPhone,
+            },
+          },
+        });
+
+        await tx.transaction.create({
+          data: {
+            walletId: recipientWallet.id,
+            type: 'TRANSFER',
+            status: 'SUCCESS',
+            amount,
+            currency: 'NGN',
+            reference: `${reference}-IN`,
+            gateway: 'INTERNAL',
+            description: dto.narration ?? `Transfer from wallet`,
+            balanceBefore: recipientBalanceBefore,
+            balanceAfter: recipientBalanceAfter,
+            metadata: {
+              module: 'wallet',
+              direction: 'in',
+              transferRef: reference,
+              senderUserId: senderUserId,
+            },
+          },
+        });
+
+        return { newBalance: senderBalanceAfter };
+      });
+    } catch (err) {
+      // Race fallback: two near-simultaneous duplicate requests (same idempotencyKey)
+      // can both pass the precheck above before either commits. The unique constraint
+      // on Transaction.reference lets only one land; treat the loser's P2002 as a
+      // benign replay rather than an error (mirrors SettlementService.settle()).
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        const target = err.meta?.target as string[] | string | undefined;
+        const isReferenceConflict = Array.isArray(target)
+          ? target.includes('reference')
+          : typeof target === 'string' && target.includes('reference');
+        if (isReferenceConflict) {
+          const winner = await this.prisma.transaction.findFirst({
+            where: { reference: `${reference}-OUT` },
+          });
+          if (winner) {
+            return {
+              reference,
+              amount: Number(winner.amount),
+              recipientPhone: dto.recipientPhone,
+              newBalance: Number(winner.balanceAfter),
+            };
+          }
+        }
+      }
+      throw err;
+    }
+
+    // Push notification (best-effort) — recipient side only; the sender already sees
+    // the debit reflected in their own balance/history. A failed push must never
+    // undo or block the transfer that already committed above.
+    try {
+      await this.notifications.sendPush(
+        recipientUser.id,
+        'Money received',
+        `You received ₦${amount.toLocaleString('en-NG')} from a fellow ISEYAA user`,
+        { type: 'wallet_credit', reference, amount: String(amount) },
+      );
+    } catch (err: any) {
+      this.logger.error(`transfer push notification failed for recipient ${recipientUser.id}: ${err.message}`);
+    }
 
     return {
       reference,
@@ -366,11 +450,13 @@ export class WalletService {
     // concurrent race condition where two requests read the same balance and both write
     // an inflated value (double-credit). CLAUDE.md requires SELECT FOR UPDATE on all
     // wallet mutations.
+    let creditedUserId: string | null = null;
     await this.prisma.$transaction(async (tx) => {
       // Lock the wallet row to prevent concurrent updates
       await tx.$executeRaw`SELECT id FROM wallets WHERE id = ${walletId} FOR UPDATE`;
       const locked = await tx.wallet.findUnique({ where: { id: walletId } });
       if (!locked) throw new NotFoundException('Wallet not found');
+      creditedUserId = locked.userId;
 
       const balanceBefore = Number(locked.balance);
       const balanceAfter = balanceBefore + amount;
@@ -392,5 +478,24 @@ export class WalletService {
         },
       });
     });
+
+    // Push notification (best-effort) — scoped to direct wallet top-ups (the default
+    // `module === 'wallet'` callers, e.g. Paystack top-up webhook). Earnings credits
+    // (transport/delivery/marketplace/etc. pass their own `module` name) get their own
+    // domain-specific push at the trigger point instead, so this stays a single,
+    // unambiguous "your wallet was funded" notification rather than firing for every
+    // internal settlement credit too.
+    if (module === 'wallet' && creditedUserId) {
+      try {
+        await this.notifications.sendPush(
+          creditedUserId,
+          'Wallet funded',
+          `₦${amount.toLocaleString('en-NG')} was added to your wallet`,
+          { type: 'wallet_credit', reference, amount: String(amount) },
+        );
+      } catch (err: any) {
+        this.logger.error(`creditWallet push notification failed for wallet ${walletId}: ${err.message}`);
+      }
+    }
   }
 }

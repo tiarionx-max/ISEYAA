@@ -86,13 +86,17 @@ import {
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
+// Matches TourPackageService.findBySlug()'s PACKAGE_PUBLIC_INCLUDE.tourGuide shape
+// (backend/src/modules/tour-packages/tour-packages.service.ts) — relation is
+// `tourGuide`, not `guideProfile`; name comes from nested `user.firstName/lastName`.
 type GuideProfile = {
   id: string;
-  name?: string | null;
   bio?: string | null;
-  avatarUrl?: string | null;
-  languages?: string[];
-  averageRating?: number | null;
+  yearsExperience?: number | null;
+  languagesSpoken?: string[];
+  rating?: number | null;
+  reviewCount?: number | null;
+  user?: { firstName?: string | null; lastName?: string | null; avatarUrl?: string | null } | null;
 };
 
 type TourPackage = {
@@ -107,11 +111,11 @@ type TourPackage = {
   durationHours?: number | null;
   coverImageUrl?: string | null;
   imageUrls?: string[];
-  averageRating?: number | null;
+  rating?: number | null;
   reviewCount?: number | null;
   lga?: { name?: string } | null;
-  itinerary?: ItineraryItem[];
-  guideProfile?: GuideProfile | null;
+  itineraryTemplate?: ItineraryItem[];
+  tourGuide?: GuideProfile | null;
   attractionIds?: string[];
   propertyId?: string | null;
 };
@@ -265,8 +269,10 @@ export default function TourDetailScreen(): JSX.Element {
 
   const gallery = buildGallery(pkg);
   const location = pkg.lga?.name ?? 'Ogun State, Nigeria';
-  const itinerary = pkg.itinerary ?? [];
-  const guide = pkg.guideProfile;
+  const itinerary = pkg.itineraryTemplate ?? [];
+  const guide = pkg.tourGuide;
+  const guideName =
+    [guide?.user?.firstName, guide?.user?.lastName].filter(Boolean).join(' ') || 'Tour Guide';
   const catLabel = categoryLabel(pkg.category);
 
   const sheetPkg = {
@@ -369,11 +375,11 @@ export default function TourDetailScreen(): JSX.Element {
               </>
             ) : null}
           </View>
-          {pkg.averageRating != null && (
+          {pkg.rating != null && (
             <View style={s.ratingRow}>
               <Star size={14} color={GOLD} fill={GOLD} strokeWidth={2} />
               <Text style={s.ratingText}>
-                {Number(pkg.averageRating).toFixed(1)}
+                {Number(pkg.rating).toFixed(1)}
                 {pkg.reviewCount
                   ? ` · ${pkg.reviewCount} review${pkg.reviewCount === 1 ? '' : 's'}`
                   : ''}
@@ -412,9 +418,9 @@ export default function TourDetailScreen(): JSX.Element {
             <View style={s.section}>
               <Text style={s.kicker}>YOUR GUIDE</Text>
               <View style={s.guideCard}>
-                {guide.avatarUrl ? (
+                {guide.user?.avatarUrl ? (
                   <ExpoImage
-                    source={{ uri: guide.avatarUrl }}
+                    source={{ uri: guide.user.avatarUrl }}
                     style={s.guideAvatar}
                     contentFit="cover"
                   />
@@ -424,19 +430,19 @@ export default function TourDetailScreen(): JSX.Element {
                   </View>
                 )}
                 <View style={s.guideInfo}>
-                  <Text style={s.guideName}>{guide.name ?? 'Tour Guide'}</Text>
-                  {guide.averageRating != null ? (
+                  <Text style={s.guideName}>{guideName}</Text>
+                  {guide.rating != null ? (
                     <View style={s.guideRatingRow}>
                       <Star size={12} color={GOLD} fill={GOLD} />
-                      <Text style={s.guideRating}>{Number(guide.averageRating).toFixed(1)}</Text>
+                      <Text style={s.guideRating}>{Number(guide.rating).toFixed(1)}</Text>
                     </View>
                   ) : null}
                   {guide.bio ? (
                     <Text style={s.guideBio} numberOfLines={3}>{guide.bio}</Text>
                   ) : null}
-                  {guide.languages && guide.languages.length > 0 ? (
+                  {guide.languagesSpoken && guide.languagesSpoken.length > 0 ? (
                     <View style={s.langRow}>
-                      {guide.languages.map((lang) => (
+                      {guide.languagesSpoken.map((lang) => (
                         <Chip key={lang} label={lang} />
                       ))}
                     </View>

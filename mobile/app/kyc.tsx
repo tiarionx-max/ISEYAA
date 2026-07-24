@@ -13,7 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '../lib/api';
+import { api, getErrorMessage } from '../lib/api';
 import {
   CreditCard,
   FileText,
@@ -278,7 +278,7 @@ export default function KycScreen() {
     } catch (err: any) {
       Alert.alert(
         'Verification Failed',
-        err?.response?.data?.message ?? 'Check your details and try again.',
+        getErrorMessage(err, 'Check your details and try again.'),
       );
     } finally {
       setIsSubmittingBvn(false);
@@ -295,7 +295,7 @@ export default function KycScreen() {
     } catch (err: any) {
       Alert.alert(
         'Verification Failed',
-        err?.response?.data?.message ?? 'Check your details and try again.',
+        getErrorMessage(err, 'Check your details and try again.'),
       );
     } finally {
       setIsSubmittingNin(false);
@@ -311,7 +311,7 @@ export default function KycScreen() {
     } catch (err: any) {
       Alert.alert(
         'Verification Failed',
-        err?.response?.data?.message ?? 'Check your details and try again.',
+        getErrorMessage(err, 'Check your details and try again.'),
       );
     } finally {
       setIsSubmittingSmile(false);

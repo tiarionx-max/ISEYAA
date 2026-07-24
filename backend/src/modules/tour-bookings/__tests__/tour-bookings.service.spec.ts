@@ -155,6 +155,48 @@ describe('TourBookingService', () => {
     it('applyBulkDiscount: passengerCount <=9 returns full price', () => {
       expect(applyBulkDiscount(10000, 5, 0.1, 0.2)).toBe(10000);
     });
+  });
+
+  describe('getQuote', () => {
+    it('returns full unit price with no discount for passengerCount <= 9', async () => {
+      const result = await service.getQuote(PACKAGE_ID, 5);
+      expect(result).toEqual({
+        unitPrice: 10000,
+        totalAmount: 50000,
+        passengerCount: 5,
+        discountApplied: false,
+      });
+    });
+
+    it('applies tier-1 discount (10%) for passengerCount 10-24, sourced from PlatformConfig', async () => {
+      const result = await service.getQuote(PACKAGE_ID, 12);
+      expect(result).toEqual({
+        unitPrice: 9000,
+        totalAmount: 108000,
+        passengerCount: 12,
+        discountApplied: true,
+      });
+    });
+
+    it('applies tier-2 discount (20%) for passengerCount 25-50', async () => {
+      const result = await service.getQuote(PACKAGE_ID, 30);
+      expect(result.unitPrice).toBe(8000);
+      expect(result.discountApplied).toBe(true);
+    });
+
+    it('throws NotFoundException when the package is not APPROVED', async () => {
+      mockTourPackages.findByIdInternal.mockResolvedValue({ ...basePackage, status: 'DRAFT' });
+      await expect(service.getQuote(PACKAGE_ID, 5)).rejects.toThrow('Package not available');
+    });
+
+    it('falls back to 0.10/0.20 when PlatformConfig rows are missing', async () => {
+      mockPrisma.platformConfig.findUnique.mockResolvedValue(null);
+      const result = await service.getQuote(PACKAGE_ID, 12);
+      expect(result.unitPrice).toBe(9000);
+    });
+  });
+
+  describe('helpers (pure functions continued)', () => {
     it('isBlockedDate: blockedDates hit', () => {
       expect(isBlockedDate({ blockedDates: ['2099-07-15'], weeklyOffDays: [] }, '2099-07-15')).toBe(true);
     });
