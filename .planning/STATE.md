@@ -4,8 +4,8 @@ milestone: v2.1
 milestone_name: — Extraction Backlog Clearance & Settlement Flexibility
 status: Awaiting next milestone
 stopped_at: Phase 22 UI-SPEC approved
-last_updated: "2026-07-21T15:10:55.561Z"
-last_activity: 2026-07-22 - Completed quick task 260722-qdl: Fix NDPA consent compliance gap in phone-OTP mobile signup flow
+last_updated: "2026-07-24T18:19:29Z"
+last_activity: 2026-07-24 - Completed quick task 260724-hon: Migrate SendgridService internals from @sendgrid/mail to Resend SDK (resend@^6.18.0), preserving all public method signatures and throw/swallow contracts
 progress:
   total_phases: 5
   completed_phases: 5
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-07-19)
 Phase: Milestone v2.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-07-24 - Completed quick task 260724-cfd: Fix SendGrid email dispatch broken by namespace import stripping prototype methods (sgMail.send is not a function) — breaks all transactional email including OTP, ticket/booking confirmations, ministry digests
+Last activity: 2026-07-24 - Completed quick task 260724-hon: Migrate SendgridService internals from @sendgrid/mail to Resend SDK (resend@^6.18.0), preserving all public method signatures and throw/swallow contracts
 
 ## Current Status
 
@@ -87,6 +87,7 @@ None currently open for active work — 2 pre-existing todo files (add-compile-s
 - Live Paystack secret key (`sk_live_...`) present in `backend/.env` / root `.env` — recommend rotating to test-mode keys for local/CI use (carried over from v1.0, still unresolved)
 - Railway production backend (`@iseyaa/backend` in project `lucid-flexibility`) was found 2026-07-24 running a build frozen at Phase 9 (commit `243ebcb5`, ~2 months / 100+ commits stale) because the service had a custom Start Command override (`npm run start`) that bypassed the Dockerfile's `start.sh` entrypoint — silently skipping `prisma migrate deploy` on every deploy. Fixed by clearing the override and redeploying from `main` (`9ca7954`); migrations now run correctly on deploy. Watch for schema-drift symptoms again if this override reappears.
 - Twilio SMS is on a trial account (error 21608: can only send to manually-verified numbers) — not viable for real users. Termii is the intended primary SMS provider (`TERMII_API_KEY` was just added 2026-07-24) but Termii calls are still failing fast via the `termiiAuth` resilience timeout (5s) while the account is mid-activation — revisit once Termii activation completes.
+- SendGrid permanently declined account activation; `SendgridService` (2026-07-24, quick task 260724-hon) is now code-complete against the Resend SDK, but a real `RESEND_API_KEY` still needs to be provisioned (resend.com → API Keys) and set in production (Railway) before transactional email actually sends — until then the service degrades gracefully rather than crashing. Resend also requires a verified sending domain (SPF/DKIM) for `noreply@iseyaa.gov.ng`, same as SendGrid required; see `MANUAL-ACTIONS.md`.
 
 ### Quick Tasks Completed
 
@@ -99,6 +100,7 @@ None currently open for active work — 2 pre-existing todo files (add-compile-s
 | 260723-fnm | Virtualize the Discover tab attractions grid with FlatList instead of a plain View+.map() to fix perf/lazy-loading | 2026-07-23 | c22b8c3 | [260723-fnm-virtualize-the-discover-tab-attractions-](./quick/260723-fnm-virtualize-the-discover-tab-attractions-/) |
 | 260723-gik | Fix wallet Send screen missing required idempotencyKey field causing guaranteed HTTP 400 on every transfer | 2026-07-23 | 7f844de | [260723-gik-fix-wallet-send-screen-missing-required-](./quick/260723-gik-fix-wallet-send-screen-missing-required-/) |
 | 260724-cfd | Fix SendGrid email dispatch broken by namespace import stripping prototype methods (sgMail.send is not a function) — breaks all transactional email including OTP, ticket/booking confirmations, ministry digests | 2026-07-24 | fe98ff9 | [260724-cfd-fix-sendgrid-email-dispatch-broken-by-na](./quick/260724-cfd-fix-sendgrid-email-dispatch-broken-by-na/) |
+| 260724-hon | SendGrid permanently declined account activation — migrate SendgridService internals from @sendgrid/mail to Resend SDK (resend@^6.18.0), preserving class name, all 5 public method signatures, and each method's throw-vs-swallow contract (SMS fallback / FAILED-status tracking depend on it) | 2026-07-24 | 9bcd9b4 | [260724-hon-migrate-sendgridservice-s-internals-from](./quick/260724-hon-migrate-sendgridservice-s-internals-from/) |
 
 ## Deferred Items
 
@@ -121,8 +123,8 @@ Items acknowledged and carried forward from previous milestone close. GRPC-06/07
 
 ## Session Continuity
 
-Last session: 2026-07-21T15:10:55.561Z
-Stopped at: v2.1 milestone archived and complete
+Last session: 2026-07-24T18:19:29Z
+Stopped at: Completed quick task 260724-hon-migrate-sendgridservice-s-internals-from
 Resume file: none — next step is defining the next milestone
 
 ## Operator Next Steps
