@@ -281,6 +281,17 @@ function TopupModal({ open, onClose, email }: { open: boolean; onClose: () => vo
   );
 }
 
+// crypto.randomUUID() only exists in secure contexts (HTTPS or the literal
+// hostname 'localhost') — it's undefined over plain http:// on any other host
+// (internal IPs, LAN access, this app's own docker/emulator test setups),
+// throwing "crypto.randomUUID is not a function" instead of returning a value.
+function generateIdempotencyKey(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
+
 /* ── Send Money Card ─────────────────────────────────────────────────────── */
 function SendMoneyCard() {
   const [recipientPhone, setRecipientPhone] = useState('');
@@ -293,7 +304,7 @@ function SendMoneyCard() {
   // key and the backend treats it as a replay instead of double-debiting.
   // CLAUDE.md requires an idempotency key on all wallet mutations.
   const idempotencyKey = useMemo(
-    () => crypto.randomUUID(),
+    () => generateIdempotencyKey(),
     [recipientPhone, amount, narration],
   );
 
