@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-07-19)
 Phase: Milestone v2.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-07-23 - Completed quick task 260723-gik: Fix wallet Send screen missing required idempotencyKey field causing guaranteed HTTP 400 on every transfer
+Last activity: 2026-07-24 - Completed quick task 260724-cfd: Fix SendGrid email dispatch broken by namespace import stripping prototype methods (sgMail.send is not a function) — breaks all transactional email including OTP, ticket/booking confirmations, ministry digests
 
 ## Current Status
 
@@ -85,6 +85,8 @@ None currently open for active work — 2 pre-existing todo files (add-compile-s
 
 - v1.0's 8 outstanding human-verification checkpoints remain deferred — do not run any milestone-archival step against `.planning/phases/02-09` without re-confirming with the user first
 - Live Paystack secret key (`sk_live_...`) present in `backend/.env` / root `.env` — recommend rotating to test-mode keys for local/CI use (carried over from v1.0, still unresolved)
+- Railway production backend (`@iseyaa/backend` in project `lucid-flexibility`) was found 2026-07-24 running a build frozen at Phase 9 (commit `243ebcb5`, ~2 months / 100+ commits stale) because the service had a custom Start Command override (`npm run start`) that bypassed the Dockerfile's `start.sh` entrypoint — silently skipping `prisma migrate deploy` on every deploy. Fixed by clearing the override and redeploying from `main` (`9ca7954`); migrations now run correctly on deploy. Watch for schema-drift symptoms again if this override reappears.
+- Twilio SMS is on a trial account (error 21608: can only send to manually-verified numbers) — not viable for real users. Termii is the intended primary SMS provider (`TERMII_API_KEY` was just added 2026-07-24) but Termii calls are still failing fast via the `termiiAuth` resilience timeout (5s) while the account is mid-activation — revisit once Termii activation completes.
 
 ### Quick Tasks Completed
 
@@ -96,6 +98,7 @@ None currently open for active work — 2 pre-existing todo files (add-compile-s
 | 260723-mobile-alert-crash-fix | Fix remaining Alert.alert/text-render native crash sites from array-typed ValidationPipe error messages (UnexpectedNativeTypeException) across 8 mobile screens, routed through existing getErrorMessage() helper | 2026-07-23 | 8d03de2 | [260723-mobile-alert-crash-fix](./quick/260723-mobile-alert-crash-fix/) |
 | 260723-fnm | Virtualize the Discover tab attractions grid with FlatList instead of a plain View+.map() to fix perf/lazy-loading | 2026-07-23 | c22b8c3 | [260723-fnm-virtualize-the-discover-tab-attractions-](./quick/260723-fnm-virtualize-the-discover-tab-attractions-/) |
 | 260723-gik | Fix wallet Send screen missing required idempotencyKey field causing guaranteed HTTP 400 on every transfer | 2026-07-23 | 7f844de | [260723-gik-fix-wallet-send-screen-missing-required-](./quick/260723-gik-fix-wallet-send-screen-missing-required-/) |
+| 260724-cfd | Fix SendGrid email dispatch broken by namespace import stripping prototype methods (sgMail.send is not a function) — breaks all transactional email including OTP, ticket/booking confirmations, ministry digests | 2026-07-24 | fe98ff9 | [260724-cfd-fix-sendgrid-email-dispatch-broken-by-na](./quick/260724-cfd-fix-sendgrid-email-dispatch-broken-by-na/) |
 
 ## Deferred Items
 
