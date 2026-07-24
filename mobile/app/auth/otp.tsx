@@ -16,6 +16,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { Info, Check } from 'lucide-react-native';
 import { api, getErrorMessage } from '../../lib/api';
+import { registerForPushNotifications } from '../../lib/push-notifications';
 import {
   SURFACE_DEEP,
   SURFACE_MID,
@@ -63,6 +64,7 @@ export default function OtpScreen() {
       if (accessToken) {
         await SecureStore.setItemAsync('access_token', accessToken);
         if (refreshToken) await SecureStore.setItemAsync('refresh_token', refreshToken);
+        registerForPushNotifications();
         router.replace('/(tabs)' as any);
       } else {
         Alert.alert('Error', 'Unexpected response from server. Please try again.');

@@ -71,7 +71,8 @@
           "organization": "iseyaa",
           "project": "iseyaa-mobile"
         }
-      ]
+      ],
+      "expo-notifications"
     ],
     "scheme": "iseyaa",
     "platforms": [
