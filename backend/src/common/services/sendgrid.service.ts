@@ -1,31 +1,45 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import sgMail from '@sendgrid/mail';
+import { Resend } from 'resend';
+
+const PLACEHOLDER_KEY = 're_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
 
 @Injectable()
 export class SendgridService {
   private readonly logger = new Logger(SendgridService.name);
   private readonly from: string;
+  private readonly client?: Resend;
 
   constructor(private config: ConfigService) {
     this.from = config.get<string>('SENDGRID_FROM_EMAIL', 'noreply@iseyaa.gov.ng');
-    const key = config.get<string>('SENDGRID_API_KEY', '');
-    if (key && key !== 'SG.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx') {
-      sgMail.setApiKey(key);
+    const key = config.get<string>('RESEND_API_KEY', '');
+    if (key && key !== PLACEHOLDER_KEY) {
+      this.client = new Resend(key);
     }
   }
 
   async sendEmail(to: string, subject: string, html: string): Promise<void> {
+    if (!this.client) {
+      this.logger.error(`Resend not configured (RESEND_API_KEY missing) — email to ${to} not sent`);
+      return;
+    }
     try {
-      await sgMail.send({ to, from: this.from, subject, html });
+      const { error } = await this.client.emails.send({ to, from: this.from, subject, html });
+      if (error) {
+        this.logger.error(`Resend failed for ${to}: ${error.name} - ${error.message}`);
+      }
     } catch (err) {
-      this.logger.error(`SendGrid failed for ${to}: ${err?.response?.body ?? err.message}`);
+      // defensive only — resend's SDK resolves rather than rejects for API-level
+      // failures, but keeps parity if a future SDK version changes this contract
+      this.logger.error(`Resend failed for ${to}: ${err.message}`);
     }
   }
 
   // Deliberately does NOT call this.sendEmail() and has NO try/catch — the caller
-  // (resilience.execute('sendgrid', ...) in Plan 15-03) depends on a real rejection
-  // propagating here to trigger the SMS fallback (OTP-02). See RESEARCH.md Pitfall 1.
+  // (resilience.execute('sendgrid', ...) via dispatchOtp in auth.service.ts) depends
+  // on a real rejection propagating here to trigger the SMS fallback (OTP-02).
+  // Resend never rejects on its own — this explicit `if (error) throw` reconstructs
+  // the throw contract @sendgrid/mail used to provide. See RESEARCH.md Pitfall 1.
   async sendOtpEmail(to: string, firstName: string, otp: string): Promise<void> {
     const html = `
       <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px;">
@@ -37,7 +51,18 @@ export class SendgridService {
       </div>
     `;
 
-    await sgMail.send({ to, from: this.from, subject: 'Your Iṣẹ́yáá verification code', html });
+    if (!this.client) {
+      throw new Error('Resend client not configured — RESEND_API_KEY missing');
+    }
+    const { error } = await this.client.emails.send({
+      to,
+      from: this.from,
+      subject: 'Your Iṣẹ́yáá verification code',
+      html,
+    });
+    if (error) {
+      throw new Error(`Resend send failed: ${error.name} - ${error.message}`);
+    }
   }
 
   async sendTicketConfirmation(params: {
@@ -152,8 +177,9 @@ export class SendgridService {
   }
 
   // Deliberately has NO try/catch (mirrors sendOtpEmail(), NOT sendEmail()'s swallow
-  // behavior) — the caller (22-03's scheduler, via resilience.execute('sendgrid', ...))
-  // depends on a real rejection propagating here to mark lastStatus = FAILED.
+  // behavior) — the caller (ministry-export-scheduler.service.ts, via
+  // resilience.execute('sendgrid', ...)) depends on a real rejection propagating
+  // here to mark lastStatus = FAILED.
   async sendMinistryDigest(params: {
     to: string[];
     subject: string;
@@ -162,12 +188,26 @@ export class SendgridService {
   }): Promise<void> {
     const { to, subject, html, attachments } = params;
 
-    await sgMail.send({
+    if (!this.client) {
+      throw new Error('Resend client not configured — RESEND_API_KEY missing');
+    }
+    const { error } = await this.client.emails.send({
       to,
       from: this.from,
       subject,
       html,
-      ...(attachments && attachments.length > 0 ? { attachments } : {}),
+      ...(attachments && attachments.length > 0
+        ? {
+            attachments: attachments.map((a) => ({
+              content: a.content,
+              filename: a.filename,
+              contentType: a.type,
+            })),
+          }
+        : {}),
     });
+    if (error) {
+      throw new Error(`Resend send failed: ${error.name} - ${error.message}`);
+    }
   }
 }
