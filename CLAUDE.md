@@ -103,6 +103,7 @@ Operated by LJ Entertainment under contract with Ogun State. Confidential govern
 - `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_S3_BUCKET` / `AWS_REGION` — S3 uploads
 - `AWS_CLOUDFRONT_URL` — CDN base URL for media
 - `SENDGRID_API_KEY` / `SENDGRID_FROM_EMAIL` — Transactional email
+- `RESEND_API_KEY` — Resend API key for transactional email (replaces `SENDGRID_API_KEY`; SendgridService's internals were migrated to Resend, see quick task 260724-hon)
 - `TERMII_API_KEY` / `TERMII_SENDER_ID` — OTP SMS delivery
 - `FIREBASE_SERVER_KEY` — FCM push notifications
 - `GOOGLE_MAPS_API_KEY` — Maps integration (web)

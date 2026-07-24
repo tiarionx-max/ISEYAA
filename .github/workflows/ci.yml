@@ -46,6 +46,7 @@ jobs:
       PAYSTACK_WEBHOOK_SECRET: stub
       SENDGRID_API_KEY: stub
       SENDGRID_FROM_EMAIL: noreply@example.com
+      RESEND_API_KEY: stub
       TERMII_API_KEY: stub
       TERMII_SENDER_ID: stub
       AWS_ACCESS_KEY_ID: stub
