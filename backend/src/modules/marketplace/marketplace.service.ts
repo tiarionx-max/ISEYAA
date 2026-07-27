@@ -15,6 +15,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PaystackService } from '../../common/services/paystack.service';
 import { SendgridService } from '../../common/services/sendgrid.service';
 import { SettlementService } from '../../common/services/settlement.service';
+import { ImageService } from '../../common/services/image.service';
+import { S3Service } from '../../common/services/s3.service';
 import { CreateVendorDto } from './dto/create-vendor.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -34,6 +36,8 @@ export class MarketplaceService implements OnModuleInit {
     private sendgrid: SendgridService,
     private kafka: KafkaService,
     private settlementService: SettlementService,
+    private imageService: ImageService,
+    private s3: S3Service,
   ) {}
 
   async onModuleInit() {
@@ -160,6 +164,26 @@ export class MarketplaceService implements OnModuleInit {
         ...(dto.imageUrls !== undefined && { imageUrls: dto.imageUrls }),
       },
     });
+  }
+
+  async uploadImage(id: string, userId: string, file: Express.Multer.File) {
+    const product = await this.prisma.product.findFirst({ where: { id, deletedAt: null } });
+    if (!product) throw new NotFoundException('Product not found');
+
+    const vendor = await this.prisma.vendor.findUnique({ where: { userId } });
+    if (!vendor || product.vendorId !== vendor.id) throw new ForbiddenException('Not your product');
+
+    this.imageService.validateImage(file);
+    const { buffer: resized, contentType } = await this.imageService.resizeProduct(file.buffer);
+    const key = `products/${id}/${uuidv4()}.webp`;
+    const url = await this.s3.upload(key, resized, contentType);
+
+    await this.prisma.product.update({
+      where: { id },
+      data: { imageUrls: { push: url } },
+    });
+
+    return { url };
   }
 
   async removeProduct(id: string, userId: string) {
