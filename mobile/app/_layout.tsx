@@ -63,6 +63,7 @@ export default function RootLayout() {
           <Stack.Screen name="onboarding" options={{ headerShown: false }} />
           <Stack.Screen name="auth/phone" options={{ headerShown: false }} />
           <Stack.Screen name="auth/otp" options={{ headerShown: false }} />
+          <Stack.Screen name="auth/email" options={{ headerShown: false }} />
           <Stack.Screen name="search" options={{ headerShown: false, presentation: 'fullScreenModal' }} />
           <Stack.Screen name="notifications" options={{ title: 'Notifications' }} />
           <Stack.Screen name="topup" options={{ headerShown: false, presentation: 'modal' }} />
