@@ -111,6 +111,14 @@ export default function OnboardingScreen() {
     }
   }
 
+  function handleEmailPress() {
+    try {
+      router.push('/auth/email' as any);
+    } catch {
+      Alert.alert('Coming soon', 'Email sign in screen is not yet available.');
+    }
+  }
+
   function handleApplePress() {
     Alert.alert('Apple Sign In', 'Apple sign in coming soon.');
   }
@@ -213,6 +221,17 @@ export default function OnboardingScreen() {
             <Text style={styles.socialBtnText}>Google</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Email sign-in entry point */}
+        <TouchableOpacity
+          style={styles.emailLink}
+          onPress={handleEmailPress}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Sign in with email instead"
+        >
+          <Text style={styles.emailLinkText}>Sign in with email instead</Text>
+        </TouchableOpacity>
 
         {/* Terms */}
         <Text style={styles.termsText}>
@@ -347,6 +366,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: INK,
     letterSpacing: 0.1,
+  },
+
+  // Email sign-in entry point
+  emailLink: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  emailLinkText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: GOLD,
   },
 
   // Terms
