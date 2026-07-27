@@ -1,4 +1,4 @@
-import { IsEmail, IsString, MinLength, IsOptional, IsMobilePhone, IsEnum, IsBoolean } from 'class-validator';
+import { IsEmail, IsString, MinLength, IsOptional, IsMobilePhone, IsEnum, IsBoolean, Length } from 'class-validator';
 import { UserRole, REGISTERABLE_ROLES } from '../../../common/enums/user-role.enum';
 import { OtpChannel } from '../../../common/enums/otp-channel.enum';
 
@@ -8,6 +8,10 @@ export class RegisterDto {
 
   @IsMobilePhone('en-NG')
   phone: string;
+
+  @IsString()
+  @Length(6, 6)
+  otp: string;
 
   @IsString()
   @MinLength(8)

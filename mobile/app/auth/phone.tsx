@@ -14,7 +14,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import Svg, { Rect, Line, Circle } from 'react-native-svg';
-import { MessageSquare, MessageCircle, Mail } from 'lucide-react-native';
+import { MessageSquare, MessageCircle } from 'lucide-react-native';
 import { api, getErrorMessage } from '../../lib/api';
 import {
   SURFACE_DEEP,
@@ -28,12 +28,11 @@ import {
   FONT_MONO,
 } from '../../lib/tokens';
 
-type OtpChannel = 'SMS' | 'WHATSAPP' | 'EMAIL';
+type OtpChannel = 'SMS' | 'WHATSAPP';
 
 const CHANNEL_OPTIONS: { value: OtpChannel; label: string; Icon: typeof MessageSquare }[] = [
   { value: 'SMS', label: 'SMS', Icon: MessageSquare },
   { value: 'WHATSAPP', label: 'WhatsApp', Icon: MessageCircle },
-  { value: 'EMAIL', label: 'Email', Icon: Mail },
 ];
 
 function AdireOrnament({ size = 160, opacity = 0.12 }: { size?: number; opacity?: number }) {
@@ -55,7 +54,6 @@ export default function PhoneScreen() {
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const [channel, setChannel] = useState<OtpChannel>('SMS');
-  const [email, setEmail] = useState('');
 
   const digitsOnly = phone.replace(/[^\d+]/g, '');
   const formattedPhone = digitsOnly.startsWith('0')
@@ -76,7 +74,6 @@ export default function PhoneScreen() {
       const res = await api.post('/auth/otp/send', {
         phone: formattedPhone,
         channel,
-        ...(channel === 'EMAIL' ? { email } : {}),
       });
       const payload = res.data?.data ?? res.data ?? {};
       const fallbackUsed = payload.fallbackUsed === true;
@@ -92,9 +89,7 @@ export default function PhoneScreen() {
     }
   }
 
-  const isReady =
-    phone.replace(/\s/g, '').length >= 10 &&
-    (channel !== 'EMAIL' || /\S+@\S+\.\S+/.test(email));
+  const isReady = phone.replace(/\s/g, '').length >= 10;
 
   return (
     <KeyboardAvoidingView
@@ -165,20 +160,6 @@ export default function PhoneScreen() {
             );
           })}
         </View>
-
-        {channel === 'EMAIL' && (
-          <View style={[styles.inputWrapper, email.length > 0 && styles.inputWrapperActive]}>
-            <TextInput
-              style={styles.phoneInput}
-              placeholder="you@example.com"
-              placeholderTextColor="rgba(245,237,214,0.25)"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              value={email}
-              onChangeText={setEmail}
-            />
-          </View>
-        )}
 
         <TouchableOpacity
           style={[styles.cta, !isReady && styles.ctaDisabled]}
