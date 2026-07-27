@@ -227,6 +227,43 @@ describe('EventsService', () => {
     });
   });
 
+  // ── submitForApproval ───────────────────────────────────────────────────────
+
+  describe('submitForApproval', () => {
+    it('transitions a DRAFT event to PENDING_APPROVAL when caller is the organizer', async () => {
+      const draftEvent = { ...mockEvent, status: 'DRAFT' };
+      mockPrisma.event.findFirst.mockResolvedValue(draftEvent);
+      mockPrisma.event.update.mockResolvedValue({ ...draftEvent, status: 'PENDING_APPROVAL' });
+
+      const result = await service.submitForApproval(ORG_ID, EVENT_ID);
+
+      expect(mockPrisma.event.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: EVENT_ID },
+          data: { status: 'PENDING_APPROVAL' },
+        }),
+      );
+      expect(result.status).toBe('PENDING_APPROVAL');
+    });
+
+    it('throws BadRequestException when event is not DRAFT', async () => {
+      mockPrisma.event.findFirst.mockResolvedValue({ ...mockEvent, status: 'PUBLISHED' });
+      await expect(service.submitForApproval(ORG_ID, EVENT_ID)).rejects.toThrow(BadRequestException);
+      expect(mockPrisma.event.update).not.toHaveBeenCalled();
+    });
+
+    it('throws ForbiddenException when caller is not the organizer', async () => {
+      mockPrisma.event.findFirst.mockResolvedValue({ ...mockEvent, status: 'DRAFT' });
+      await expect(service.submitForApproval('other-user', EVENT_ID)).rejects.toThrow(ForbiddenException);
+      expect(mockPrisma.event.update).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when event does not exist', async () => {
+      mockPrisma.event.findFirst.mockResolvedValue(null);
+      await expect(service.submitForApproval(ORG_ID, 'bad-id')).rejects.toThrow(NotFoundException);
+    });
+  });
+
   // ── remove ──────────────────────────────────────────────────────────────────
 
   describe('remove', () => {

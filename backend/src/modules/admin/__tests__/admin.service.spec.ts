@@ -6,7 +6,7 @@ import { SettlementService } from '../../../common/services/settlement.service';
 
 const mockPrisma = {
   user: { count: jest.fn(), findMany: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
-  event: { count: jest.fn() },
+  event: { count: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
   vendor: { count: jest.fn(), findMany: jest.fn(), update: jest.fn() },
   order: { aggregate: jest.fn() },
   transaction: { aggregate: jest.fn() },
@@ -133,6 +133,28 @@ describe('AdminService', () => {
       expect(mockPrisma.user.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: { status: 'SUSPENDED' } }),
       );
+    });
+  });
+
+  // ── updateEventStatus ──────────────────────────────────────────────────────
+
+  describe('updateEventStatus', () => {
+    it('updates the event status when the event exists', async () => {
+      mockPrisma.event.findFirst.mockResolvedValue({ id: 'event-001', status: 'PENDING_APPROVAL' });
+      mockPrisma.event.update.mockResolvedValue({ id: 'event-001', status: 'PUBLISHED' });
+
+      const result = await service.updateEventStatus('event-001', 'PUBLISHED');
+
+      expect(mockPrisma.event.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'event-001' }, data: { status: 'PUBLISHED' } }),
+      );
+      expect(result.status).toBe('PUBLISHED');
+    });
+
+    it('throws NotFoundException when the event does not exist', async () => {
+      mockPrisma.event.findFirst.mockResolvedValue(null);
+      await expect(service.updateEventStatus('bad-id', 'PUBLISHED')).rejects.toThrow(NotFoundException);
+      expect(mockPrisma.event.update).not.toHaveBeenCalled();
     });
   });
 

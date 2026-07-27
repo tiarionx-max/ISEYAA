@@ -86,6 +86,15 @@ export class EventsController {
     return this.eventsService.remove(id, user.userId);
   }
 
+  @Patch(':id/submit-for-approval')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ORGANISER)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Submit own DRAFT event for approval (ORGANISER — own events only)' })
+  submitForApproval(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.eventsService.submitForApproval(user.userId, id);
+  }
+
   @Post(':id/images')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ORGANISER)
