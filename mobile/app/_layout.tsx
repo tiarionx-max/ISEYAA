@@ -59,6 +59,10 @@ export default function RootLayout() {
           <Stack.Screen name="cart" options={{ headerShown: false, presentation: 'transparentModal', animation: 'none' }} />
           <Stack.Screen name="checkout" options={{ title: 'Checkout', presentation: 'card' }} />
           <Stack.Screen name="host" options={{ headerShown: false, presentation: 'card' }} />
+          <Stack.Screen name="host-dashboard" options={{ title: 'My Properties', presentation: 'card' }} />
+          <Stack.Screen name="property-create" options={{ title: 'Add Listing', presentation: 'card' }} />
+          <Stack.Screen name="property-edit/[id]" options={{ title: 'Edit Listing', presentation: 'card' }} />
+          <Stack.Screen name="property-bookings/[id]" options={{ title: 'Bookings', presentation: 'card' }} />
           <Stack.Screen name="transport-flow" options={{ headerShown: false, presentation: 'fullScreenModal' }} />
           <Stack.Screen name="delivery-flow" options={{ headerShown: false, presentation: 'fullScreenModal' }} />
           <Stack.Screen name="driver-dashboard" options={{ headerShown: false, presentation: 'fullScreenModal' }} />

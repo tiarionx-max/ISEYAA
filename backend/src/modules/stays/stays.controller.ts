@@ -47,6 +47,15 @@ export class StaysController {
     });
   }
 
+  @Get('mine')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.HOST)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List the current host\'s own properties, including paused/inactive ones' })
+  findMine(@CurrentUser() user: any) {
+    return this.staysService.findMyProperties(user.userId);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get property by ID' })
   findOne(@Param('id') id: string) {
@@ -92,6 +101,15 @@ export class StaysController {
   @ApiOperation({ summary: 'Booked date ranges for next 90 days' })
   getAvailability(@Param('id') id: string) {
     return this.staysService.getAvailability(id);
+  }
+
+  @Get(':id/bookings')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.HOST)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List bookings for a property owned by the current host' })
+  getPropertyBookings(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.staysService.findPropertyBookings(id, user.userId);
   }
 
   @Post(':id/bookings')
