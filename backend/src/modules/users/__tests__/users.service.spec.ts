@@ -67,6 +67,46 @@ describe('UsersService', () => {
     });
   });
 
+  describe('becomeDriver', () => {
+    it('throws NotFoundException for unknown user', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(null);
+      await expect(service.becomeDriver('u1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('adds DRIVER to registeredRoles and sets role when not already present', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({ registeredRoles: ['CITIZEN'] });
+      mockPrisma.user.update.mockResolvedValue({ id: 'u1', role: 'DRIVER', registeredRoles: ['CITIZEN', 'DRIVER'] });
+
+      const result = await service.becomeDriver('u1');
+
+      expect(result.role).toBe('DRIVER');
+      expect(mockPrisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            role: 'DRIVER',
+            registeredRoles: { set: ['CITIZEN', 'DRIVER'] },
+          }),
+        }),
+      );
+    });
+
+    it('is idempotent when DRIVER is already in registeredRoles', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({ registeredRoles: ['CITIZEN', 'DRIVER'] });
+      mockPrisma.user.update.mockResolvedValue({ id: 'u1', role: 'DRIVER', registeredRoles: ['CITIZEN', 'DRIVER'] });
+
+      await service.becomeDriver('u1');
+
+      expect(mockPrisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            role: 'DRIVER',
+            registeredRoles: ['CITIZEN', 'DRIVER'],
+          }),
+        }),
+      );
+    });
+  });
+
   describe('updateOtpChannel', () => {
     it('updates otpChannel and returns the updated user', async () => {
       mockPrisma.user.update.mockResolvedValue({ id: 'u1', otpChannel: 'WHATSAPP' });
