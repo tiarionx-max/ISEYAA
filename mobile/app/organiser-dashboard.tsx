@@ -9,7 +9,7 @@
  * Edit / Submit-for-approval / View-analytics actions.
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -216,6 +216,14 @@ export default function OrganiserDashboardScreen(): JSX.Element {
 
   const isOrganiser = (me?.registeredRoles ?? []).includes('ORGANISER');
 
+  const [roleReconciled, setRoleReconciled] = useState(false);
+
+  useEffect(() => {
+    if (me && isOrganiser && !roleReconciled) {
+      ensureOrganiserRole(me.role).finally(() => setRoleReconciled(true));
+    }
+  }, [me, isOrganiser, roleReconciled]);
+
   const becomeOrganiserMutation = useMutation({
     mutationFn: () => api.post('/users/me/become-organiser'),
     onSuccess: async (response) => {
@@ -234,7 +242,7 @@ export default function OrganiserDashboardScreen(): JSX.Element {
   const { data: events, isLoading: eventsLoading } = useQuery<OrganiserEvent[]>({
     queryKey: ['my-events'],
     queryFn: () => fetcher('/events/mine'),
-    enabled: isOrganiser,
+    enabled: isOrganiser && roleReconciled,
   });
 
   if (meLoading) {

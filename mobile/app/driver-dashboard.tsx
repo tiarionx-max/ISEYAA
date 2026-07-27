@@ -44,15 +44,26 @@ async function ensureDriverRole(currentRole: string | undefined): Promise<void> 
 export default function DriverDashboardScreen() {
   const queryClient = useQueryClient();
   const [isOnline, setIsOnline] = useState(false);
-
-  const { data: driverProfile } = useQuery({
-    queryKey: ['driver-me'],
-    queryFn: () => fetcher('/transport/drivers/me'),
-  });
+  const [roleReconciled, setRoleReconciled] = useState(false);
 
   const { data: me } = useQuery<{ role?: string }>({
     queryKey: ['me'],
     queryFn: () => fetcher('/users/me'),
+  });
+
+  // Reconciles the active role to DRIVER exactly once before any of the three
+  // read queries below fire — a separate effect from the isOnline sync below,
+  // so we never fire 3 concurrent PATCH /users/me/role calls on mount.
+  useEffect(() => {
+    if (me && !roleReconciled) {
+      ensureDriverRole(me.role).finally(() => setRoleReconciled(true));
+    }
+  }, [me, roleReconciled]);
+
+  const { data: driverProfile } = useQuery({
+    queryKey: ['driver-me'],
+    queryFn: () => fetcher('/transport/drivers/me'),
+    enabled: roleReconciled,
   });
 
   useEffect(() => {
@@ -65,11 +76,13 @@ export default function DriverDashboardScreen() {
     queryKey: ['driver-earnings', 'today'],
     queryFn: () => fetcher('/transport/drivers/earnings?period=today'),
     refetchInterval: 30_000,
+    enabled: roleReconciled,
   });
   const { data: weekData, isLoading: weekLoading } = useQuery({
     queryKey: ['driver-earnings', 'week'],
     queryFn: () => fetcher('/transport/drivers/earnings?period=week'),
     refetchInterval: 30_000,
+    enabled: roleReconciled,
   });
 
   const toggleMutation = useMutation({
