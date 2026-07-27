@@ -50,6 +50,7 @@ const NG_PHONE_RE = /^(\+234|0)\d{10}$/;
 export default function DeliveryFlowScreen() {
   const queryClient = useQueryClient();
   const socketRef = useRef<Socket | null>(null);
+  const activeOrderIdRef = useRef<string | null>(null);
 
   const [pickup, setPickup] = useState<PickedLocation | null>(null);
   const [dropoff, setDropoff] = useState<PickedLocation | null>(null);
@@ -102,7 +103,7 @@ export default function DeliveryFlowScreen() {
         const socket = await getSocket();
         socketRef.current = socket;
         socket.emit('join:delivery', order.id);
-        attachOrderListeners(socket);
+        attachOrderListeners(socket, order.id);
       } catch {
         Alert.alert('Connection issue', 'Could not connect for live updates — pull to refresh order status.');
       }
@@ -123,23 +124,54 @@ export default function DeliveryFlowScreen() {
     },
   });
 
-  function attachOrderListeners(socket: Socket) {
+  // Detach the full set of order event handlers. Must run before every
+  // (re)attach so a still-connected singleton socket (see lib/socket.ts)
+  // never keeps a stale order's handlers registered alongside the new one.
+  function detachOrderListeners(socket: Socket) {
+    socket.off('rider:assigned');
+    socket.off('delivery:collecting');
+    socket.off('delivery:in_transit');
+    socket.off('delivery:completed');
+    socket.off('delivery:cancelled');
+    socket.off('delivery:expired');
+    socket.off('rider:location');
+  }
+
+  function attachOrderListeners(socket: Socket, forOrderId: string) {
+    detachOrderListeners(socket);
+    activeOrderIdRef.current = forOrderId;
+    // Every handler below (except rider:location, which the backend emits
+    // without an orderId — delivery.gateway.ts rider:location relay) checks
+    // the payload's orderId against the currently active order before
+    // applying state, so a late/residual event from a previously cancelled
+    // order in an old socket-room the client never explicitly left cannot
+    // overwrite the screen for the order the sender is now viewing.
     socket.on('rider:assigned', (payload: { rider: any; order: any }) => {
+      if (payload?.order?.id !== activeOrderIdRef.current) return;
       setRiderInfo(payload.rider);
       setStage('matched');
     });
-    socket.on('delivery:collecting', () => setStage('collecting'));
-    socket.on('delivery:in_transit', () => setStage('in_transit'));
-    socket.on('delivery:completed', (payload: { riderEarnings: number }) => {
+    socket.on('delivery:collecting', (payload: { orderId?: string }) => {
+      if (payload?.orderId !== activeOrderIdRef.current) return;
+      setStage('collecting');
+    });
+    socket.on('delivery:in_transit', (payload: { orderId?: string }) => {
+      if (payload?.orderId !== activeOrderIdRef.current) return;
+      setStage('in_transit');
+    });
+    socket.on('delivery:completed', (payload: { orderId?: string; riderEarnings: number }) => {
+      if (payload?.orderId !== activeOrderIdRef.current) return;
       setCompletedEarnings(payload?.riderEarnings ?? null);
       setStage('delivered');
       queryClient.invalidateQueries({ queryKey: ['wallet'] });
     });
-    socket.on('delivery:cancelled', () => {
+    socket.on('delivery:cancelled', (payload: { orderId?: string }) => {
+      if (payload?.orderId !== activeOrderIdRef.current) return;
       setStage('ended');
       setEndedMessage('The rider cancelled this delivery.');
     });
-    socket.on('delivery:expired', () => {
+    socket.on('delivery:expired', (payload: { orderId?: string }) => {
+      if (payload?.orderId !== activeOrderIdRef.current) return;
       setStage('ended');
       setEndedMessage('No rider was found nearby. Please try again.');
     });
@@ -152,13 +184,7 @@ export default function DeliveryFlowScreen() {
     return () => {
       const socket = socketRef.current;
       if (socket) {
-        socket.off('rider:assigned');
-        socket.off('delivery:collecting');
-        socket.off('delivery:in_transit');
-        socket.off('delivery:completed');
-        socket.off('delivery:cancelled');
-        socket.off('delivery:expired');
-        socket.off('rider:location');
+        detachOrderListeners(socket);
       }
     };
   }, []);

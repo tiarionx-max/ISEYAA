@@ -66,6 +66,7 @@ export default function TransportFlowScreen() {
   const { tripId: resumeTripId } = useLocalSearchParams<{ tripId?: string }>();
   const queryClient = useQueryClient();
   const socketRef = useRef<Socket | null>(null);
+  const activeTripIdRef = useRef<string | null>(null);
 
   const [pickup, setPickup] = useState<PickedLocation | null>(null);
   const [dropoff, setDropoff] = useState<PickedLocation | null>(null);
@@ -110,7 +111,7 @@ export default function TransportFlowScreen() {
         const socket = await getSocket();
         socketRef.current = socket;
         socket.emit('join:trip', trip.id);
-        attachTripListeners(socket);
+        attachTripListeners(socket, trip.id);
       } catch {
         Alert.alert('Connection issue', 'Could not connect for live updates — pull to refresh trip status.');
       }
@@ -131,23 +132,56 @@ export default function TransportFlowScreen() {
     },
   });
 
-  function attachTripListeners(socket: Socket) {
+  // Detach the full set of trip event handlers. Must run before every
+  // (re)attach so a still-connected singleton socket (see lib/socket.ts)
+  // never keeps a stale trip's handlers registered alongside the new one.
+  function detachTripListeners(socket: Socket) {
+    socket.off('driver:matched');
+    socket.off('driver:arrived');
+    socket.off('trip:started');
+    socket.off('trip:completed');
+    socket.off('trip:cancelled');
+    socket.off('trip:expired');
+    socket.off('driver:location');
+  }
+
+  function attachTripListeners(socket: Socket, forTripId: string) {
+    detachTripListeners(socket);
+    activeTripIdRef.current = forTripId;
+    // Every handler below (except driver:location, which the backend emits
+    // without a tripId — transport.gateway.ts driver:location relay) checks
+    // the payload's tripId against the currently active trip before applying
+    // state, so a late/residual event from a previously cancelled trip in an
+    // old socket-room the client never explicitly left cannot overwrite the
+    // screen for the trip the rider is now viewing.
     socket.on('driver:matched', (payload: { driver: any; trip: any }) => {
+      if (payload?.trip?.id !== activeTripIdRef.current) return;
       setDriverInfo(payload.driver);
       setStage('matched');
     });
-    socket.on('driver:arrived', () => setStage('arrived'));
-    socket.on('trip:started', () => setStage('in_progress'));
-    socket.on('trip:completed', (payload: { driverEarnings: number }) => {
+    socket.on('driver:arrived', (payload: { tripId?: string }) => {
+      if (payload?.tripId !== activeTripIdRef.current) return;
+      setStage('arrived');
+    });
+    socket.on('trip:started', (payload: { tripId?: string }) => {
+      if (payload?.tripId !== activeTripIdRef.current) return;
+      setStage('in_progress');
+    });
+    socket.on('trip:completed', (payload: { tripId?: string; driverEarnings: number }) => {
+      if (payload?.tripId !== activeTripIdRef.current) return;
       setCompletedFare(payload?.driverEarnings ?? null);
       setStage('completed');
       queryClient.invalidateQueries({ queryKey: ['wallet'] });
     });
-    socket.on('trip:cancelled', () => {
+    socket.on('trip:cancelled', (payload: { tripId?: string }) => {
+      if (payload?.tripId !== activeTripIdRef.current) return;
       setStage('ended');
       setEndedMessage('The driver cancelled this ride.');
     });
-    socket.on('trip:expired', () => {
+    socket.on('trip:expired', (payload?: { tripId?: string }) => {
+      // Legacy expiry path emits with no body at all (transport.service.ts:117)
+      // — only filter when a tripId is actually present.
+      if (payload?.tripId && payload.tripId !== activeTripIdRef.current) return;
       setStage('ended');
       setEndedMessage('No driver was found nearby. Please try again.');
     });
@@ -178,7 +212,7 @@ export default function TransportFlowScreen() {
         if (cancelled) return;
         socketRef.current = socket;
         socket.emit('join:trip', resumeTripId);
-        attachTripListeners(socket);
+        attachTripListeners(socket, resumeTripId);
       } catch {
         if (!cancelled) {
           Alert.alert('Could not load ride', 'Please try again from My Rides.');
@@ -194,13 +228,7 @@ export default function TransportFlowScreen() {
     return () => {
       const socket = socketRef.current;
       if (socket) {
-        socket.off('driver:matched');
-        socket.off('driver:arrived');
-        socket.off('trip:started');
-        socket.off('trip:completed');
-        socket.off('trip:cancelled');
-        socket.off('trip:expired');
-        socket.off('driver:location');
+        detachTripListeners(socket);
       }
     };
   }, []);
