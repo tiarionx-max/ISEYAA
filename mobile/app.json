@@ -72,7 +72,13 @@
           "project": "iseyaa-mobile"
         }
       ],
-      "expo-notifications"
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#1A6B3C"
+        }
+      ]
     ],
     "scheme": "iseyaa",
     "platforms": [
