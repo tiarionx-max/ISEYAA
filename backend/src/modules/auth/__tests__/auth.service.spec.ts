@@ -12,6 +12,7 @@ import {
   BadRequestException,
   ForbiddenException,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 
@@ -232,13 +233,12 @@ describe('AuthService', () => {
       expect((global.fetch as jest.Mock).mock.calls[0][1]?.signal).toBe(controller.signal);
     });
 
-    it('still resolves sendOtp with an "OTP sent" success message when resilience.execute rejects (circuit open) — D-03 fallback chain preserved', async () => {
+    it('throws ServiceUnavailableException when the only configured channel (Termii) rejects and no Twilio fallback is configured — 260727-p7u: previously silently reported success with no code ever delivered', async () => {
       mockRedis.exists.mockResolvedValue(false);
       mockRedis.set.mockResolvedValue(undefined);
       mockResilience.execute.mockRejectedValueOnce(new Error('circuit open'));
 
-      const result = await service.sendOtp({ phone: '+2348012345678' });
-      expect(result.message).toContain('OTP sent');
+      await expect(service.sendOtp({ phone: '+2348012345678' })).rejects.toThrow(ServiceUnavailableException);
     });
 
     it('resolves the WHATSAPP channel from an existing user\'s persisted otpChannel even when the request channel is SMS or absent (channel)', async () => {

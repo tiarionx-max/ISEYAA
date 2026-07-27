@@ -5,6 +5,7 @@ import {
   BadRequestException,
   ForbiddenException,
   NotFoundException,
+  ServiceUnavailableException,
   Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -184,7 +185,12 @@ export class AuthService {
     firstName?: string,
   ): Promise<boolean> {
     if (channel === OtpChannel.SMS) {
-      await this.sendTermii(phone, otp);
+      const delivered = await this.sendTermii(phone, otp);
+      if (!delivered) {
+        throw new ServiceUnavailableException(
+          'We could not send your verification code right now. Please try again in a few minutes.',
+        );
+      }
       return false;
     }
 
@@ -199,7 +205,12 @@ export class AuthService {
       return false;
     } catch (err) {
       this.logger.error(`${channel} OTP dispatch failed — falling back to SMS`, err);
-      await this.sendTermii(phone, otp);
+      const delivered = await this.sendTermii(phone, otp);
+      if (!delivered) {
+        throw new ServiceUnavailableException(
+          'We could not send your verification code right now. Please try again in a few minutes.',
+        );
+      }
       return true;
     }
   }
@@ -457,10 +468,19 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
-  private async sendTermii(phone: string, otp: string) {
+  /**
+   * Returns true when the OTP was actually delivered (Termii, Twilio, or the
+   * no-credentials-configured dev stub — the stub is a deliberate local-dev
+   * no-op, not a failure). Returns false only when credentials WERE configured
+   * for at least one provider but every attempt genuinely failed — the caller
+   * must treat that as a real delivery failure, not silently report success.
+   */
+  private async sendTermii(phone: string, otp: string): Promise<boolean> {
     const termiiKey = this.config.get<string>('TERMII_API_KEY');
+    let attempted = false;
 
     if (termiiKey) {
+      attempted = true;
       const smsSender = this.config.get<string>('TERMII_SENDER_ID', '');
 
       const channel = smsSender ? 'generic' : 'dnd';
@@ -484,7 +504,7 @@ export class AuthService {
         );
         if (response.ok) {
           this.logger.log(`OTP sent via Termii (${channel}) to ${phone}`);
-          return;
+          return true;
         }
         this.logger.error(`Termii error: ${response.status} ${await response.text()} — falling back to Twilio`);
       } catch (err) {
@@ -498,14 +518,22 @@ export class AuthService {
     const twilioFrom = this.config.get<string>('TWILIO_FROM_NUMBER');
 
     if (twilioSid && twilioToken && twilioFrom) {
-      await this.sendTwilio(phone, otp, twilioSid, twilioToken, twilioFrom);
-      return;
+      attempted = true;
+      const delivered = await this.sendTwilio(phone, otp, twilioSid, twilioToken, twilioFrom);
+      if (delivered) return true;
+    }
+
+    if (attempted) {
+      // At least one real provider was configured and every attempt failed —
+      // this is a genuine production delivery failure, not the dev stub case.
+      return false;
     }
 
     this.logger.warn(`[SMS STUB] OTP ${otp} for ${phone} — configure TERMII_API_KEY or TWILIO_* to send live SMS`);
+    return true;
   }
 
-  private async sendTwilio(phone: string, otp: string, sid: string, token: string, from: string) {
+  private async sendTwilio(phone: string, otp: string, sid: string, token: string, from: string): Promise<boolean> {
     try {
       const body = new URLSearchParams({
         To: phone,
@@ -525,11 +553,13 @@ export class AuthService {
       );
       if (!response.ok) {
         this.logger.error(`Twilio error: ${response.status} ${await response.text()}`);
-      } else {
-        this.logger.log(`SMS sent via Twilio to ${phone}`);
+        return false;
       }
+      this.logger.log(`SMS sent via Twilio to ${phone}`);
+      return true;
     } catch (err) {
       this.logger.error('Twilio request failed', err);
+      return false;
     }
   }
 
