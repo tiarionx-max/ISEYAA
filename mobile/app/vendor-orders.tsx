@@ -14,6 +14,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Truck, PackageCheck } from 'lucide-react-native';
 
 import { api, fetcher, getErrorMessage } from '../lib/api';
+import * as SecureStore from 'expo-secure-store';
 import {
   SURFACE_DEEP,
   SURFACE_RAISED,
@@ -70,7 +71,11 @@ function shortRef(order: VendorOrder): string {
 // Duplicated across mutation screens per this codebase's small-pure-helper convention.
 async function ensureVendorRole(currentRole: string | undefined): Promise<void> {
   if (currentRole !== 'VENDOR') {
-    await api.patch('/users/me/role', { role: 'VENDOR' });
+    const { data } = await api.patch('/users/me/role', { role: 'VENDOR' });
+    if (data?.accessToken && data?.refreshToken) {
+      await SecureStore.setItemAsync('access_token', data.accessToken);
+      await SecureStore.setItemAsync('refresh_token', data.refreshToken);
+    }
   }
 }
 
