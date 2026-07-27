@@ -190,6 +190,7 @@ function SectionHeader({
 
 export default function WalletScreen() {
   const [revealed, setRevealed] = useState(false);
+  const [displayBalance, setDisplayBalance] = useState('0.00');
   const shimmerAnim = useRef(new Animated.Value(0)).current;
   const balanceAnim = useRef(new Animated.Value(0)).current;
   const scrollRef = useRef<ScrollView>(null);
@@ -248,17 +249,26 @@ export default function WalletScreen() {
   }
 
   // Balance reveal animation: 0 → balanceNgn over 900ms cubic ease-out
+  // NOTE: formatCurrency() inserts comma thousands-separators, which breaks
+  // Animated string interpolation (RN's numericComponentRegex expects the
+  // same number of numeric components in every outputRange string). Drive
+  // the count-up via a listener + plain React state instead of interpolate().
   useEffect(() => {
     if (revealed && balanceNgn > 0) {
       balanceAnim.setValue(0);
+      const listenerId = balanceAnim.addListener(({ value }) => {
+        setDisplayBalance(formatCurrency(value));
+      });
       Animated.timing(balanceAnim, {
         toValue: balanceNgn,
         duration: 900,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: false,
       }).start();
+      return () => balanceAnim.removeListener(listenerId);
     } else if (!revealed) {
       balanceAnim.setValue(0);
+      setDisplayBalance('0.00');
     }
   }, [revealed, balanceNgn]);
 
@@ -355,13 +365,7 @@ export default function WalletScreen() {
             <View style={styles.balanceAmountRow}>
               <Text style={styles.balanceCurrency}>NGN</Text>
               {revealed ? (
-                <Animated.Text style={styles.balanceAmount}>
-                  {balanceAnim.interpolate({
-                    inputRange: [0, Math.max(balanceNgn, 1)],
-                    outputRange: ['0.00', formatCurrency(balanceNgn)],
-                    extrapolate: 'clamp',
-                  }) as any}
-                </Animated.Text>
+                <Text style={styles.balanceAmount}>{displayBalance}</Text>
               ) : (
                 <Text style={[styles.balanceAmount, styles.balanceHidden]}>
                   ——,———.——
