@@ -36,6 +36,9 @@ export class AdminGrpcController {
         case 'studio-slot':
           await this.adminService.updateStudioSlot(data.itemId, { isActive: true });
           return { success: true };
+        case 'event':
+          await this.adminService.updateEventStatus(data.itemId, 'PUBLISHED');
+          return { success: true };
         default:
           return { success: false };
       }

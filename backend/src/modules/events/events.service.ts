@@ -142,6 +142,19 @@ export class EventsService implements OnModuleInit {
     });
   }
 
+  async submitForApproval(userId: string, eventId: string) {
+    const event = await this.prisma.event.findFirst({ where: { id: eventId, deletedAt: null } });
+    if (!event) throw new NotFoundException('Event not found');
+    if (event.organizerId !== userId) throw new ForbiddenException('Not your event');
+    if (event.status !== 'DRAFT') {
+      throw new BadRequestException(
+        `Event status is ${event.status} — only DRAFT events can be submitted for approval`,
+      );
+    }
+
+    return this.prisma.event.update({ where: { id: eventId }, data: { status: 'PENDING_APPROVAL' } });
+  }
+
   async remove(id: string, organizerId: string) {
     const event = await this.prisma.event.findFirst({ where: { id, deletedAt: null } });
     if (!event) throw new NotFoundException('Event not found');

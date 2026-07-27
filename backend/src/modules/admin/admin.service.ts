@@ -196,6 +196,15 @@ export class AdminService {
     return updated;
   }
 
+  // ── Events ─────────────────────────────────────────────────────────────────
+
+  async updateEventStatus(id: string, status: 'APPROVED' | 'PUBLISHED' | 'CANCELLED') {
+    const event = await this.prisma.event.findFirst({ where: { id, deletedAt: null } });
+    if (!event) throw new NotFoundException('Event not found');
+
+    return this.prisma.event.update({ where: { id }, data: { status } });
+  }
+
   // ── Properties ─────────────────────────────────────────────────────────────
 
   listProperties(page: number, limit: number) {

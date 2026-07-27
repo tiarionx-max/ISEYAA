@@ -6,6 +6,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
 import { UpdateSplitTierDto } from './dto/update-split-tier.dto';
 import { CreateSplitTierDto } from './dto/create-split-tier.dto';
+import { UpdateEventStatusDto } from './dto/update-event-status.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -62,6 +63,12 @@ export class AdminController {
   @ApiOperation({ summary: 'Approve or suspend a vendor' })
   updateVendorStatus(@Param('id') id: string, @Body('status') status: string) {
     return this.adminService.updateVendorStatus(id, status);
+  }
+
+  @Patch('events/:id/status')
+  @ApiOperation({ summary: 'Approve, publish, or cancel a submitted event' })
+  updateEventStatus(@Param('id') id: string, @Body() dto: UpdateEventStatusDto) {
+    return this.adminService.updateEventStatus(id, dto.status);
   }
 
   @Get('properties')

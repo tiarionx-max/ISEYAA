@@ -40,11 +40,15 @@ export interface ReserveTicketRequest {
   userId: string;
   quantity: number;
   reference: string;
+  email: string;
 }
 
 export interface ReserveTicketResponse {
   success: boolean;
   ticketId: string;
+  authorizationUrl: string;
+  accessCode: string;
+  paymentReference: string;
 }
 
 export const EVENTS_PACKAGE_NAME = "events";
@@ -264,7 +268,7 @@ export const TicketAvailabilityResponse: MessageFns<TicketAvailabilityResponse> 
 };
 
 function createBaseReserveTicketRequest(): ReserveTicketRequest {
-  return { eventId: "", ticketTypeId: "", userId: "", quantity: 0, reference: "" };
+  return { eventId: "", ticketTypeId: "", userId: "", quantity: 0, reference: "", email: "" };
 }
 
 export const ReserveTicketRequest: MessageFns<ReserveTicketRequest> = {
@@ -283,6 +287,9 @@ export const ReserveTicketRequest: MessageFns<ReserveTicketRequest> = {
     }
     if (message.reference !== "") {
       writer.uint32(42).string(message.reference);
+    }
+    if (message.email !== "") {
+      writer.uint32(50).string(message.email);
     }
     return writer;
   },
@@ -334,6 +341,14 @@ export const ReserveTicketRequest: MessageFns<ReserveTicketRequest> = {
           message.reference = reader.string();
           continue;
         }
+        case 6: {
+          if (tag !== 50) {
+            break;
+          }
+
+          message.email = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -345,7 +360,7 @@ export const ReserveTicketRequest: MessageFns<ReserveTicketRequest> = {
 };
 
 function createBaseReserveTicketResponse(): ReserveTicketResponse {
-  return { success: false, ticketId: "" };
+  return { success: false, ticketId: "", authorizationUrl: "", accessCode: "", paymentReference: "" };
 }
 
 export const ReserveTicketResponse: MessageFns<ReserveTicketResponse> = {
@@ -355,6 +370,15 @@ export const ReserveTicketResponse: MessageFns<ReserveTicketResponse> = {
     }
     if (message.ticketId !== "") {
       writer.uint32(18).string(message.ticketId);
+    }
+    if (message.authorizationUrl !== "") {
+      writer.uint32(26).string(message.authorizationUrl);
+    }
+    if (message.accessCode !== "") {
+      writer.uint32(34).string(message.accessCode);
+    }
+    if (message.paymentReference !== "") {
+      writer.uint32(42).string(message.paymentReference);
     }
     return writer;
   },
@@ -380,6 +404,30 @@ export const ReserveTicketResponse: MessageFns<ReserveTicketResponse> = {
           }
 
           message.ticketId = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.authorizationUrl = reader.string();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.accessCode = reader.string();
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.paymentReference = reader.string();
           continue;
         }
       }
