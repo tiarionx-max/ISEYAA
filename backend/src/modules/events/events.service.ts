@@ -102,6 +102,20 @@ export class EventsService implements OnModuleInit {
     });
   }
 
+  findMine(organizerId: string) {
+    return this.prisma.event.findMany({
+      where: { organizerId, deletedAt: null },
+      include: {
+        lga: { select: { name: true, slug: true } },
+        ticketTypes: {
+          where: { deletedAt: null },
+          select: { id: true, name: true, price: true, quantity: true, sold: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   async findMyTickets(userId: string) {
     return this.prisma.ticket.findMany({
       where: { userId },

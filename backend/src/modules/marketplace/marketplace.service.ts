@@ -67,6 +67,12 @@ export class MarketplaceService implements OnModuleInit {
     });
   }
 
+  async findMyVendor(userId: string) {
+    const vendor = await this.prisma.vendor.findUnique({ where: { userId } });
+    if (!vendor) throw new NotFoundException('No vendor profile found');
+    return vendor;
+  }
+
   async approveVendor(id: string) {
     const vendor = await this.prisma.vendor.findFirst({ where: { id, deletedAt: null } });
     if (!vendor) throw new NotFoundException('Vendor not found');
@@ -133,6 +139,13 @@ export class MarketplaceService implements OnModuleInit {
       orderBy: [{ isFeatured: 'desc' }, { createdAt: 'desc' }],
       skip: (page - 1) * limit,
       take: limit,
+    });
+  }
+
+  findMyProducts(vendorId: string) {
+    return this.prisma.product.findMany({
+      where: { vendorId, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
     });
   }
 
@@ -205,6 +218,14 @@ export class MarketplaceService implements OnModuleInit {
       include: {
         orderItems: { include: { product: { include: { vendor: true } } } },
       },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  findVendorOrders(vendorId: string) {
+    return this.prisma.order.findMany({
+      where: { vendorId, deletedAt: null },
+      include: { orderItems: { include: { product: true } } },
       orderBy: { createdAt: 'desc' },
     });
   }

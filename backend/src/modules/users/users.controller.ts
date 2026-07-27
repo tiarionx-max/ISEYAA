@@ -96,6 +96,13 @@ export class UsersController {
     return this.usersService.becomeDriver(user.userId);
   }
 
+  @Post('me/become-organiser')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Promote current user to ORGANISER and add ORGANISER to registeredRoles' })
+  becomeOrganiser(@CurrentUser() user: { userId: string }) {
+    return this.usersService.becomeOrganiser(user.userId);
+  }
+
   @Post('me/avatar')
   @ApiOperation({ summary: 'Upload avatar (jpg/png/webp ≤5 MB, resized to 512×512 webp, stored on S3)' })
   @ApiConsumes('multipart/form-data')

@@ -71,7 +71,7 @@ const mockPrisma = {
     findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn(),
     update: jest.fn(),
   },
-  order: { findFirst: jest.fn(), findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
+  order: { findFirst: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
   platformConfig: { findUnique: jest.fn() },
   user: { findUnique: jest.fn() },
   wallet: { findUnique: jest.fn() },
@@ -130,6 +130,22 @@ describe('MarketplaceService', () => {
     });
   });
 
+  // ── findMyVendor ─────────────────────────────────────────────────────────
+
+  describe('findMyVendor', () => {
+    it('returns the vendor profile when found', async () => {
+      mockPrisma.vendor.findUnique.mockResolvedValue(mockVendor);
+      const result = await service.findMyVendor(USER_ID);
+      expect(mockPrisma.vendor.findUnique).toHaveBeenCalledWith({ where: { userId: USER_ID } });
+      expect(result).toEqual(mockVendor);
+    });
+
+    it('throws NotFoundException when caller has no vendor profile', async () => {
+      mockPrisma.vendor.findUnique.mockResolvedValue(null);
+      await expect(service.findMyVendor(USER_ID)).rejects.toThrow(NotFoundException);
+    });
+  });
+
   // ── approveVendor ─────────────────────────────────────────────────────────
 
   describe('approveVendor', () => {
@@ -171,6 +187,22 @@ describe('MarketplaceService', () => {
 
       const result = await service.createProduct(USER_ID, { name: 'Ankara Basket', price: 3500, stock: 20 } as any);
       expect(result.id).toBe(PRODUCT_ID);
+    });
+  });
+
+  // ── findMyProducts ───────────────────────────────────────────────────────
+
+  describe('findMyProducts', () => {
+    it('lists the vendor\'s own products with no isActive filter', async () => {
+      mockPrisma.product.findMany.mockResolvedValue([mockProduct, { ...mockProduct, isActive: false }]);
+
+      const result = await service.findMyProducts(VENDOR_ID);
+
+      expect(mockPrisma.product.findMany).toHaveBeenCalledWith({
+        where: { vendorId: VENDOR_ID, deletedAt: null },
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(result).toHaveLength(2);
     });
   });
 
@@ -401,6 +433,23 @@ describe('MarketplaceService', () => {
       // notifyOrderUpdate's own order.findUnique lookup would be a 2nd call — it must
       // not happen on a replayed settlement.
       expect(mockPrisma.order.findUnique).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ── findVendorOrders ─────────────────────────────────────────────────────
+
+  describe('findVendorOrders', () => {
+    it('lists orders for the given vendor including orderItems.product', async () => {
+      mockPrisma.order.findMany.mockResolvedValue([mockOrder]);
+
+      const result = await service.findVendorOrders(VENDOR_ID);
+
+      expect(mockPrisma.order.findMany).toHaveBeenCalledWith({
+        where: { vendorId: VENDOR_ID, deletedAt: null },
+        include: { orderItems: { include: { product: true } } },
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(result).toEqual([mockOrder]);
     });
   });
 

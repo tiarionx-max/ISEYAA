@@ -190,6 +190,29 @@ describe('EventsService', () => {
     });
   });
 
+  // ── findMine ────────────────────────────────────────────────────────────────
+
+  describe('findMine', () => {
+    it('queries the organiser\'s own events with no status filter', async () => {
+      mockPrisma.event.findMany.mockResolvedValue([mockEvent, { ...mockEvent, status: 'DRAFT' }]);
+
+      const result = await service.findMine(ORG_ID);
+
+      expect(mockPrisma.event.findMany).toHaveBeenCalledWith({
+        where: { organizerId: ORG_ID, deletedAt: null },
+        include: {
+          lga: { select: { name: true, slug: true } },
+          ticketTypes: {
+            where: { deletedAt: null },
+            select: { id: true, name: true, price: true, quantity: true, sold: true },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(result).toHaveLength(2);
+    });
+  });
+
   // ── findById ────────────────────────────────────────────────────────────────
 
   describe('findById', () => {

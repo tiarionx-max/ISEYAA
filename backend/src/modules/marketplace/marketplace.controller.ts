@@ -29,6 +29,14 @@ export class VendorsController {
   create(@CurrentUser() user: any, @Body() dto: CreateVendorDto) {
     return this.marketplaceService.createVendor(user.userId, dto);
   }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Get the current user's vendor profile" })
+  findMine(@CurrentUser() user: any) {
+    return this.marketplaceService.findMyVendor(user.userId);
+  }
 }
 
 @ApiTags('products')
@@ -51,6 +59,16 @@ export class ProductsController {
       featured: featured === 'true',
       page, limit,
     });
+  }
+
+  @Get('mine')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.VENDOR)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "List the current vendor's own products, including inactive ones" })
+  async findMine(@CurrentUser() user: any) {
+    const vendor = await this.marketplaceService.findMyVendor(user.userId);
+    return this.marketplaceService.findMyProducts(vendor.id);
   }
 
   @Get(':id')
@@ -118,6 +136,16 @@ export class OrdersController {
   @ApiOperation({ summary: 'List the current user’s orders with items and product data' })
   findMyOrders(@CurrentUser() user: any) {
     return this.marketplaceService.findMyOrders(user.userId);
+  }
+
+  @Get('vendor')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.VENDOR)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "List orders placed against the current user's vendor account, for fulfillment" })
+  async findVendorOrders(@CurrentUser() user: any) {
+    const vendor = await this.marketplaceService.findMyVendor(user.userId);
+    return this.marketplaceService.findVendorOrders(vendor.id);
   }
 
   @Post()
