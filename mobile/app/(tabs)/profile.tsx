@@ -42,6 +42,7 @@ import {
   MessageSquare,
   Pencil,
   Trash2,
+  KeyRound,
   type LucideProps,
 } from 'lucide-react-native';
 
@@ -424,6 +425,12 @@ export default function ProfileScreen() {
                 await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               } catch (_) { /* silently skip */ }
             }
+            const refreshToken = await SecureStore.getItemAsync('refresh_token');
+            if (refreshToken) {
+              try {
+                await api.post('/auth/logout', { refreshToken });
+              } catch (_) { /* best-effort — proceed with local logout regardless */ }
+            }
             await SecureStore.deleteItemAsync('access_token');
             await SecureStore.deleteItemAsync('refresh_token');
             router.replace('/onboarding' as any);
@@ -532,6 +539,12 @@ export default function ProfileScreen() {
       label: 'Security & ID',
       sub: 'NIN · BVN · 2FA',
       onPress: () => router.push('/kyc' as any),
+    },
+    {
+      icon: KeyRound,
+      label: 'Change Password',
+      sub: 'Update your account password',
+      onPress: () => router.push('/change-password' as any),
       isLast: true,
     },
   ];

@@ -24,6 +24,7 @@ import { VerifyBvnDto } from './dto/verify-bvn.dto';
 import { VerifyNinDto } from './dto/verify-nin.dto';
 import { ChangeOtpChannelDto } from './dto/change-otp-channel.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -120,6 +121,13 @@ export class UsersController {
     @Body() body: UpdateUserDto,
   ) {
     return this.usersService.update(user.userId, body);
+  }
+
+  @Patch('me/password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Change password for the current logged-in user' })
+  changePassword(@CurrentUser() user: { userId: string }, @Body() dto: ChangePasswordDto) {
+    return this.usersService.changePassword(user.userId, dto.currentPassword, dto.newPassword);
   }
 
   // ── KYC endpoints (must appear before /:id to avoid capture) ──────────────

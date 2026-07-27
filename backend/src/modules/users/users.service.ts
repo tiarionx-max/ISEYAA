@@ -3,8 +3,10 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  UnauthorizedException,
   Logger,
 } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { OtpChannel } from '../../common/enums/otp-channel.enum';
@@ -194,5 +196,30 @@ export class UsersService {
 
   async update(id: string, data: UpdateUserDto) {
     return this.prisma.user.update({ where: { id }, data, select: USER_SELECT });
+  }
+
+  /**
+   * Change password for a logged-in user. Requires the current password — does NOT
+   * re-issue tokens (existing session stays valid). Deliberately selects `passwordHash`
+   * directly rather than via the module's USER_SELECT (which omits it).
+   */
+  async changePassword(userId: string, currentPassword: string, newPassword: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId, deletedAt: null },
+      select: { id: true, passwordHash: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+    if (!user.passwordHash) throw new UnauthorizedException('Current password is incorrect');
+
+    const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!valid) throw new UnauthorizedException('Current password is incorrect');
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+    await this.prisma.auditLog.create({
+      data: { userId, action: 'PASSWORD_CHANGED', entity: 'User', entityId: userId },
+    });
+
+    return { message: 'Password changed successfully' };
   }
 }

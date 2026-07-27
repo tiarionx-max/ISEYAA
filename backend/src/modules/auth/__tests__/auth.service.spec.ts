@@ -6,7 +6,13 @@ import { ResilienceService } from '../../../resilience/resilience.service';
 import { SendgridService } from '../../../common/services/sendgrid.service';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { ConflictException, UnauthorizedException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  ConflictException,
+  UnauthorizedException,
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 
 const mockPrisma = {
@@ -359,6 +365,59 @@ describe('AuthService', () => {
 
       const result = await service.verifyOtp({ phone: '+2348012345678', otp: '654321' });
       expect(result.message).toContain('verified');
+    });
+  });
+
+  describe('resetPassword', () => {
+    it('propagates ForbiddenException when locked', async () => {
+      mockRedis.exists.mockResolvedValue(true);
+      await expect(
+        service.resetPassword({ phone: '+2348012345678', otp: '654321', newPassword: 'NewPassword123' }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('propagates BadRequestException when no OTP stored', async () => {
+      mockRedis.exists.mockResolvedValue(false);
+      mockRedis.get.mockResolvedValue(null);
+      await expect(
+        service.resetPassword({ phone: '+2348012345678', otp: '654321', newPassword: 'NewPassword123' }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws NotFoundException when OTP is valid but no user matches the phone', async () => {
+      mockRedis.exists.mockResolvedValue(false);
+      mockRedis.get.mockResolvedValue('654321:0:SMS:');
+      mockRedis.del.mockResolvedValue(undefined);
+      mockPrisma.user.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.resetPassword({ phone: '+2348012345678', otp: '654321', newPassword: 'NewPassword123' }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('hashes the new password, updates the user, audits, and returns tokens on success', async () => {
+      mockRedis.exists.mockResolvedValue(false);
+      mockRedis.get.mockResolvedValue('654321:0:SMS:');
+      mockRedis.del.mockResolvedValue(undefined);
+      mockPrisma.user.findFirst.mockResolvedValue({ id: 'u1', phone: '+2348012345678', role: 'CITIZEN' });
+      mockPrisma.user.update.mockResolvedValue({ id: 'u1', phone: '+2348012345678', role: 'CITIZEN' });
+      mockPrisma.auditLog.create.mockResolvedValue({});
+      mockJwt.signAsync.mockResolvedValueOnce('acc').mockResolvedValueOnce('ref');
+
+      const result = await service.resetPassword({
+        phone: '+2348012345678',
+        otp: '654321',
+        newPassword: 'NewPassword123',
+      });
+
+      expect(result.accessToken).toBe('acc');
+      expect(result.refreshToken).toBe('ref');
+      expect(mockPrisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ passwordHash: expect.any(String) }) }),
+      );
+      expect(mockPrisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ action: 'PASSWORD_RESET' }) }),
+      );
     });
   });
 

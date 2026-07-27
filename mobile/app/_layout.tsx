@@ -47,6 +47,7 @@ export default function RootLayout() {
           <Stack.Screen name="ai-chat" options={{ title: 'AI Concierge', presentation: 'card' }} />
           <Stack.Screen name="kyc" options={{ title: 'Identity Verification', presentation: 'card' }} />
           <Stack.Screen name="profile-edit" options={{ title: 'Edit Profile', presentation: 'card' }} />
+          <Stack.Screen name="change-password" options={{ title: 'Change Password', presentation: 'card' }} />
           <Stack.Screen name="otp-channel-settings" options={{ headerShown: false, presentation: 'card' }} />
           <Stack.Screen name="events/[id]" options={{ title: 'Event' }} />
           <Stack.Screen name="stays/[id]" options={{ title: 'Property' }} />
@@ -66,6 +67,8 @@ export default function RootLayout() {
           <Stack.Screen name="auth/otp" options={{ headerShown: false }} />
           <Stack.Screen name="auth/email" options={{ headerShown: false }} />
           <Stack.Screen name="auth/register" options={{ headerShown: false }} />
+          <Stack.Screen name="auth/forgot-password" options={{ headerShown: false }} />
+          <Stack.Screen name="auth/reset-password" options={{ headerShown: false }} />
           <Stack.Screen name="search" options={{ headerShown: false, presentation: 'fullScreenModal' }} />
           <Stack.Screen name="notifications" options={{ title: 'Notifications' }} />
           <Stack.Screen name="topup" options={{ headerShown: false, presentation: 'modal' }} />

@@ -17,6 +17,7 @@ import { OtpVerifyDto } from './dto/otp-verify.dto';
 import { PhoneAuthDto } from './dto/phone-auth.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { LogoutDto } from './dto/logout.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @ApiTags('auth')
@@ -56,6 +57,13 @@ export class AuthController {
   @ApiOperation({ summary: 'Verify OTP and sign in or auto-register by phone number' })
   phoneAuth(@Body() dto: PhoneAuthDto, @Req() req: Request) {
     return this.authService.phoneAuth(dto, req.ip, req.headers['user-agent']);
+  }
+
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Verify OTP and set a new password, then sign in' })
+  resetPassword(@Body() dto: ResetPasswordDto, @Req() req: Request) {
+    return this.authService.resetPassword(dto, req.ip, req.headers['user-agent']);
   }
 
   @Post('refresh')
