@@ -26,7 +26,14 @@ export class WebhooksService {
     const secret = this.config.get<string>('PAYSTACK_WEBHOOK_SECRET', '');
     const expected = crypto.createHmac('sha512', secret).update(rawBody).digest('hex');
 
-    if (signature !== expected) {
+    // Use timingSafeEqual to prevent timing oracle attacks on the signature comparison
+    // (same rationale as the Flutterwave handler below).
+    const signatureBuf = Buffer.from(signature ?? '', 'utf8');
+    const expectedBuf = Buffer.from(expected, 'utf8');
+    if (
+      signatureBuf.length !== expectedBuf.length ||
+      !timingSafeEqual(signatureBuf, expectedBuf)
+    ) {
       throw new UnauthorizedException('Invalid Paystack signature');
     }
 
