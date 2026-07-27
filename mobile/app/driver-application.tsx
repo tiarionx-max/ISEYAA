@@ -22,11 +22,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { CalendarDays } from 'lucide-react-native';
 
-import { api, getErrorMessage } from '../lib/api';
+import { api, fetcher, getErrorMessage } from '../lib/api';
 import { Chip } from '../components/ui/Chip';
 import {
   SURFACE_DEEP,
@@ -63,6 +63,17 @@ function defaultExpiry(): Date {
   return d;
 }
 
+// ── Shared local helper duplicated across mutation screens — reconciles the
+// active session role to DRIVER before any driver mutation (mirrors
+// organiser-dashboard.tsx's ensureOrganiserRole; RolesGuard checks the single
+// active `role`, not `registeredRoles[]`, so a prior role switch could
+// otherwise 403 this action even though the user already holds DRIVER). ────
+async function ensureDriverRole(currentRole: string | undefined): Promise<void> {
+  if (currentRole !== 'DRIVER') {
+    await api.patch('/users/me/role', { role: 'DRIVER' });
+  }
+}
+
 export default function DriverApplicationScreen() {
   const [licenceNumber, setLicenceNumber] = useState('');
   const [licenceExpiry, setLicenceExpiry] = useState<Date>(defaultExpiry());
@@ -75,8 +86,14 @@ export default function DriverApplicationScreen() {
   const [colour, setColour] = useState('');
   const [year, setYear] = useState('');
 
+  const { data: me } = useQuery<{ role?: string }>({
+    queryKey: ['me'],
+    queryFn: () => fetcher('/users/me'),
+  });
+
   const mutation = useMutation({
     mutationFn: async () => {
+      await ensureDriverRole(me?.role);
       const driverRes = await api.post('/transport/drivers', {
         licenceNumber: licenceNumber.trim(),
         licenceExpiry: licenceExpiry.toISOString().slice(0, 10),

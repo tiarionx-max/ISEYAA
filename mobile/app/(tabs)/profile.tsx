@@ -80,6 +80,17 @@ import {
   FONT_MONO,
 } from '../../lib/tokens';
 
+// ── Shared local helper duplicated across mutation screens — reconciles the
+// active session role to DRIVER before any driver mutation (mirrors
+// organiser-dashboard.tsx's ensureOrganiserRole; RolesGuard checks the single
+// active `role`, not `registeredRoles[]`, so a prior role switch could
+// otherwise 403 this action even though the user already holds DRIVER). ────
+async function ensureDriverRole(currentRole: string | undefined): Promise<void> {
+  if (currentRole !== 'DRIVER') {
+    await api.patch('/users/me/role', { role: 'DRIVER' });
+  }
+}
+
 // ── Types ──────────────────────────────────────────
 
 interface UserProfile {
@@ -406,6 +417,7 @@ export default function ProfileScreen() {
 
   const toggleOnlineMutation = useMutation({
     mutationFn: async () => {
+      await ensureDriverRole(user?.role);
       if (driverIsOnline) return api.post('/transport/go-offline');
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') throw new Error('Location permission is required to go online');

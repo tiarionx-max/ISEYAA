@@ -23,6 +23,17 @@ function fmt(n: number) {
   return `₦${Number(n).toLocaleString('en-NG')}`;
 }
 
+// ── Shared local helper duplicated across mutation screens — reconciles the
+// active session role to DRIVER before any driver mutation (mirrors
+// organiser-dashboard.tsx's ensureOrganiserRole; RolesGuard checks the single
+// active `role`, not `registeredRoles[]`, so a prior role switch could
+// otherwise 403 this action even though the user already holds DRIVER). ────
+async function ensureDriverRole(currentRole: string | undefined): Promise<void> {
+  if (currentRole !== 'DRIVER') {
+    await api.patch('/users/me/role', { role: 'DRIVER' });
+  }
+}
+
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 export default function DriverDashboardScreen() {
@@ -32,6 +43,11 @@ export default function DriverDashboardScreen() {
   const { data: driverProfile } = useQuery({
     queryKey: ['driver-me'],
     queryFn: () => fetcher('/transport/drivers/me'),
+  });
+
+  const { data: me } = useQuery<{ role?: string }>({
+    queryKey: ['me'],
+    queryFn: () => fetcher('/users/me'),
   });
 
   useEffect(() => {
@@ -53,6 +69,7 @@ export default function DriverDashboardScreen() {
 
   const toggleMutation = useMutation({
     mutationFn: async () => {
+      await ensureDriverRole(me?.role);
       if (isOnline) return api.post('/transport/go-offline');
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') throw new Error('Location permission is required to go online');
