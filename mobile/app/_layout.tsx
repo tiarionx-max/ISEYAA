@@ -63,6 +63,11 @@ export default function RootLayout() {
           <Stack.Screen name="property-create" options={{ title: 'Add Listing', presentation: 'card' }} />
           <Stack.Screen name="property-edit/[id]" options={{ title: 'Edit Listing', presentation: 'card' }} />
           <Stack.Screen name="property-bookings/[id]" options={{ title: 'Bookings', presentation: 'card' }} />
+          <Stack.Screen name="vendor" options={{ headerShown: false, presentation: 'card' }} />
+          <Stack.Screen name="vendor-dashboard" options={{ title: 'My Products', presentation: 'card' }} />
+          <Stack.Screen name="product-create" options={{ title: 'Add Product', presentation: 'card' }} />
+          <Stack.Screen name="product-edit/[id]" options={{ title: 'Edit Product', presentation: 'card' }} />
+          <Stack.Screen name="vendor-orders" options={{ title: 'Orders', presentation: 'card' }} />
           <Stack.Screen name="transport-flow" options={{ headerShown: false, presentation: 'fullScreenModal' }} />
           <Stack.Screen name="delivery-flow" options={{ headerShown: false, presentation: 'fullScreenModal' }} />
           <Stack.Screen name="driver-dashboard" options={{ headerShown: false, presentation: 'fullScreenModal' }} />

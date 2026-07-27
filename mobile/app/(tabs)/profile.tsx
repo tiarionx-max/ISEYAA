@@ -41,6 +41,7 @@ import {
   Heart,
   Clock,
   Home,
+  Store,
   MessageSquare,
   Pencil,
   Trash2,
@@ -532,6 +533,8 @@ export default function ProfileScreen() {
 
   // 08-07: Host onboarding entry point — hide once user is already a HOST.
   const alreadyHost = (user?.registeredRoles ?? []).includes('HOST');
+  // 260727-d6v: Vendor onboarding entry point — hide once user is already a VENDOR.
+  const alreadyVendor = (user?.registeredRoles ?? []).includes('VENDOR');
 
   // Stats — "Trips" = tour bookings (/tour-bookings/me), "Stays" = property bookings (/bookings/mine)
   const tripsCount = bookingsList.length;
@@ -845,6 +848,30 @@ export default function ProfileScreen() {
                   <Text style={styles.hostCtaTitle}>Become a host</Text>
                   <Text style={styles.hostCtaSub}>
                     List your stay, club, or experience
+                  </Text>
+                </View>
+                <ChevronRight size={16} color={INK_FAINT} />
+              </View>
+            </PressableScale>
+          </View>
+        )}
+
+        {/* ── Become a Vendor CTA (260727-d6v) ────────── */}
+        {!alreadyVendor && (
+          <View style={styles.hostCtaWrap}>
+            <PressableScale
+              onPress={() => router.push('/vendor' as never)}
+              hapticStyle="light"
+              style={styles.hostCtaCard}
+            >
+              <View style={styles.hostCtaInner}>
+                <View style={styles.hostCtaIconBox}>
+                  <Store size={20} color={GOLD} />
+                </View>
+                <View style={styles.hostCtaTextBlock}>
+                  <Text style={styles.hostCtaTitle}>Become a vendor</Text>
+                  <Text style={styles.hostCtaSub}>
+                    List and sell products across Ogun State
                   </Text>
                 </View>
                 <ChevronRight size={16} color={INK_FAINT} />
