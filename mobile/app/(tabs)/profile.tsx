@@ -48,6 +48,7 @@ import {
   KeyRound,
   Navigation,
   LayoutDashboard,
+  Megaphone,
   type LucideProps,
 } from 'lucide-react-native';
 
@@ -589,6 +590,12 @@ export default function ProfileScreen() {
       label: 'Security & ID',
       sub: 'NIN · BVN · 2FA',
       onPress: () => router.push('/kyc' as any),
+    },
+    {
+      icon: Megaphone,
+      label: 'Organiser Tools',
+      sub: 'Manage your events',
+      onPress: () => router.push('/organiser-dashboard' as never),
     },
     {
       icon: KeyRound,
