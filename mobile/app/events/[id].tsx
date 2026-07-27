@@ -4,6 +4,7 @@ import {
   ActivityIndicator, Alert, Platform, Share, TextInput,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import * as WebBrowser from 'expo-web-browser';
@@ -176,12 +177,21 @@ export default function EventDetailScreen() {
       >
         {/* ── HERO ── */}
         <View style={s.hero}>
-          <LinearGradient
-            colors={['#3D2A05', '#1A1200']}
-            style={StyleSheet.absoluteFillObject}
-            start={{ x: 0.3, y: 0 }}
-            end={{ x: 0.7, y: 1 }}
-          />
+          {event.imageUrls?.[0] ? (
+            <Image
+              source={{ uri: event.imageUrls[0] }}
+              style={StyleSheet.absoluteFillObject}
+              contentFit="cover"
+              transition={200}
+            />
+          ) : (
+            <LinearGradient
+              colors={['#3D2A05', '#1A1200']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0.3, y: 0 }}
+              end={{ x: 0.7, y: 1 }}
+            />
+          )}
 
           {/* Adire ornament */}
           <View style={s.ornamentWrap} pointerEvents="none">
