@@ -6,13 +6,15 @@ import {
   StyleSheet,
   ScrollView,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useQuery } from '@tanstack/react-query';
-import { fetcher } from '../../lib/api';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { api, fetcher, getErrorMessage } from '../../lib/api';
 import { getBookmarks } from '../../lib/storage';
 import * as SecureStore from 'expo-secure-store';
+import * as Location from 'expo-location';
 import { router, useFocusEffect } from 'expo-router';
 import Svg, { G, Rect, Path, Circle } from 'react-native-svg';
 import { PressableScale } from '../../components/ui/PressableScale';
@@ -39,6 +41,8 @@ import {
   Clock,
   Home,
   MessageSquare,
+  Navigation,
+  LayoutDashboard,
   type LucideProps,
 } from 'lucide-react-native';
 
@@ -340,7 +344,7 @@ const menuStyles = StyleSheet.create({
 // ── Main Screen ─────────────────────────────────────
 
 export default function ProfileScreen() {
-  const [driverMode, setDriverMode] = useState(false);
+  const queryClient = useQueryClient();
 
   const { data: balance } = useQuery<WalletBalance>({
     queryKey: ['wallet-balance-mobile'],
@@ -350,6 +354,43 @@ export default function ProfileScreen() {
   const { data: user } = useQuery<UserProfile>({
     queryKey: ['me'],
     queryFn: () => fetcher('/users/me'),
+  });
+
+  // Safe to query unconditionally — GET /transport/drivers/me has no @Roles guard
+  // and returns null for a non-driver caller.
+  const { data: driverMeData } = useQuery({
+    queryKey: ['driver-me'],
+    queryFn: () => fetcher('/transport/drivers/me'),
+  });
+  const driverProfile: any = driverMeData?.data ?? driverMeData ?? null;
+  const driverApproved = driverProfile?.status === 'APPROVED';
+  const driverIsOnline = !!driverProfile?.isOnline;
+
+  const becomeDriverMutation = useMutation({
+    mutationFn: () => api.post('/users/me/become-driver').then((r) => r.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me'] });
+      router.push('/driver-application' as never);
+    },
+    onError: (err: unknown) => {
+      Alert.alert('Error', getErrorMessage(err, 'Could not start your driver application. Please try again.'));
+    },
+  });
+
+  const toggleOnlineMutation = useMutation({
+    mutationFn: async () => {
+      if (driverIsOnline) return api.post('/transport/go-offline');
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') throw new Error('Location permission is required to go online');
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      return api.post('/transport/go-online', { lat: pos.coords.latitude, lng: pos.coords.longitude });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['driver-me'] });
+    },
+    onError: (err: unknown) => {
+      Alert.alert('Error', getErrorMessage(err, (err as any)?.message ?? 'Please try again.'));
+    },
   });
 
   const { data: tourBookings } = useQuery({
@@ -416,7 +457,7 @@ export default function ProfileScreen() {
   const handle = getHandle(fullName, user?.phone);
   const memberSince = getMemberSince(user?.createdAt);
   const role = user?.role ?? 'CITIZEN';
-  const isDriverOrAdmin = role === 'DRIVER' || role === 'ADMIN';
+  const isDriver = (user?.registeredRoles ?? []).includes('DRIVER');
 
   // 08-07: Host onboarding entry point — hide once user is already a HOST.
   const alreadyHost = (user?.registeredRoles ?? []).includes('HOST');
@@ -456,6 +497,12 @@ export default function ProfileScreen() {
       label: 'Activity',
       sub: 'Wallet & transaction history',
       onPress: () => router.push('/(tabs)/wallet' as any),
+    },
+    {
+      icon: Navigation,
+      label: 'My Rides',
+      sub: 'Active and past trips',
+      onPress: () => router.push('/rider-dashboard' as never),
     },
     {
       icon: MessageSquare,
@@ -593,23 +640,106 @@ export default function ProfileScreen() {
           ))}
         </View>
 
-        {/* ── Driver Mode Toggle Card ─────────────────── */}
-        {isDriverOrAdmin && (
+        {/* ── Driver onboarding / status card ─────────── */}
+        {!isDriver && (
+          <View style={styles.hostCtaWrap}>
+            <PressableScale
+              onPress={() => becomeDriverMutation.mutate()}
+              disabled={becomeDriverMutation.isPending}
+              hapticStyle="light"
+              style={styles.hostCtaCard}
+            >
+              <View style={styles.hostCtaInner}>
+                <View style={styles.hostCtaIconBox}>
+                  <Car size={20} color={GOLD} />
+                </View>
+                <View style={styles.hostCtaTextBlock}>
+                  <Text style={styles.hostCtaTitle}>Become a driver</Text>
+                  <Text style={styles.hostCtaSub}>Go online and start earning rides</Text>
+                </View>
+                {becomeDriverMutation.isPending ? (
+                  <ActivityIndicator size="small" color={GOLD} />
+                ) : (
+                  <ChevronRight size={16} color={INK_FAINT} />
+                )}
+              </View>
+            </PressableScale>
+          </View>
+        )}
+
+        {isDriver && !driverProfile && (
+          <View style={styles.hostCtaWrap}>
+            <PressableScale
+              onPress={() => router.push('/driver-application' as never)}
+              hapticStyle="light"
+              style={styles.hostCtaCard}
+            >
+              <View style={styles.hostCtaInner}>
+                <View style={styles.hostCtaIconBox}>
+                  <Car size={20} color={GOLD} />
+                </View>
+                <View style={styles.hostCtaTextBlock}>
+                  <Text style={styles.hostCtaTitle}>Complete your driver application</Text>
+                  <Text style={styles.hostCtaSub}>Submit your licence and vehicle details</Text>
+                </View>
+                <ChevronRight size={16} color={INK_FAINT} />
+              </View>
+            </PressableScale>
+          </View>
+        )}
+
+        {isDriver && driverProfile && !driverApproved && (
           <View style={styles.driverCardWrap}>
-            {driverMode ? (
+            <View style={[styles.driverCardSolid, { backgroundColor: SURFACE_RAISED }]}>
+              <View style={driverStyles.inner}>
+                <View style={driverStyles.iconBox}>
+                  <Car size={20} color={GOLD} />
+                </View>
+                <View style={driverStyles.textBlock}>
+                  <Text style={driverStyles.title}>Application under review</Text>
+                  <Text style={driverStyles.sub}>
+                    We will notify you once your driver application is approved
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {isDriver && driverApproved && (
+          <View style={styles.driverCardWrap}>
+            {driverIsOnline ? (
               <LinearGradient
                 colors={[FOREST, SURFACE_DEEP]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={styles.driverCardGradient}
               >
-                <DriverCardContent driverMode={driverMode} setDriverMode={setDriverMode} />
+                <DriverCardContent
+                  driverMode={driverIsOnline}
+                  onToggle={() => toggleOnlineMutation.mutate()}
+                  toggling={toggleOnlineMutation.isPending}
+                />
               </LinearGradient>
             ) : (
               <View style={[styles.driverCardSolid, { backgroundColor: SURFACE_RAISED }]}>
-                <DriverCardContent driverMode={driverMode} setDriverMode={setDriverMode} />
+                <DriverCardContent
+                  driverMode={driverIsOnline}
+                  onToggle={() => toggleOnlineMutation.mutate()}
+                  toggling={toggleOnlineMutation.isPending}
+                />
               </View>
             )}
+            <Pressable
+              style={({ pressed }) => [driverStyles.dashboardLink, pressed && { opacity: 0.75 }]}
+              onPress={() => router.push('/driver-dashboard' as never)}
+              accessibilityRole="button"
+              accessibilityLabel="Go to driver dashboard"
+            >
+              <LayoutDashboard size={15} color={GOLD} />
+              <Text style={driverStyles.dashboardLinkText}>Go to driver dashboard</Text>
+              <ChevronRight size={14} color={GOLD} />
+            </Pressable>
           </View>
         )}
 
@@ -676,10 +806,12 @@ export default function ProfileScreen() {
 
 function DriverCardContent({
   driverMode,
-  setDriverMode,
+  onToggle,
+  toggling,
 }: {
   driverMode: boolean;
-  setDriverMode: (v: boolean) => void;
+  onToggle: () => void;
+  toggling?: boolean;
 }) {
   return (
     <View style={driverStyles.inner}>
@@ -688,13 +820,17 @@ function DriverCardContent({
       </View>
       <View style={driverStyles.textBlock}>
         <Text style={driverStyles.title}>
-          {driverMode ? 'Driver mode is ON' : 'Become a driver'}
+          {driverMode ? 'Driver mode is ON' : 'Driver mode is OFF'}
         </Text>
         <Text style={driverStyles.sub}>
           {driverMode ? 'You are visible to riders' : 'Go online to accept rides'}
         </Text>
       </View>
-      <ToggleSwitch value={driverMode} onValueChange={setDriverMode} />
+      {toggling ? (
+        <ActivityIndicator size="small" color={GOLD} />
+      ) : (
+        <ToggleSwitch value={driverMode} onValueChange={onToggle} />
+      )}
     </View>
   );
 }
@@ -732,6 +868,20 @@ const driverStyles = StyleSheet.create({
     fontWeight: '400',
     color: INK_MID,
     lineHeight: 15,
+  },
+  dashboardLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: BORDER,
+  },
+  dashboardLinkText: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: GOLD,
   },
 });
 
