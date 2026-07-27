@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,20 +16,31 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import Svg, { Rect, Line, Circle } from 'react-native-svg';
-import { Eye, EyeOff, Check } from 'lucide-react-native';
+import { Eye, EyeOff, Check, MessageSquare, MessageCircle } from 'lucide-react-native';
 import { api, getErrorMessage } from '../../lib/api';
 import { registerForPushNotifications } from '../../lib/push-notifications';
 import {
   SURFACE_DEEP,
   SURFACE_MID,
   GOLD,
+  GOLD_DIM,
   GOLD_LINE,
   CREAM,
   INK_MID,
+  INK_FAINT,
   BORDER,
   FONT_DISPLAY,
   FONT_MONO,
 } from '../../lib/tokens';
+
+type OtpChannel = 'SMS' | 'WHATSAPP';
+
+const CHANNEL_OPTIONS: { value: OtpChannel; label: string; Icon: typeof MessageSquare }[] = [
+  { value: 'SMS', label: 'SMS', Icon: MessageSquare },
+  { value: 'WHATSAPP', label: 'WhatsApp', Icon: MessageCircle },
+];
+
+const OTP_LENGTH = 6;
 
 function AdireOrnament({ size = 160, opacity = 0.12 }: { size?: number; opacity?: number }) {
   const s = size;
@@ -54,7 +65,20 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [consent, setConsent] = useState(false);
-  const [loading, setLoading] = useState(false);
+
+  const [step, setStep] = useState<'form' | 'otp'>('form');
+  const [channel, setChannel] = useState<OtpChannel>('SMS');
+  const [otpCode, setOtpCode] = useState('');
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+  const otpInputRef = useRef<TextInput>(null);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setInterval(() => setCooldown((n) => n - 1), 1000);
+    return () => clearInterval(t);
+  }, [cooldown]);
 
   const digitsOnly = phone.replace(/[^\d+]/g, '');
   const formattedPhone = digitsOnly.startsWith('0')
@@ -73,9 +97,24 @@ export default function RegisterScreen() {
     password.length >= 8 &&
     consent;
 
-  async function handleRegister() {
-    if (!isReady || loading) return;
-    setLoading(true);
+  async function handleSendOtp() {
+    if (!isReady || sendingOtp) return;
+    setSendingOtp(true);
+    try {
+      await api.post('/auth/otp/send', { phone: formattedPhone, channel });
+      setStep('otp');
+      setCooldown(60);
+    } catch (err: any) {
+      const msg = getErrorMessage(err, 'Registration failed. Please try again.');
+      Alert.alert('Registration failed', msg);
+    } finally {
+      setSendingOtp(false);
+    }
+  }
+
+  async function handleVerifyAndRegister(code: string) {
+    if (code.length !== OTP_LENGTH || verifying) return;
+    setVerifying(true);
     try {
       const res = await api.post('/auth/register', {
         email,
@@ -84,6 +123,7 @@ export default function RegisterScreen() {
         firstName,
         lastName,
         ndpaConsent: consent,
+        otp: code,
       });
       const payload = res.data?.data ?? res.data ?? {};
       const { accessToken, refreshToken } = payload;
@@ -94,14 +134,36 @@ export default function RegisterScreen() {
         router.replace('/(tabs)' as any);
       } else {
         Alert.alert('Error', 'Unexpected response from server. Please try again.');
+        setOtpCode('');
       }
     } catch (err: any) {
-      const msg = getErrorMessage(err, 'Registration failed. Please try again.');
-      Alert.alert('Registration failed', msg);
+      const msg = getErrorMessage(err, 'Incorrect or expired code.');
+      Alert.alert('Wrong code', msg);
+      setOtpCode('');
     } finally {
-      setLoading(false);
+      setVerifying(false);
     }
   }
+
+  async function handleResendOtp() {
+    try {
+      await api.post('/auth/otp/send', { phone: formattedPhone, channel });
+      setCooldown(60);
+    } catch {
+      Alert.alert('Error', 'Could not resend OTP.');
+    }
+  }
+
+  function handleOtpChange(text: string) {
+    const digits = text.replace(/\D/g, '').slice(0, OTP_LENGTH);
+    setOtpCode(digits);
+    if (digits.length === OTP_LENGTH) handleVerifyAndRegister(digits);
+  }
+
+  const otpDigits = otpCode.padEnd(OTP_LENGTH, ' ').split('');
+  const maskedPhone = formattedPhone
+    ? `${formattedPhone.slice(0, 6)}•••${formattedPhone.slice(-3)}`
+    : 'your number';
 
   return (
     <KeyboardAvoidingView
@@ -128,131 +190,218 @@ export default function RegisterScreen() {
         <AdireOrnament />
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        <Text style={styles.kicker}>CREATE ACCOUNT</Text>
-        <Text style={styles.title}>Your account{'\n'}<Text style={styles.titleItalic}>details</Text></Text>
-        <Text style={styles.sub}>Join Iṣẹ́yáá to book stays, buy tickets, and pay with your wallet.</Text>
+      {step === 'form' ? (
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={styles.kicker}>CREATE ACCOUNT</Text>
+          <Text style={styles.title}>Your account{'\n'}<Text style={styles.titleItalic}>details</Text></Text>
+          <Text style={styles.sub}>Join Iṣẹ́yáá to book stays, buy tickets, and pay with your wallet.</Text>
 
-        <View style={[styles.inputWrapper, firstName.length > 0 && styles.inputWrapperActive]}>
-          <TextInput
-            style={styles.textInput}
-            placeholder="First name"
-            placeholderTextColor="rgba(245,237,214,0.25)"
-            autoCapitalize="words"
-            value={firstName}
-            onChangeText={setFirstName}
-            autoFocus
-          />
-        </View>
-
-        <View style={[styles.inputWrapper, lastName.length > 0 && styles.inputWrapperActive]}>
-          <TextInput
-            style={styles.textInput}
-            placeholder="Last name"
-            placeholderTextColor="rgba(245,237,214,0.25)"
-            autoCapitalize="words"
-            value={lastName}
-            onChangeText={setLastName}
-          />
-        </View>
-
-        <View style={[styles.inputWrapper, email.length > 0 && styles.inputWrapperActive]}>
-          <TextInput
-            style={styles.textInput}
-            placeholder="you@example.com"
-            placeholderTextColor="rgba(245,237,214,0.25)"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoComplete="email"
-            value={email}
-            onChangeText={setEmail}
-          />
-        </View>
-
-        <View style={[styles.inputWrapper, phone.length > 0 && styles.inputWrapperActive]}>
-          <View style={styles.countryPill}>
-            <Text style={styles.flag}>🇳🇬</Text>
-            <Text style={styles.dialCode}>+234</Text>
+          <View style={[styles.inputWrapper, firstName.length > 0 && styles.inputWrapperActive]}>
+            <TextInput
+              style={styles.textInput}
+              placeholder="First name"
+              placeholderTextColor="rgba(245,237,214,0.25)"
+              autoCapitalize="words"
+              value={firstName}
+              onChangeText={setFirstName}
+              autoFocus
+            />
           </View>
-          <TextInput
-            style={styles.phoneInput}
-            placeholder="0801 234 5678"
-            placeholderTextColor="rgba(245,237,214,0.25)"
-            keyboardType="phone-pad"
-            value={phone}
-            onChangeText={setPhone}
-            maxLength={15}
-          />
-        </View>
 
-        <View style={[styles.inputWrapper, password.length > 0 && styles.inputWrapperActive]}>
-          <TextInput
-            style={styles.textInput}
-            placeholder="••••••••••"
-            placeholderTextColor="rgba(245,237,214,0.25)"
-            secureTextEntry={!showPassword}
-            autoCapitalize="none"
-            autoComplete="password-new"
-            value={password}
-            onChangeText={setPassword}
-          />
+          <View style={[styles.inputWrapper, lastName.length > 0 && styles.inputWrapperActive]}>
+            <TextInput
+              style={styles.textInput}
+              placeholder="Last name"
+              placeholderTextColor="rgba(245,237,214,0.25)"
+              autoCapitalize="words"
+              value={lastName}
+              onChangeText={setLastName}
+            />
+          </View>
+
+          <View style={[styles.inputWrapper, email.length > 0 && styles.inputWrapperActive]}>
+            <TextInput
+              style={styles.textInput}
+              placeholder="you@example.com"
+              placeholderTextColor="rgba(245,237,214,0.25)"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoComplete="email"
+              value={email}
+              onChangeText={setEmail}
+            />
+          </View>
+
+          <View style={[styles.inputWrapper, phone.length > 0 && styles.inputWrapperActive]}>
+            <View style={styles.countryPill}>
+              <Text style={styles.flag}>🇳🇬</Text>
+              <Text style={styles.dialCode}>+234</Text>
+            </View>
+            <TextInput
+              style={styles.phoneInput}
+              placeholder="0801 234 5678"
+              placeholderTextColor="rgba(245,237,214,0.25)"
+              keyboardType="phone-pad"
+              value={phone}
+              onChangeText={setPhone}
+              maxLength={15}
+            />
+          </View>
+
+          <View style={[styles.inputWrapper, password.length > 0 && styles.inputWrapperActive]}>
+            <TextInput
+              style={styles.textInput}
+              placeholder="••••••••••"
+              placeholderTextColor="rgba(245,237,214,0.25)"
+              secureTextEntry={!showPassword}
+              autoCapitalize="none"
+              autoComplete="password-new"
+              value={password}
+              onChangeText={setPassword}
+            />
+            <TouchableOpacity
+              onPress={() => setShowPassword((v) => !v)}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+            >
+              {showPassword ? <EyeOff size={18} color={INK_MID} /> : <Eye size={18} color={INK_MID} />}
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.channelLabel}>How should we verify your number?</Text>
+          <View style={styles.channelRow}>
+            {CHANNEL_OPTIONS.map(({ value, label, Icon }) => {
+              const selected = channel === value;
+              return (
+                <TouchableOpacity
+                  key={value}
+                  style={[styles.channelCard, selected && styles.channelCardSelected]}
+                  onPress={() => setChannel(value)}
+                  activeOpacity={0.85}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={`${label} verification channel`}
+                >
+                  <Icon size={22} color={selected ? GOLD : INK_MID} />
+                  <Text style={[styles.channelCardLabel, selected && styles.channelCardLabelSelected]}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* NDPA consent checkbox */}
           <TouchableOpacity
-            onPress={() => setShowPassword((v) => !v)}
+            style={styles.consentRow}
             activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+            onPress={() => setConsent((c) => !c)}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: consent }}
+            accessibilityLabel="Consent to NDPA data processing"
           >
-            {showPassword ? <EyeOff size={18} color={INK_MID} /> : <Eye size={18} color={INK_MID} />}
+            <View style={[styles.consentBox, consent && styles.consentBoxChecked]}>
+              {consent && <Check size={14} color={SURFACE_DEEP} />}
+            </View>
+            <Text style={styles.consentText}>
+              I consent to processing of my personal data under the{' '}
+              <Text style={styles.consentTextHighlight}>Nigerian Data Protection Act (NDPA)</Text> as part of the
+              Iṣẹ́yáá platform.
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.cta, !isReady && styles.ctaDisabled]}
+            onPress={handleSendOtp}
+            disabled={!isReady || sendingOtp}
+            activeOpacity={0.85}
+          >
+            {sendingOtp
+              ? <ActivityIndicator color="#050E0E" />
+              : <Text style={styles.ctaText}>Send verification code →</Text>
+            }
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => router.push('/auth/email' as any)}
+            style={styles.altLink}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.altLinkText}>Already have an account? Sign in →</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={() => router.back()} style={styles.backLink} activeOpacity={0.7}>
+            <Text style={styles.backLinkText}>← Back to welcome</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      ) : (
+        <View style={styles.content}>
+          <Text style={styles.kicker}>VERIFY</Text>
+          <Text style={styles.title}>Enter the{'\n'}<Text style={styles.titleItalic}>6-digit code</Text></Text>
+          <Text style={styles.sub}>Sent to {maskedPhone}</Text>
+
+          {/* OTP boxes — tap to focus hidden input */}
+          <TouchableOpacity
+            style={styles.otpRow}
+            activeOpacity={1}
+            onPress={() => otpInputRef.current?.focus()}
+            accessibilityLabel="OTP input"
+          >
+            {otpDigits.map((d, i) => {
+              const isFocused = otpCode.length === i;
+              const filled = d.trim() !== '';
+              return (
+                <View
+                  key={i}
+                  style={[
+                    styles.otpBox,
+                    isFocused && styles.otpBoxFocused,
+                    filled && styles.otpBoxFilled,
+                  ]}
+                >
+                  {verifying && filled ? (
+                    <ActivityIndicator size="small" color={GOLD} />
+                  ) : (
+                    <Text style={styles.otpDigit}>{d.trim()}</Text>
+                  )}
+                </View>
+              );
+            })}
+          </TouchableOpacity>
+
+          {/* Hidden input that captures keyboard */}
+          <TextInput
+            ref={otpInputRef}
+            style={styles.hiddenInput}
+            value={otpCode}
+            onChangeText={handleOtpChange}
+            keyboardType="number-pad"
+            maxLength={OTP_LENGTH}
+            autoFocus
+            caretHidden
+          />
+
+          {/* Resend */}
+          <View style={styles.resendRow}>
+            {cooldown > 0 ? (
+              <Text style={styles.resendCooldown}>Resend in {cooldown}s</Text>
+            ) : (
+              <TouchableOpacity onPress={handleResendOtp}>
+                <Text style={styles.resendLink}>Resend code</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <TouchableOpacity onPress={() => setStep('form')} style={styles.backLink} activeOpacity={0.7}>
+            <Text style={styles.backLinkText}>← Edit details</Text>
           </TouchableOpacity>
         </View>
-
-        {/* NDPA consent checkbox */}
-        <TouchableOpacity
-          style={styles.consentRow}
-          activeOpacity={0.7}
-          onPress={() => setConsent((c) => !c)}
-          accessibilityRole="checkbox"
-          accessibilityState={{ checked: consent }}
-          accessibilityLabel="Consent to NDPA data processing"
-        >
-          <View style={[styles.consentBox, consent && styles.consentBoxChecked]}>
-            {consent && <Check size={14} color={SURFACE_DEEP} />}
-          </View>
-          <Text style={styles.consentText}>
-            I consent to processing of my personal data under the{' '}
-            <Text style={styles.consentTextHighlight}>Nigerian Data Protection Act (NDPA)</Text> as part of the
-            Iṣẹ́yáá platform.
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.cta, !isReady && styles.ctaDisabled]}
-          onPress={handleRegister}
-          disabled={!isReady || loading}
-          activeOpacity={0.85}
-        >
-          {loading
-            ? <ActivityIndicator color="#050E0E" />
-            : <Text style={styles.ctaText}>Create account →</Text>
-          }
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={() => router.push('/auth/email' as any)}
-          style={styles.altLink}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.altLinkText}>Already have an account? Sign in →</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={() => router.back()} style={styles.backLink} activeOpacity={0.7}>
-          <Text style={styles.backLinkText}>← Back to welcome</Text>
-        </TouchableOpacity>
-      </ScrollView>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -266,6 +415,12 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
     zIndex: 1,
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: 28,
+    justifyContent: 'center',
+    paddingBottom: 50,
   },
   scrollContent: {
     flexGrow: 1,
@@ -344,6 +499,41 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     height: '100%',
   },
+  channelLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: INK_MID,
+    letterSpacing: 0.3,
+    marginBottom: 8,
+  },
+  channelRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
+  channelCard: {
+    flex: 1,
+    height: 76,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    backgroundColor: SURFACE_MID,
+    borderColor: 'rgba(255,255,255,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  channelCardSelected: {
+    backgroundColor: GOLD_DIM,
+    borderColor: GOLD_LINE,
+  },
+  channelCardLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: INK_MID,
+  },
+  channelCardLabelSelected: {
+    color: GOLD,
+  },
   consentRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -393,4 +583,54 @@ const styles = StyleSheet.create({
   altLinkText: { fontSize: 13, color: GOLD, fontWeight: '600' },
   backLink: { marginTop: 16, alignItems: 'center' },
   backLinkText: { fontSize: 13, color: INK_MID },
+  otpRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 20,
+  },
+  otpBox: {
+    flex: 1,
+    height: 60,
+    borderRadius: 14,
+    backgroundColor: SURFACE_MID,
+    borderWidth: 1.5,
+    borderColor: BORDER,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  otpBoxFocused: {
+    borderColor: GOLD,
+    backgroundColor: 'rgba(212,168,67,0.07)',
+  },
+  otpBoxFilled: {
+    borderColor: GOLD_LINE,
+  },
+  otpDigit: {
+    fontFamily: FONT_MONO,
+    fontSize: 26,
+    color: CREAM,
+    fontWeight: '600',
+  },
+  hiddenInput: {
+    position: 'absolute',
+    opacity: 0,
+    width: 1,
+    height: 1,
+    left: -999,
+  },
+  resendRow: {
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  resendCooldown: {
+    fontFamily: FONT_MONO,
+    fontSize: 12,
+    color: INK_FAINT,
+    letterSpacing: 0.4,
+  },
+  resendLink: {
+    fontSize: 13,
+    color: GOLD,
+    fontWeight: '600',
+  },
 });
