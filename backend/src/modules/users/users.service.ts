@@ -94,6 +94,31 @@ export class UsersService {
   }
 
   /**
+   * Become a driver — adds DRIVER to registeredRoles and switches active role.
+   * Driver *profile* creation (licence/vehicle, PENDING_REVIEW) happens separately
+   * via POST /transport/drivers.
+   */
+  async becomeDriver(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId, deletedAt: null },
+      select: { registeredRoles: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        registeredRoles: user.registeredRoles.includes('DRIVER' as UserRole)
+          ? user.registeredRoles
+          : { set: [...user.registeredRoles, 'DRIVER' as UserRole] },
+        role: 'DRIVER' as UserRole,
+      },
+      select: USER_SELECT,
+    });
+    return updated;
+  }
+
+  /**
    * Become a tour guide — adds TOUR_GUIDE to registeredRoles, switches active role,
    * AND creates an empty TourGuide profile row (status PENDING) so subsequent
    * /tour-guides endpoints can find a profile to update. Wrapped in a single
