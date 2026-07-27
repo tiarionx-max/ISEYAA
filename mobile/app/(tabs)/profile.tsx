@@ -49,6 +49,7 @@ import {
   Navigation,
   LayoutDashboard,
   Megaphone,
+  BarChart3,
   type LucideProps,
 } from 'lucide-react-native';
 
@@ -548,6 +549,10 @@ export default function ProfileScreen() {
   const alreadyHost = (user?.registeredRoles ?? []).includes('HOST');
   // 260727-d6v: Vendor onboarding entry point — hide once user is already a VENDOR.
   const alreadyVendor = (user?.registeredRoles ?? []).includes('VENDOR');
+  // 260727-exm: Ministry Dashboard reachability — gated on the active session
+  // role (mirrors RolesGuard's own check), not registeredRoles[]. There is no
+  // self-service path to these roles anywhere in this codebase.
+  const canViewMinistry = ['MINISTRY_VIEWER', 'STATE_ADMIN', 'SUPER_ADMIN'].includes(user?.role ?? '');
 
   // Stats — "Trips" = tour bookings (/tour-bookings/me), "Stays" = property bookings (/bookings/mine)
   const tripsCount = bookingsList.length;
@@ -609,6 +614,16 @@ export default function ProfileScreen() {
       sub: 'Manage your events',
       onPress: () => router.push('/organiser-dashboard' as never),
     },
+    ...(canViewMinistry
+      ? [
+          {
+            icon: BarChart3,
+            label: 'Ministry Dashboard',
+            sub: 'Government analytics',
+            onPress: () => router.push('/ministry-dashboard' as never),
+          },
+        ]
+      : []),
     {
       icon: KeyRound,
       label: 'Change Password',

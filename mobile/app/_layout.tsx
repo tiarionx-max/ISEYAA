@@ -89,6 +89,7 @@ export default function RootLayout() {
           <Stack.Screen name="send" options={{ headerShown: false }} />
           <Stack.Screen name="orders" options={{ headerShown: false }} />
           <Stack.Screen name="saved-places" options={{ headerShown: false }} />
+          <Stack.Screen name="ministry-dashboard" options={{ title: 'Ministry Dashboard', presentation: 'card' }} />
         </Stack>
       </QueryClientProvider>
     </GestureHandlerRootView>
