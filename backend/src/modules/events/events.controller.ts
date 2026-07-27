@@ -52,6 +52,15 @@ export class EventsController {
     return this.eventsService.findMyTickets(user.userId);
   }
 
+  @Get('mine')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ORGANISER)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "List the current organiser's own events, regardless of status" })
+  findMine(@CurrentUser() user: any) {
+    return this.eventsService.findMine(user.userId);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get event by ID' })
   findOne(@Param('id') id: string) {
