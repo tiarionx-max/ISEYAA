@@ -39,11 +39,16 @@ export interface CreateBookingRequest {
   checkIn: string;
   checkOut: string;
   reference: string;
+  email: string;
+  guests: number;
 }
 
 export interface CreateBookingResponse {
   success: boolean;
   bookingId: string;
+  authorizationUrl: string;
+  accessCode: string;
+  paymentReference: string;
 }
 
 export const STAYS_PACKAGE_NAME = "stays";
@@ -252,7 +257,7 @@ export const AvailabilityResponse: MessageFns<AvailabilityResponse> = {
 };
 
 function createBaseCreateBookingRequest(): CreateBookingRequest {
-  return { propertyId: "", userId: "", checkIn: "", checkOut: "", reference: "" };
+  return { propertyId: "", userId: "", checkIn: "", checkOut: "", reference: "", email: "", guests: 0 };
 }
 
 export const CreateBookingRequest: MessageFns<CreateBookingRequest> = {
@@ -271,6 +276,12 @@ export const CreateBookingRequest: MessageFns<CreateBookingRequest> = {
     }
     if (message.reference !== "") {
       writer.uint32(42).string(message.reference);
+    }
+    if (message.email !== "") {
+      writer.uint32(50).string(message.email);
+    }
+    if (message.guests !== 0) {
+      writer.uint32(56).int32(message.guests);
     }
     return writer;
   },
@@ -322,6 +333,22 @@ export const CreateBookingRequest: MessageFns<CreateBookingRequest> = {
           message.reference = reader.string();
           continue;
         }
+        case 6: {
+          if (tag !== 50) {
+            break;
+          }
+
+          message.email = reader.string();
+          continue;
+        }
+        case 7: {
+          if (tag !== 56) {
+            break;
+          }
+
+          message.guests = reader.int32();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -333,7 +360,7 @@ export const CreateBookingRequest: MessageFns<CreateBookingRequest> = {
 };
 
 function createBaseCreateBookingResponse(): CreateBookingResponse {
-  return { success: false, bookingId: "" };
+  return { success: false, bookingId: "", authorizationUrl: "", accessCode: "", paymentReference: "" };
 }
 
 export const CreateBookingResponse: MessageFns<CreateBookingResponse> = {
@@ -343,6 +370,15 @@ export const CreateBookingResponse: MessageFns<CreateBookingResponse> = {
     }
     if (message.bookingId !== "") {
       writer.uint32(18).string(message.bookingId);
+    }
+    if (message.authorizationUrl !== "") {
+      writer.uint32(26).string(message.authorizationUrl);
+    }
+    if (message.accessCode !== "") {
+      writer.uint32(34).string(message.accessCode);
+    }
+    if (message.paymentReference !== "") {
+      writer.uint32(42).string(message.paymentReference);
     }
     return writer;
   },
@@ -368,6 +404,30 @@ export const CreateBookingResponse: MessageFns<CreateBookingResponse> = {
           }
 
           message.bookingId = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.authorizationUrl = reader.string();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.accessCode = reader.string();
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.paymentReference = reader.string();
           continue;
         }
       }

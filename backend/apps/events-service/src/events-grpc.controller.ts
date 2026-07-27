@@ -1,11 +1,17 @@
-import { Controller } from '@nestjs/common';
+import { Controller, Logger } from '@nestjs/common';
 import { GrpcMethod } from '@nestjs/microservices';
 import { PrismaService } from '../../../src/prisma/prisma.service';
+import { EventsService } from '../../../src/modules/events/events.service';
 import { events } from '@iseyaa/proto';
 
 @Controller()
 export class EventsGrpcController {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(EventsGrpcController.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly eventsService: EventsService,
+  ) {}
 
   @GrpcMethod('EventsService', 'GetEvent')
   async getEvent(data: events.GetEventRequest): Promise<events.GetEventResponse> {
@@ -42,10 +48,33 @@ export class EventsGrpcController {
 
   @GrpcMethod('EventsService', 'ReserveTicket')
   async reserveTicket(data: events.ReserveTicketRequest): Promise<events.ReserveTicketResponse> {
-    const ticket = await this.prisma.ticket.findFirst({
-      where: { userId: data.userId, ticketTypeId: data.ticketTypeId, status: 'PENDING' },
-    });
-    if (ticket) return { success: true, ticketId: ticket.id };
-    return { success: false, ticketId: '' };
+    // purchaseTicket only supports one ticket per call — enforce and document
+    // that limitation here rather than silently mispurchasing. quantity of 0
+    // (unset) or 1 both proceed normally.
+    if (data.quantity > 1) {
+      this.logger.warn(
+        `ReserveTicket called with quantity=${data.quantity} for event ${data.eventId} — purchaseTicket only supports one ticket per call`,
+      );
+      return { success: false, ticketId: '', authorizationUrl: '', accessCode: '', paymentReference: '' };
+    }
+
+    try {
+      const { ticket, payment } = await this.eventsService.purchaseTicket(data.userId, data.eventId, {
+        ticketTypeId: data.ticketTypeId,
+        email: data.email,
+      });
+      return {
+        success: true,
+        ticketId: ticket.id,
+        authorizationUrl: payment.authorizationUrl,
+        accessCode: payment.accessCode,
+        paymentReference: payment.reference,
+      };
+    } catch (err: any) {
+      this.logger.error(
+        `ReserveTicket failed for event ${data.eventId}, user ${data.userId}: ${err.message}`,
+      );
+      return { success: false, ticketId: '', authorizationUrl: '', accessCode: '', paymentReference: '' };
+    }
   }
 }

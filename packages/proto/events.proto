@@ -35,9 +35,13 @@ message ReserveTicketRequest {
   string user_id = 3;
   int32 quantity = 4;
   string reference = 5;
+  string email = 6;
 }
 
 message ReserveTicketResponse {
   bool success = 1;
   string ticket_id = 2;
+  string authorization_url = 3;
+  string access_code = 4;
+  string payment_reference = 5;
 }
