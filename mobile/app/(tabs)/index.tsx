@@ -33,7 +33,6 @@ import {
   Heart,
   LucideProps,
 } from 'lucide-react-native';
-import Svg, { G, Rect, Path, Circle } from 'react-native-svg';
 import {
   SURFACE_DEEP,
   SURFACE_MID,
@@ -72,31 +71,6 @@ import {
   FONT_MONO,
   CARD_GRADIENTS,
 } from '../../lib/tokens';
-
-// ── Adire ornament SVG ────────────────────────────────────────────────────────
-
-function AdireOrnament({
-  size = 80,
-  color = GOLD,
-  opacity = 0.18,
-}: {
-  size?: number;
-  color?: string;
-  opacity?: number;
-}) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 80 80" opacity={opacity}>
-      <G fill="none" stroke={color} strokeWidth={1}>
-        <Rect x="6" y="6" width="68" height="68" />
-        <Rect x="14" y="14" width="52" height="52" />
-        <Rect x="22" y="22" width="36" height="36" />
-        <Path d="M6 6 L74 74 M74 6 L6 74" />
-        <Circle cx="40" cy="40" r="8" />
-        <Circle cx="40" cy="40" r="14" />
-      </G>
-    </Svg>
-  );
-}
 
 // ── Shimmer skeleton ──────────────────────────────────────────────────────────
 
@@ -498,9 +472,6 @@ export default function DiscoverScreen() {
               end={{ x: 0, y: 1 }}
               style={StyleSheet.absoluteFillObject}
             />
-            <View style={styles.adireOrnamentPos}>
-              <AdireOrnament size={120} color={GOLD} opacity={0.22} />
-            </View>
           </View>
 
           {/* Top row: location pill + bell */}
@@ -679,12 +650,6 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 28,
     overflow: 'hidden',
   },
-  adireOrnamentPos: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-  },
-
   // Top row
   heroTopRow: {
     flexDirection: 'row',

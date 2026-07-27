@@ -15,7 +15,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import Svg, { G, Rect, Path, Circle } from 'react-native-svg';
 import {
   Eye,
   EyeOff,
@@ -119,23 +118,6 @@ function getTxIcon(tx: Transaction) {
   if (module === 'marketplace' || desc.includes('order')) return ShoppingBag;
   if (tx.type === 'CREDIT') return TrendingUp;
   return TrendingDown;
-}
-
-// ── Adire Ornament ─────────────────────────────────────────────────────────────
-
-function AdireOrnament({ size = 80, color = GOLD, opacity = 0.25 }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 80 80" opacity={opacity}>
-      <G fill="none" stroke={color} strokeWidth={1}>
-        <Rect x="6" y="6" width="68" height="68" />
-        <Rect x="14" y="14" width="52" height="52" />
-        <Rect x="22" y="22" width="36" height="36" />
-        <Path d="M6 6 L74 74 M74 6 L6 74" />
-        <Circle cx="40" cy="40" r="8" />
-        <Circle cx="40" cy="40" r="14" />
-      </G>
-    </Svg>
-  );
 }
 
 // ── Shimmer Skeleton ───────────────────────────────────────────────────────────
@@ -337,11 +319,6 @@ export default function WalletScreen() {
             end={{ x: 1, y: 1 }}
             style={styles.balanceCard}
           >
-            {/* Adire ornament top-right */}
-            <View style={styles.adireOrnament} pointerEvents="none">
-              <AdireOrnament size={110} color={GOLD} opacity={0.25} />
-            </View>
-
             {/* Top row: label + reveal button */}
             <View style={styles.balanceCardTopRow}>
               <Text style={styles.balanceCardLabel}>Total balance</Text>
@@ -657,11 +634,6 @@ const styles = StyleSheet.create({
     paddingBottom: SPACE_4,
     overflow: 'hidden',
     position: 'relative',
-  },
-  adireOrnament: {
-    position: 'absolute',
-    top: -10,
-    right: -10,
   },
   balanceCardTopRow: {
     flexDirection: 'row',

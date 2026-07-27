@@ -4,8 +4,8 @@ milestone: v2.1
 milestone_name: — Extraction Backlog Clearance & Settlement Flexibility
 status: Awaiting next milestone
 stopped_at: Phase 22 UI-SPEC approved
-last_updated: "2026-07-27T16:20:00Z"
-last_activity: 2026-07-27 - Completed quick task 260727-exm: Build read-only ministry analytics dashboard on mobile
+last_updated: "2026-07-27T16:45:00Z"
+last_activity: 2026-07-27 - Completed quick task 260727-jk8: Remove decorative Adire ornament SVG from all 10 mobile screens
 progress:
   total_phases: 5
   completed_phases: 5
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-07-19)
 Phase: Milestone v2.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-07-27 - Completed quick task 260727-dcp: Redesign mobile auth entry, remove Apple/Google stubs, require phone OTP on registration
+Last activity: 2026-07-27 - Completed quick task 260727-jk8: Remove decorative Adire ornament SVG from all 10 mobile screens
 
 ## Current Status
 
@@ -121,6 +121,7 @@ None currently open for active work — 2 pre-existing todo files (add-compile-s
 | 260727-dcp | Redesign mobile auth entry per user direction: removed non-functional Apple/Google "coming soon" stubs from onboarding.tsx, made email the primary CTA (phone secondary); closed a real registration security gap — RegisterDto now requires a 6-digit otp field and AuthService.register() consumes it via the existing consumeValidOtp() helper before creating any email/password account; phone.tsx's Email OTP-channel option removed (SMS/WhatsApp only); register.tsx converted to an in-component two-step form→OTP flow (no new route file, password never crosses expo-router params) — full 913-test backend suite (2 unrelated flaky timeout failures in vendor-outage-isolation.spec.ts confirmed passing in isolation) + both tsc clean | 2026-07-27 | 985fdc0 | [260727-dcp-redesign-mobile-auth-entry-remove-apple-](./quick/260727-dcp-redesign-mobile-auth-entry-remove-apple-/) |
 | 260727-eca | Fix 3 gaps found by a fresh post-session mobile completeness re-audit: (1) [blocking] profile.tsx's host/vendor CTA cards were wrapped in `{!alreadyHost/!alreadyVendor && (...)}` with no else branch, so an onboarded host/vendor lost all navigation to /host-dashboard and /vendor-dashboard once onboarded — fixed with a permanent "Go to my .../dashboard" card (LayoutDashboard icon) in the else branch, confirmed safe to route directly (no pending-approval state exists for HOST, and registeredRoles only gains VENDOR on admin approval); (2) [minor] the ensureXRole role-drift guard pattern was missing from 3 DRIVER-gated mutations predating that pattern — profile.tsx's toggleOnlineMutation, driver-dashboard.tsx's toggleMutation, driver-application.tsx's mutation — added ensureDriverRole + a `['me']` query to all three; (3) [cosmetic] removed 3 dead unreachable try/catch/Alert.alert('Coming soon') wrappers in onboarding.tsx around already-valid router.push calls. Mobile-only, no backend changes. Clean auto-merge, no conflicts — mobile tsc clean | 2026-07-27 | 2f20261 | [260727-eca-fix-mobile-reachability-add-permanent-go](./quick/260727-eca-fix-mobile-reachability-add-permanent-go/) |
 | 260727-exm | Build a read-only ministry analytics dashboard on mobile — user reversed their earlier web-only decision. ministry-dashboard.tsx: gates purely on `me.role` (MINISTRY_VIEWER/STATE_ADMIN/SUPER_ADMIN, matching how RolesGuard itself checks — no ensureXRole guard applies since no client mutation ever grants these roles), redirects home with no content flash for disallowed roles, no "become a ministry viewer" CTA of any kind (none exists anywhere in the codebase — these roles are exclusively seed-script/admin-assigned). Renders From/To date filters (default last 30 days) + an LGA Chip-row filter, Visitor Entries (per-LGA tourist/citizen/other bar-list), Purpose Breakdown, a 3-part Revenue panel (by module/month/LGA, gracefully empty when the ministry wallet can't resolve), and a "Top LGAs by visitor count" ranked list replacing the web's 20×N heatmap grid (reuses the already-fetched visitor-entries data, zero extra request) — 3 documented mobile simplifications: no charting library (plain View bar-lists, mirroring event-analytics/[id].tsx), no CSV/PDF export, heatmap→ranked-list. Conditional "Ministry Dashboard" Profile menu row (only for the 3 gated roles). Mobile-only, no backend changes. Clean auto-merge, no conflicts — mobile tsc clean | 2026-07-27 | 6f391a3 | [260727-exm-build-a-read-only-ministry-analytics-das](./quick/260727-exm-build-a-read-only-ministry-analytics-das/) |
+| 260727-jk8 | Remove the decorative "Adire ornament" SVG (locally-duplicated per-file component rendering a Yoruba-textile-inspired square/circle motif) from all 10 mobile screens that rendered it — user pointed it out live on the Profile tab, where it visually overlapped and obscured the KYC-tier-limit text ("TIER 2 / ₦1M daily limit"), and confirmed full removal everywhere rather than repositioning. Pure subtractive change: deleted each file's local `AdireOrnament` function, its render `<View>` wrapper, the dead positioning `StyleSheet` key, and the now-unused `react-native-svg` import — onboarding.tsx, auth/forgot-password.tsx, auth/register.tsx, auth/email.tsx, auth/phone.tsx, events/[id].tsx, search.tsx, (tabs)/index.tsx, (tabs)/profile.tsx, (tabs)/wallet.tsx. No other gradient/wordmark/icon/CTA touched. Mobile-only, no backend changes. Worktree was found ahead of its expected base commit (extra merged commits present) — corrected via `git reset --hard` before any edits, working tree was clean beforehand so no work was at risk. One self-caught syntax slip (stray closing brace after a style-key deletion in phone.tsx) fixed inline before commit. Both tasks' `tsc --noEmit` runs produced only pre-existing unrelated module-resolution errors — mobile tsc clean on all 10 touched files | 2026-07-27 | 8354979, a8920ca | [260727-jk8-remove-the-decorative-adire-ornament-svg](./quick/260727-jk8-remove-the-decorative-adire-ornament-svg/) |
 
 ## Deferred Items
 
@@ -143,8 +144,8 @@ Items acknowledged and carried forward from previous milestone close. GRPC-06/07
 
 ## Session Continuity
 
-Last session: 2026-07-27T10:06:21Z
-Stopped at: Completed quick task 260727-dcp-redesign-mobile-auth-entry-remove-apple-
+Last session: 2026-07-27T16:45:00Z
+Stopped at: Completed quick task 260727-jk8-remove-the-decorative-adire-ornament-svg
 Resume file: none — next step is defining the next milestone
 
 ## Operator Next Steps
