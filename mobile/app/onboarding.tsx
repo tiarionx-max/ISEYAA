@@ -12,12 +12,10 @@ import Svg, { Rect, Line, Circle } from 'react-native-svg';
 import {
   SURFACE_DEEP,
   SURFACE_MID,
-  BORDER_MID,
   GOLD,
   GOLD_BRIGHT,
   GOLD_DIM,
   CREAM,
-  INK,
   INK_FAINT,
   FONT_DISPLAY,
   FONT_MONO,
@@ -70,36 +68,6 @@ function AdireOrnament({ size = 120, opacity = 0.2 }: { size?: number; opacity?:
   );
 }
 
-// ── Apple icon SVG ────────────────────────────────────────────────────────────
-
-function AppleIcon({ size = 20, color = INK }: { size?: number; color?: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
-      <Svg
-        width={size}
-        height={size}
-        viewBox="0 0 814 1000"
-      >
-        {/* Apple logo path approximated with basic SVG */}
-        <Circle cx={407} cy={200} r={180} fill={color} />
-        <Rect x={200} y={340} width={414} height={560} rx={60} fill={color} />
-      </Svg>
-    </Svg>
-  );
-}
-
-// ── Google icon SVG ───────────────────────────────────────────────────────────
-
-function GoogleColorIcon({ size = 20 }: { size?: number }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24">
-      <Circle cx={12} cy={12} r={10} fill="none" stroke={GOLD} strokeWidth={1.5} />
-      <Line x1={12} y1={2} x2={12} y2={22} stroke={GOLD} strokeWidth={1.5} />
-      <Line x1={2} y1={12} x2={22} y2={12} stroke={GOLD} strokeWidth={1.5} />
-    </Svg>
-  );
-}
-
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 export default function OnboardingScreen() {
@@ -125,14 +93,6 @@ export default function OnboardingScreen() {
     } catch {
       Alert.alert('Coming soon', 'Registration screen is not yet available.');
     }
-  }
-
-  function handleApplePress() {
-    Alert.alert('Apple Sign In', 'Apple sign in coming soon.');
-  }
-
-  function handleGooglePress() {
-    Alert.alert('Google Sign In', 'Google sign in coming soon.');
   }
 
   return (
@@ -189,56 +149,23 @@ export default function OnboardingScreen() {
         {/* Primary CTA */}
         <TouchableOpacity
           style={styles.primaryCta}
-          onPress={handlePhonePress}
+          onPress={handleEmailPress}
           activeOpacity={0.85}
           accessibilityRole="button"
-          accessibilityLabel="Continue with phone number"
+          accessibilityLabel="Continue with email"
         >
-          <Text style={styles.primaryCtaText}>Continue with phone number</Text>
+          <Text style={styles.primaryCtaText}>Continue with email</Text>
         </TouchableOpacity>
 
-        {/* Social buttons row */}
-        <View style={styles.socialRow}>
-          <TouchableOpacity
-            style={styles.socialBtn}
-            onPress={handleApplePress}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel="Sign in with Apple"
-          >
-            <Svg width={18} height={18} viewBox="0 0 24 24" fill={INK}>
-              <Rect x={9} y={1} width={6} height={5} rx={2} fill={INK} />
-              <Rect x={3} y={7} width={18} height={14} rx={5} fill={INK} />
-            </Svg>
-            <Text style={styles.socialBtnText}>Apple</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.socialBtn}
-            onPress={handleGooglePress}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel="Sign in with Google"
-          >
-            <Svg width={18} height={18} viewBox="0 0 24 24">
-              <Rect x={2} y={2} width={9} height={9} rx={2} fill="#EA4335" />
-              <Rect x={13} y={2} width={9} height={9} rx={2} fill="#4285F4" />
-              <Rect x={2} y={13} width={9} height={9} rx={2} fill="#34A853" />
-              <Rect x={13} y={13} width={9} height={9} rx={2} fill="#FBBC05" />
-            </Svg>
-            <Text style={styles.socialBtnText}>Google</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Email sign-in entry point */}
+        {/* Phone sign-in entry point */}
         <TouchableOpacity
           style={styles.emailLink}
-          onPress={handleEmailPress}
+          onPress={handlePhonePress}
           activeOpacity={0.7}
           accessibilityRole="button"
-          accessibilityLabel="Sign in with email instead"
+          accessibilityLabel="Continue with phone number instead"
         >
-          <Text style={styles.emailLinkText}>Sign in with email instead</Text>
+          <Text style={styles.emailLinkText}>Continue with phone number instead</Text>
         </TouchableOpacity>
 
         {/* Registration entry point */}
@@ -360,31 +287,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: SURFACE_DEEP,
     letterSpacing: 0.2,
-  },
-
-  // Social row
-  socialRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 16,
-  },
-  socialBtn: {
-    flex: 1,
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1,
-    borderColor: BORDER_MID,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  socialBtnText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: INK,
-    letterSpacing: 0.1,
   },
 
   // Email sign-in entry point
