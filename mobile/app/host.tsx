@@ -283,9 +283,7 @@ export default function HostScreen(): JSX.Element {
         <View style={styles.footer}>
           {alreadyHost ? (
             <PressableScale
-              onPress={() =>
-                Alert.alert('Coming soon', 'Host dashboard is in the works.')
-              }
+              onPress={() => router.push('/host-dashboard' as never)}
               style={styles.outlineBtn}
             >
               <View style={styles.btnInner}>
