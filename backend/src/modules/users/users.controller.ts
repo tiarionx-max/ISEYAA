@@ -25,6 +25,8 @@ import { VerifyNinDto } from './dto/verify-nin.dto';
 import { ChangeOtpChannelDto } from './dto/change-otp-channel.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { IsEnum } from 'class-validator';
@@ -140,8 +142,14 @@ export class UsersController {
     return this.kycService.completeLiveness(user.userId);
   }
 
+  // Admin-only: returns full PII (email, phone, kycStatus, lgaId, ndpaConsent, etc).
+  // Callers who only need another user's public identity (e.g. resolving a wallet
+  // transfer recipient) must use a dedicated minimal-disclosure endpoint instead
+  // (see wallet.service.ts resolveRecipient) — never this one.
   @Get(':id')
-  @ApiOperation({ summary: 'Get user by ID' })
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.LGA_ADMIN)
+  @ApiOperation({ summary: 'Get user by ID (admin only — full profile/PII)' })
   findOne(@Param('id') id: string) {
     return this.usersService.findById(id);
   }

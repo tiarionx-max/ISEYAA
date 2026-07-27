@@ -314,8 +314,18 @@ export class WalletService {
     let result;
     try {
       result = await this.prisma.$transaction(async (tx) => {
-        // SELECT FOR UPDATE on sender wallet to prevent concurrent debits
-        await tx.$executeRaw`SELECT id FROM wallets WHERE id = ${senderWallet.id} FOR UPDATE`;
+        // Lock both wallets in a canonical (sorted by id) order — NOT sender-then-
+        // recipient caller order — so every concurrent transfer() call acquires locks
+        // in one global, deterministic sequence. Without this, two reciprocal
+        // transfers (A->B and B->A) racing at the same instant can each hold one
+        // wallet's lock while waiting on the other, and Postgres detects a deadlock;
+        // the resulting raw error is NOT a P2002 and is not caught by the catch block
+        // below, so it would propagate as an unhandled 500 (mirrors settlement.service.ts CR-01).
+        const walletIdsInLockOrder = [senderWallet.id, recipientWallet.id].sort();
+        for (const walletId of walletIdsInLockOrder) {
+          await tx.$executeRaw`SELECT id FROM wallets WHERE id = ${walletId} FOR UPDATE`;
+        }
+
         const lockedSender = await tx.wallet.findUnique({ where: { id: senderWallet.id } });
         if (!lockedSender) throw new NotFoundException('Sender wallet not found');
 
@@ -325,8 +335,6 @@ export class WalletService {
         }
         const senderBalanceAfter = senderBalanceBefore - amount;
 
-        // SELECT FOR UPDATE on recipient wallet to prevent concurrent credits
-        await tx.$executeRaw`SELECT id FROM wallets WHERE id = ${recipientWallet.id} FOR UPDATE`;
         const lockedRecipient = await tx.wallet.findUnique({ where: { id: recipientWallet.id } });
         if (!lockedRecipient) throw new NotFoundException('Recipient wallet not found');
 

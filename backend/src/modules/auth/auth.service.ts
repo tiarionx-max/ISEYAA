@@ -334,6 +334,13 @@ export class AuthService {
       user = created;
       await this.audit(user.id, 'USER_REGISTERED', 'User', user.id, ip, ua);
     } else {
+      // C-10 parity: phoneAuth() must reject SUSPENDED/DELETED accounts the same way
+      // login() does (line ~109) instead of unconditionally reactivating them and
+      // issuing fresh tokens — otherwise a suspended user regains access simply by
+      // re-verifying their phone OTP.
+      if (user.status === 'SUSPENDED' || user.status === 'DELETED') {
+        throw new UnauthorizedException('Account is not accessible');
+      }
       await this.prisma.user.update({ where: { id: user.id }, data: { status: 'ACTIVE' } });
       await this.audit(user.id, 'LOGIN_SUCCESS', 'User', user.id, ip, ua);
     }
