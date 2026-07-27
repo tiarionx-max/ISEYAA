@@ -107,6 +107,46 @@ describe('UsersService', () => {
     });
   });
 
+  describe('becomeOrganiser', () => {
+    it('throws NotFoundException for unknown user', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(null);
+      await expect(service.becomeOrganiser('u1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('adds ORGANISER to registeredRoles and sets role when not already present', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({ registeredRoles: ['CITIZEN'] });
+      mockPrisma.user.update.mockResolvedValue({ id: 'u1', role: 'ORGANISER', registeredRoles: ['CITIZEN', 'ORGANISER'] });
+
+      const result = await service.becomeOrganiser('u1');
+
+      expect(result.role).toBe('ORGANISER');
+      expect(mockPrisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            role: 'ORGANISER',
+            registeredRoles: { set: ['CITIZEN', 'ORGANISER'] },
+          }),
+        }),
+      );
+    });
+
+    it('is idempotent when ORGANISER is already in registeredRoles', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({ registeredRoles: ['CITIZEN', 'ORGANISER'] });
+      mockPrisma.user.update.mockResolvedValue({ id: 'u1', role: 'ORGANISER', registeredRoles: ['CITIZEN', 'ORGANISER'] });
+
+      await service.becomeOrganiser('u1');
+
+      expect(mockPrisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            role: 'ORGANISER',
+            registeredRoles: ['CITIZEN', 'ORGANISER'],
+          }),
+        }),
+      );
+    });
+  });
+
   describe('updateOtpChannel', () => {
     it('updates otpChannel and returns the updated user', async () => {
       mockPrisma.user.update.mockResolvedValue({ id: 'u1', otpChannel: 'WHATSAPP' });
