@@ -10,7 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useQuery } from '@tanstack/react-query';
-import { fetcher } from '../../lib/api';
+import { api, fetcher } from '../../lib/api';
 import { getBookmarks } from '../../lib/storage';
 import * as SecureStore from 'expo-secure-store';
 import { router, useFocusEffect } from 'expo-router';
@@ -39,6 +39,7 @@ import {
   Clock,
   Home,
   MessageSquare,
+  KeyRound,
   type LucideProps,
 } from 'lucide-react-native';
 
@@ -400,6 +401,12 @@ export default function ProfileScreen() {
                 await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               } catch (_) { /* silently skip */ }
             }
+            const refreshToken = await SecureStore.getItemAsync('refresh_token');
+            if (refreshToken) {
+              try {
+                await api.post('/auth/logout', { refreshToken });
+              } catch (_) { /* best-effort — proceed with local logout regardless */ }
+            }
             await SecureStore.deleteItemAsync('access_token');
             await SecureStore.deleteItemAsync('refresh_token');
             router.replace('/onboarding' as any);
@@ -468,6 +475,12 @@ export default function ProfileScreen() {
       label: 'Security & ID',
       sub: 'NIN · BVN · 2FA',
       onPress: () => router.push('/kyc' as any),
+    },
+    {
+      icon: KeyRound,
+      label: 'Change Password',
+      sub: 'Update your account password',
+      onPress: () => router.push('/change-password' as any),
       isLast: true,
     },
   ];

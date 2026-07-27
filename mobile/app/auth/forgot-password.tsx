@@ -13,11 +13,8 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import * as SecureStore from 'expo-secure-store';
 import Svg, { Rect, Line, Circle } from 'react-native-svg';
-import { Eye, EyeOff } from 'lucide-react-native';
 import { api, getErrorMessage } from '../../lib/api';
-import { registerForPushNotifications } from '../../lib/push-notifications';
 import {
   SURFACE_DEEP,
   SURFACE_MID,
@@ -44,32 +41,34 @@ function AdireOrnament({ size = 160, opacity = 0.12 }: { size?: number; opacity?
   );
 }
 
-export default function EmailScreen() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+export default function ForgotPasswordScreen() {
+  const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const isReady = /\S+@\S+\.\S+/.test(email) && password.length >= 8;
+  const digitsOnly = phone.replace(/[^\d+]/g, '');
+  const formattedPhone = digitsOnly.startsWith('0')
+    ? `+234${digitsOnly.slice(1)}`
+    : digitsOnly.startsWith('+')
+    ? digitsOnly
+    : digitsOnly.length > 0
+    ? `+234${digitsOnly}`
+    : '';
 
-  async function handleSignIn() {
+  const isReady = formattedPhone.length >= 13;
+
+  async function handleSendCode() {
     if (!isReady || loading) return;
     setLoading(true);
     try {
-      const res = await api.post('/auth/login', { identifier: email, password });
+      const res = await api.post('/auth/otp/send', { phone: formattedPhone });
       const payload = res.data?.data ?? res.data ?? {};
-      const { accessToken, refreshToken } = payload;
-      if (accessToken) {
-        await SecureStore.setItemAsync('access_token', accessToken);
-        if (refreshToken) await SecureStore.setItemAsync('refresh_token', refreshToken);
-        registerForPushNotifications();
-        router.replace('/(tabs)' as any);
-      } else {
-        Alert.alert('Error', 'Unexpected response from server. Please try again.');
-      }
+      router.push({
+        pathname: '/auth/reset-password',
+        params: { phone: formattedPhone, fallbackUsed: String(payload.fallbackUsed === true) },
+      } as any);
     } catch (err: any) {
-      const msg = getErrorMessage(err, 'Invalid email or password.');
-      Alert.alert('Sign in failed', msg);
+      const msg = getErrorMessage(err, 'Could not send code. Please try again.');
+      Alert.alert('Error', msg);
     } finally {
       setLoading(false);
     }
@@ -101,83 +100,41 @@ export default function EmailScreen() {
       </View>
 
       <View style={styles.content}>
-        <Text style={styles.kicker}>SIGN IN</Text>
-        <Text style={styles.title}>Your email{'\n'}<Text style={styles.titleItalic}>address</Text></Text>
-        <Text style={styles.sub}>Sign in with the email and password you registered with.</Text>
+        <Text style={styles.kicker}>RESET PASSWORD</Text>
+        <Text style={styles.title}>Forgot your{'\n'}<Text style={styles.titleItalic}>password?</Text></Text>
+        <Text style={styles.sub}>Enter your phone number and we'll send you a code to reset it.</Text>
 
-        <View style={[styles.inputWrapper, email.length > 0 && styles.inputWrapperActive]}>
+        <View style={[styles.inputWrapper, phone.length > 0 && styles.inputWrapperActive]}>
+          <View style={styles.countryPill}>
+            <Text style={styles.flag}>🇳🇬</Text>
+            <Text style={styles.dialCode}>+234</Text>
+          </View>
           <TextInput
-            style={styles.textInput}
-            placeholder="you@example.com"
+            style={styles.phoneInput}
+            placeholder="0801 234 5678"
             placeholderTextColor="rgba(245,237,214,0.25)"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoComplete="email"
-            value={email}
-            onChangeText={setEmail}
+            keyboardType="phone-pad"
+            value={phone}
+            onChangeText={setPhone}
+            maxLength={15}
             autoFocus
           />
         </View>
 
-        <View style={[styles.inputWrapper, password.length > 0 && styles.inputWrapperActive]}>
-          <TextInput
-            style={styles.textInput}
-            placeholder="••••••••••"
-            placeholderTextColor="rgba(245,237,214,0.25)"
-            secureTextEntry={!showPassword}
-            autoCapitalize="none"
-            autoComplete="current-password"
-            value={password}
-            onChangeText={setPassword}
-          />
-          <TouchableOpacity
-            onPress={() => setShowPassword((v) => !v)}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
-          >
-            {showPassword ? <EyeOff size={18} color={INK_MID} /> : <Eye size={18} color={INK_MID} />}
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity
-          onPress={() => router.push('/auth/forgot-password' as any)}
-          style={styles.forgotLink}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.forgotLinkText}>Forgot password? →</Text>
-        </TouchableOpacity>
-
         <TouchableOpacity
           style={[styles.cta, !isReady && styles.ctaDisabled]}
-          onPress={handleSignIn}
+          onPress={handleSendCode}
           disabled={!isReady || loading}
           activeOpacity={0.85}
         >
           {loading
             ? <ActivityIndicator color="#050E0E" />
-            : <Text style={styles.ctaText}>Sign in →</Text>
+            : <Text style={styles.ctaText}>Send code →</Text>
           }
         </TouchableOpacity>
 
-        <TouchableOpacity
-          onPress={() => router.push('/auth/phone' as any)}
-          style={styles.altLink}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.altLinkText}>Prefer a phone number? →</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={() => router.push('/auth/register' as any)}
-          style={styles.altLink}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.altLinkText}>Don't have an account? Sign up</Text>
-        </TouchableOpacity>
-
         <TouchableOpacity onPress={() => router.back()} style={styles.backLink} activeOpacity={0.7}>
-          <Text style={styles.backLinkText}>← Back to welcome</Text>
+          <Text style={styles.backLinkText}>← Back to sign in</Text>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -242,10 +199,26 @@ const styles = StyleSheet.create({
   inputWrapperActive: {
     borderColor: GOLD_LINE,
   },
-  textInput: {
+  countryPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingRight: 10,
+    borderRightWidth: 1,
+    borderRightColor: GOLD_LINE,
+  },
+  flag: { fontSize: 18 },
+  dialCode: {
+    fontFamily: FONT_MONO,
+    fontSize: 13,
+    color: GOLD,
+    fontWeight: '600',
+  },
+  phoneInput: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 20,
     color: CREAM,
+    letterSpacing: 1.5,
     height: '100%',
   },
   cta: {
@@ -263,10 +236,6 @@ const styles = StyleSheet.create({
     color: '#050E0E',
     letterSpacing: 0.2,
   },
-  altLink: { marginTop: 20, alignItems: 'center' },
-  altLinkText: { fontSize: 13, color: GOLD, fontWeight: '600' },
-  forgotLink: { alignSelf: 'flex-end', marginBottom: 8 },
-  forgotLinkText: { fontSize: 13, color: GOLD, fontWeight: '600' },
-  backLink: { marginTop: 16, alignItems: 'center' },
+  backLink: { marginTop: 22, alignItems: 'center' },
   backLinkText: { fontSize: 13, color: INK_MID },
 });
