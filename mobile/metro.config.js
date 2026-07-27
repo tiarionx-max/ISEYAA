@@ -6,7 +6,16 @@ const monorepoRoot = path.resolve(projectRoot, '..');
 
 const config = getDefaultConfig(projectRoot);
 
-config.watchFolders = [...(config.watchFolders ?? []), monorepoRoot];
+// Only watch what mobile actually resolves from the monorepo (shared/ via
+// @iseyaa/shared, plus root node_modules for hoisted deps) — watching the
+// full monorepoRoot pulls in backend/, web/, packages/proto/, .git/,
+// .planning/, .claude/ etc. and reliably times out Metro's NodeWatcher
+// fallback (Watchman not installed) on Windows.
+config.watchFolders = [
+  ...(config.watchFolders ?? []),
+  path.resolve(monorepoRoot, 'shared'),
+  path.resolve(monorepoRoot, 'node_modules'),
+];
 
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
