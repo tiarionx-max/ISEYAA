@@ -3,7 +3,6 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   StatusBar,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -72,27 +71,15 @@ function AdireOrnament({ size = 120, opacity = 0.2 }: { size?: number; opacity?:
 
 export default function OnboardingScreen() {
   function handlePhonePress() {
-    try {
-      router.push('/auth/phone' as any);
-    } catch {
-      Alert.alert('Coming soon', 'Phone auth screen is not yet available.');
-    }
+    router.push('/auth/phone' as any);
   }
 
   function handleEmailPress() {
-    try {
-      router.push('/auth/email' as any);
-    } catch {
-      Alert.alert('Coming soon', 'Email sign in screen is not yet available.');
-    }
+    router.push('/auth/email' as any);
   }
 
   function handleRegisterPress() {
-    try {
-      router.push('/auth/register' as any);
-    } catch {
-      Alert.alert('Coming soon', 'Registration screen is not yet available.');
-    }
+    router.push('/auth/register' as any);
   }
 
   return (
