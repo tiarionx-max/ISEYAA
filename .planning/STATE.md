@@ -4,8 +4,8 @@ milestone: v2.1
 milestone_name: — Extraction Backlog Clearance & Settlement Flexibility
 status: Awaiting next milestone
 stopped_at: Phase 22 UI-SPEC approved
-last_updated: "2026-07-24T18:19:29Z"
-last_activity: 2026-07-24 - Completed quick task 260724-hon: Migrate SendgridService internals from @sendgrid/mail to Resend SDK (resend@^6.18.0), preserving all public method signatures and throw/swallow contracts
+last_updated: "2026-07-27T09:47:23Z"
+last_activity: 2026-07-27 - Completed quick task 260727-6nh: Wire real reservation logic into events/stays gRPC controllers and build the event-approval workflow
 progress:
   total_phases: 5
   completed_phases: 5
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-07-19)
 Phase: Milestone v2.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-07-27 - Completed quick task 260726-riy: Add mobile email+password sign-in screen, verify web email login end-to-end
+Last activity: 2026-07-27 - Completed quick task 260727-6nh: Wire real reservation logic into events/stays gRPC controllers and build the event-approval workflow
 
 ## Current Status
 
@@ -102,6 +102,7 @@ None currently open for active work — 2 pre-existing todo files (add-compile-s
 | 260724-cfd | Fix SendGrid email dispatch broken by namespace import stripping prototype methods (sgMail.send is not a function) — breaks all transactional email including OTP, ticket/booking confirmations, ministry digests | 2026-07-24 | fe98ff9 | [260724-cfd-fix-sendgrid-email-dispatch-broken-by-na](./quick/260724-cfd-fix-sendgrid-email-dispatch-broken-by-na/) |
 | 260724-hon | SendGrid permanently declined account activation — migrate SendgridService internals from @sendgrid/mail to Resend SDK (resend@^6.18.0), preserving class name, all 5 public method signatures, and each method's throw-vs-swallow contract (SMS fallback / FAILED-status tracking depend on it) | 2026-07-24 | 9bcd9b4 | [260724-hon-migrate-sendgridservice-s-internals-from](./quick/260724-hon-migrate-sendgridservice-s-internals-from/) |
 | 260726-riy | Add mobile email+password sign-in screen and verify web email login end-to-end — web NextAuth credentials flow confirmed working against a live backend (no changes needed); added mobile/app/auth/email.tsx wired to POST /auth/login, reachable from onboarding.tsx, registered in _layout.tsx | 2026-07-27 | 6b4eb3c | [260726-riy-add-mobile-email-sign-in-screen-and-veri](./quick/260726-riy-add-mobile-email-sign-in-screen-and-veri/) |
+| 260727-6nh | Wire real reservation logic into events/stays gRPC controllers (extended proto contracts with email/guests/Paystack fields, imported EventsModule/StaysModule+KafkaModule into their gRPC microservices, delegated ReserveTicket/CreateBooking to the real EventsService/StaysService with exception-safe mapping) and build the missing event-approval workflow (organizer submitForApproval, admin updateEventStatus, admin-grpc ApproveItem wiring) — followup to an ad-hoc whole-codebase bug-sweep workflow (9 commits, 21 of 25 confirmed bugs fixed, not tracked in this table) that intentionally deferred these two items as needing design decisions | 2026-07-27 | ce0eaa4 | [260727-6nh-wire-real-reservation-logic-into-events-](./quick/260727-6nh-wire-real-reservation-logic-into-events-/) |
 
 ## Deferred Items
 
