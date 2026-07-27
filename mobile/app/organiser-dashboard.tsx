@@ -25,6 +25,7 @@ import { router } from 'expo-router';
 import { Plus, Pencil, Send, BarChart3, Megaphone } from 'lucide-react-native';
 
 import { api, fetcher, getErrorMessage } from '../lib/api';
+import * as SecureStore from 'expo-secure-store';
 import { PressableScale } from '../components/ui/PressableScale';
 import {
   SURFACE_DEEP,
@@ -63,7 +64,11 @@ import {
 // this action even though the user already holds ORGANISER). ──────────────
 async function ensureOrganiserRole(currentRole: string | undefined): Promise<void> {
   if (currentRole !== 'ORGANISER') {
-    await api.patch('/users/me/role', { role: 'ORGANISER' });
+    const { data } = await api.patch('/users/me/role', { role: 'ORGANISER' });
+    if (data?.accessToken && data?.refreshToken) {
+      await SecureStore.setItemAsync('access_token', data.accessToken);
+      await SecureStore.setItemAsync('refresh_token', data.refreshToken);
+    }
   }
 }
 
@@ -213,7 +218,12 @@ export default function OrganiserDashboardScreen(): JSX.Element {
 
   const becomeOrganiserMutation = useMutation({
     mutationFn: () => api.post('/users/me/become-organiser'),
-    onSuccess: () => {
+    onSuccess: async (response) => {
+      const data = response?.data;
+      if (data?.accessToken && data?.refreshToken) {
+        await SecureStore.setItemAsync('access_token', data.accessToken);
+        await SecureStore.setItemAsync('refresh_token', data.refreshToken);
+      }
       queryClient.invalidateQueries({ queryKey: ['me'] });
     },
     onError: (err) => {
