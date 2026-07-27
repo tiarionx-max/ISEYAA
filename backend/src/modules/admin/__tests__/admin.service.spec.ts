@@ -3,6 +3,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AdminService } from '../admin.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { SettlementService } from '../../../common/services/settlement.service';
+import { ImageService } from '../../../common/services/image.service';
+import { S3Service } from '../../../common/services/s3.service';
 
 const mockPrisma = {
   user: { count: jest.fn(), findMany: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
@@ -14,6 +16,7 @@ const mockPrisma = {
   studioSlot: { findMany: jest.fn(), update: jest.fn() },
   platformConfig: { findMany: jest.fn(), upsert: jest.fn() },
   settlementSplitTier: { findMany: jest.fn(), findUnique: jest.fn(), update: jest.fn(), create: jest.fn() },
+  attraction: { findFirst: jest.fn(), update: jest.fn() },
   $queryRaw: jest.fn(),
   $transaction: jest.fn(),
 };
@@ -21,6 +24,12 @@ const mockPrisma = {
 const mockSettlementService = {
   resolveMinistryWallet: jest.fn(),
 };
+
+const mockImageService = {
+  validateImage: jest.fn(),
+  resizeEventCover: jest.fn().mockResolvedValue({ buffer: Buffer.from('x'), contentType: 'image/webp' }),
+};
+const mockS3 = { upload: jest.fn().mockResolvedValue('https://cdn.example.com/attractions/x.webp') };
 
 describe('AdminService', () => {
   let service: AdminService;
@@ -32,6 +41,8 @@ describe('AdminService', () => {
         AdminService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: SettlementService, useValue: mockSettlementService },
+        { provide: ImageService, useValue: mockImageService },
+        { provide: S3Service, useValue: mockS3 },
       ],
     }).compile();
     service = module.get<AdminService>(AdminService);
@@ -224,6 +235,33 @@ describe('AdminService', () => {
           create: { key: 'PLATFORM_FEE_PCT', value: 0.12 },
         }),
       );
+    });
+  });
+
+  // ── uploadAttractionImage ──────────────────────────────────────────────────
+
+  describe('uploadAttractionImage', () => {
+    const ATTRACTION_ID = 'attraction-001';
+    const file = { buffer: Buffer.from('img'), mimetype: 'image/webp', size: 1024 } as Express.Multer.File;
+
+    it('appends the uploaded url to Attraction.imageUrls and returns it', async () => {
+      mockPrisma.attraction.findFirst.mockResolvedValue({ id: ATTRACTION_ID, deletedAt: null });
+      mockPrisma.attraction.update.mockResolvedValue({ id: ATTRACTION_ID, imageUrls: ['https://cdn.example.com/attractions/x.webp'] });
+
+      const result = await service.uploadAttractionImage(ATTRACTION_ID, file);
+
+      expect(mockImageService.validateImage).toHaveBeenCalledWith(file);
+      expect(mockImageService.resizeEventCover).toHaveBeenCalledWith(file.buffer);
+      expect(mockPrisma.attraction.update).toHaveBeenCalledWith({
+        where: { id: ATTRACTION_ID },
+        data: { imageUrls: { push: 'https://cdn.example.com/attractions/x.webp' } },
+      });
+      expect(result).toEqual({ url: 'https://cdn.example.com/attractions/x.webp' });
+    });
+
+    it('throws NotFoundException when attraction not found', async () => {
+      mockPrisma.attraction.findFirst.mockResolvedValue(null);
+      await expect(service.uploadAttractionImage(ATTRACTION_ID, file)).rejects.toThrow(NotFoundException);
     });
   });
 

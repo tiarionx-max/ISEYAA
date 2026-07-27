@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Image } from 'expo-image';
 import { useQuery } from '@tanstack/react-query';
 import { fetcher } from '../../lib/api';
 import { cacheGet, cacheSet, toggleBookmark, getBookmarks } from '../../lib/storage';
@@ -295,13 +296,23 @@ function AttractionCard({
       style={[styles.attractionCard, { width: cardWidth }]}
       onPress={() => router.push({ pathname: '/ai-chat', params: { prompt: `Tell me about ${item.name} attraction` } } as any)}
     >
-      {/* Photo placeholder gradient */}
-      <LinearGradient
-        colors={[c0, c1]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.attractionPhoto}
-      >
+      {/* Photo (real if available, gradient placeholder fallback) */}
+      <View style={styles.attractionPhoto}>
+        {item.imageUrls?.[0] ? (
+          <Image
+            source={{ uri: item.imageUrls[0] }}
+            style={StyleSheet.absoluteFillObject}
+            contentFit="cover"
+            transition={200}
+          />
+        ) : (
+          <LinearGradient
+            colors={[c0, c1]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFillObject}
+          />
+        )}
         {/* Heart bookmark — top right, circular glass */}
         <TouchableOpacity
           onPress={() => onBookmark(item.id)}
@@ -315,7 +326,7 @@ function AttractionCard({
             fill={isBookmarked ? GOLD : 'transparent'}
           />
         </TouchableOpacity>
-      </LinearGradient>
+      </View>
 
       {/* Body */}
       <View style={styles.attractionBody}>
@@ -1015,6 +1026,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'flex-end',
     alignItems: 'flex-start',
+    overflow: 'hidden',
   },
   heartBtn: {
     width: 28,

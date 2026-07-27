@@ -6,6 +6,8 @@ import { PaystackService } from '../../../common/services/paystack.service';
 import { SendgridService } from '../../../common/services/sendgrid.service';
 import { KafkaService } from '../../../kafka/kafka.service';
 import { SettlementService } from '../../../common/services/settlement.service';
+import { ImageService } from '../../../common/services/image.service';
+import { S3Service } from '../../../common/services/s3.service';
 
 // ── Fixtures ───────────────────────────────────────────────────────────────
 
@@ -63,6 +65,8 @@ const mockSettlement = {
   settle: jest.fn().mockResolvedValue({ status: 'SETTLED', platformAmountNgn: 0, recipientCredits: [] }),
   resolveMinistryWallet: jest.fn().mockResolvedValue({ id: 'WAL-MINISTRY' }),
 };
+const mockImageService = { validateImage: jest.fn(), resizeProduct: jest.fn() };
+const mockS3 = { upload: jest.fn() };
 
 // ── Suite ─────────────────────────────────────────────────────────────────
 
@@ -80,6 +84,8 @@ describe('Marketplace isolation — product ownership', () => {
         { provide: SendgridService, useValue: mockSendgrid },
         { provide: KafkaService, useValue: mockKafka },
         { provide: SettlementService, useValue: mockSettlement },
+        { provide: ImageService, useValue: mockImageService },
+        { provide: S3Service, useValue: mockS3 },
       ],
     }).compile();
 

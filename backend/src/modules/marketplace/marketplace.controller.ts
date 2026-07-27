@@ -1,8 +1,11 @@
 import {
   Controller, Get, Post, Patch, Delete, Body, Param, Query,
   UseGuards, ParseIntPipe, DefaultValuePipe,
+  UseInterceptors, UploadedFile,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { MarketplaceService } from './marketplace.service';
 import { CreateVendorDto } from './dto/create-vendor.dto';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -81,6 +84,26 @@ export class ProductsController {
   @ApiOperation({ summary: 'Delete product (own vendor only)' })
   remove(@Param('id') id: string, @CurrentUser() user: any) {
     return this.marketplaceService.removeProduct(id, user.userId);
+  }
+
+  @Post(':id/images')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.VENDOR)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Upload product image (jpg/png/webp <=5 MB, resized to 1200x1200)' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }),
+  )
+  uploadImage(
+    @Param('id') id: string,
+    @CurrentUser() user: any,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.marketplaceService.uploadImage(id, user.userId, file);
   }
 }
 

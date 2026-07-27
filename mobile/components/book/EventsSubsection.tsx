@@ -21,6 +21,7 @@ import { useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Image } from 'expo-image';
 import { MapPin, QrCode, Star } from 'lucide-react-native';
 
 import { fetcher } from '../../lib/api';
@@ -101,6 +102,7 @@ type EventItem = {
   lga?: { name?: string } | null;
   averageRating?: number | null;
   rating?: number | null;
+  imageUrls?: string[] | null;
 };
 
 function EventCard({
@@ -130,12 +132,21 @@ function EventCard({
       style={styles.card}
     >
       <View style={styles.cardHero}>
-        <LinearGradient
-          colors={colors}
-          style={StyleSheet.absoluteFillObject}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        />
+        {item.imageUrls?.[0] ? (
+          <Image
+            source={{ uri: item.imageUrls[0] }}
+            style={StyleSheet.absoluteFillObject}
+            contentFit="cover"
+            transition={200}
+          />
+        ) : (
+          <LinearGradient
+            colors={colors}
+            style={StyleSheet.absoluteFillObject}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          />
+        )}
         <LinearGradient
           colors={['transparent', 'rgba(5,14,14,0.55)']}
           style={StyleSheet.absoluteFillObject}

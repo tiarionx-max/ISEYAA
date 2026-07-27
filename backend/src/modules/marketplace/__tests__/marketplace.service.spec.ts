@@ -8,6 +8,8 @@ import { PaystackService } from '../../../common/services/paystack.service';
 import { SendgridService } from '../../../common/services/sendgrid.service';
 import { KafkaService } from '../../../kafka/kafka.service';
 import { SettlementService } from '../../../common/services/settlement.service';
+import { ImageService } from '../../../common/services/image.service';
+import { S3Service } from '../../../common/services/s3.service';
 
 const mockKafka = { emit: jest.fn().mockResolvedValue(undefined), consume: jest.fn().mockResolvedValue(undefined) };
 
@@ -78,6 +80,11 @@ const mockPrisma = {
 
 const mockPaystack = { initiatePayment: jest.fn() };
 const mockSendgrid = { sendEmail: jest.fn() };
+const mockImageService = {
+  validateImage: jest.fn(),
+  resizeProduct: jest.fn().mockResolvedValue({ buffer: Buffer.from('x'), contentType: 'image/webp' }),
+};
+const mockS3 = { upload: jest.fn().mockResolvedValue('https://cdn.example.com/products/x.webp') };
 
 describe('MarketplaceService', () => {
   let service: MarketplaceService;
@@ -92,6 +99,8 @@ describe('MarketplaceService', () => {
         { provide: SendgridService, useValue: mockSendgrid },
         { provide: KafkaService, useValue: mockKafka },
         { provide: SettlementService, useValue: mockSettlement },
+        { provide: ImageService, useValue: mockImageService },
+        { provide: S3Service, useValue: mockS3 },
       ],
     }).compile();
 
@@ -181,6 +190,39 @@ describe('MarketplaceService', () => {
 
       const result = await service.removeProduct(PRODUCT_ID, USER_ID);
       expect(result).toEqual({ deleted: true });
+    });
+  });
+
+  // ── uploadImage ────────────────────────────────────────────────────────────
+
+  describe('uploadImage', () => {
+    const file = { buffer: Buffer.from('img'), mimetype: 'image/webp', size: 1024 } as Express.Multer.File;
+
+    it('appends the uploaded url to Product.imageUrls and returns it', async () => {
+      mockPrisma.product.findFirst.mockResolvedValue(mockProduct);
+      mockPrisma.vendor.findUnique.mockResolvedValue(mockVendor);
+      mockPrisma.product.update.mockResolvedValue({ ...mockProduct, imageUrls: ['https://cdn.example.com/products/x.webp'] });
+
+      const result = await service.uploadImage(PRODUCT_ID, USER_ID, file);
+
+      expect(mockImageService.validateImage).toHaveBeenCalledWith(file);
+      expect(mockImageService.resizeProduct).toHaveBeenCalledWith(file.buffer);
+      expect(mockPrisma.product.update).toHaveBeenCalledWith({
+        where: { id: PRODUCT_ID },
+        data: { imageUrls: { push: 'https://cdn.example.com/products/x.webp' } },
+      });
+      expect(result).toEqual({ url: 'https://cdn.example.com/products/x.webp' });
+    });
+
+    it('throws NotFoundException when product not found', async () => {
+      mockPrisma.product.findFirst.mockResolvedValue(null);
+      await expect(service.uploadImage(PRODUCT_ID, USER_ID, file)).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws ForbiddenException when product belongs to a different vendor', async () => {
+      mockPrisma.product.findFirst.mockResolvedValue({ ...mockProduct, vendorId: 'other-vendor' });
+      mockPrisma.vendor.findUnique.mockResolvedValue(mockVendor);
+      await expect(service.uploadImage(PRODUCT_ID, USER_ID, file)).rejects.toThrow(ForbiddenException);
     });
   });
 
