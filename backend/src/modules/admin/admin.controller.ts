@@ -89,12 +89,14 @@ export class AdminController {
   }
 
   @Get('config')
+  @Roles(UserRole.SUPER_ADMIN)
   @ApiOperation({ summary: 'Get platform configuration' })
   getConfig() {
     return this.adminService.getConfig();
   }
 
   @Patch('config/:key')
+  @Roles(UserRole.SUPER_ADMIN)
   @ApiOperation({ summary: 'Upsert platform config value' })
   setConfig(@Param('key') key: string, @Body('value') value: any) {
     return this.adminService.setConfig(key, value);

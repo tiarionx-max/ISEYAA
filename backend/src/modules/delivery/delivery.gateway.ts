@@ -10,6 +10,7 @@ import {
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { Injectable, Logger } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
 
 // ── DeliveryGateway ───────────────────────────────────────────────────────────
 // WebSocket gateway for live GPS updates and delivery-room messaging.
@@ -27,7 +28,26 @@ export class DeliveryGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   private readonly logger = new Logger(DeliveryGateway.name);
 
-  constructor(private jwtService: JwtService) {}
+  constructor(
+    private jwtService: JwtService,
+    private prisma: PrismaService,
+  ) {}
+
+  // ── isAuthorizedForDelivery ──────────────────────────────────────────────
+  // A socket may only be associated with a delivery room if it is the sender
+  // on that delivery, or the rider assigned to it (matches the REST-layer
+  // `order.riderId !== rider.id` checks in delivery.service.ts).
+
+  private async isAuthorizedForDelivery(userId: string, deliveryId: string): Promise<boolean> {
+    const order = await this.prisma.deliveryOrder.findFirst({ where: { id: deliveryId } });
+    if (!order) return false;
+    if (order.senderId === userId) return true;
+    if (!order.riderId) return false;
+    const rider = await this.prisma.deliveryRider.findFirst({
+      where: { userId, deletedAt: null },
+    });
+    return !!rider && order.riderId === rider.id;
+  }
 
   // ── handleConnection ───────────────────────────────────────────────────────
 
@@ -60,10 +80,15 @@ export class DeliveryGateway implements OnGatewayConnection, OnGatewayDisconnect
   // rider:location events without broadcasting to all sockets.
 
   @SubscribeMessage('join:delivery')
-  handleJoinDelivery(
+  async handleJoinDelivery(
     @ConnectedSocket() client: Socket,
     @MessageBody() deliveryId: string,
-  ): { joined: string } {
+  ): Promise<{ joined: string } | { error: string }> {
+    const userId = client.data.userId;
+    if (!userId || !(await this.isAuthorizedForDelivery(userId, deliveryId))) {
+      this.logger.warn(`Socket ${client.id} (userId=${userId}) denied join to delivery:${deliveryId} — not sender or assigned rider`);
+      return { error: 'forbidden' };
+    }
     client.join(`delivery:${deliveryId}`);
     this.logger.log(`Socket ${client.id} joined room delivery:${deliveryId}`);
     return { joined: deliveryId };
@@ -75,10 +100,20 @@ export class DeliveryGateway implements OnGatewayConnection, OnGatewayDisconnect
   // socket, leaking the rider's position to all senders (T-04-XX).
 
   @SubscribeMessage('rider:location')
-  handleRiderLocation(
+  async handleRiderLocation(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { deliveryId: string; lat: number; lng: number },
-  ): void {
+  ): Promise<void> {
+    const userId = client.data.userId;
+    const order = await this.prisma.deliveryOrder.findFirst({ where: { id: data.deliveryId } });
+    if (!order || !order.riderId) return;
+    const rider = await this.prisma.deliveryRider.findFirst({
+      where: { userId, deletedAt: null },
+    });
+    if (!rider || order.riderId !== rider.id) {
+      this.logger.warn(`Socket ${client.id} (userId=${userId}) denied rider:location emit for delivery:${data.deliveryId} — not assigned rider`);
+      return;
+    }
     this.server.to(`delivery:${data.deliveryId}`).emit('rider:location', {
       lat: data.lat,
       lng: data.lng,

@@ -10,6 +10,7 @@ import {
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { Injectable, Logger } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
 
 // ── TransportGateway ─────────────────────────────────────────────────────────
 // WebSocket gateway for live GPS updates and trip-room messaging.
@@ -27,7 +28,26 @@ export class TransportGateway implements OnGatewayConnection, OnGatewayDisconnec
 
   private readonly logger = new Logger(TransportGateway.name);
 
-  constructor(private jwtService: JwtService) {}
+  constructor(
+    private jwtService: JwtService,
+    private prisma: PrismaService,
+  ) {}
+
+  // ── isAuthorizedForTrip ──────────────────────────────────────────────────
+  // A socket may only be associated with a trip room if it is the rider on
+  // that trip, or the driver assigned to that trip (matches the REST-layer
+  // `trip.driverId !== driver.id` checks in transport.service.ts).
+
+  private async isAuthorizedForTrip(userId: string, tripId: string): Promise<boolean> {
+    const trip = await this.prisma.trip.findFirst({ where: { id: tripId } });
+    if (!trip) return false;
+    if (trip.riderId === userId) return true;
+    if (!trip.driverId) return false;
+    const driver = await this.prisma.driver.findFirst({
+      where: { userId, deletedAt: null },
+    });
+    return !!driver && trip.driverId === driver.id;
+  }
 
   // ── handleConnection ───────────────────────────────────────────────────────
 
@@ -60,10 +80,15 @@ export class TransportGateway implements OnGatewayConnection, OnGatewayDisconnec
   // driver:location events without broadcasting to all sockets.
 
   @SubscribeMessage('join:trip')
-  handleJoinTrip(
+  async handleJoinTrip(
     @ConnectedSocket() client: Socket,
     @MessageBody() tripId: string,
-  ): { joined: string } {
+  ): Promise<{ joined: string } | { error: string }> {
+    const userId = client.data.userId;
+    if (!userId || !(await this.isAuthorizedForTrip(userId, tripId))) {
+      this.logger.warn(`Socket ${client.id} (userId=${userId}) denied join to trip:${tripId} — not rider or assigned driver`);
+      return { error: 'forbidden' };
+    }
     client.join(`trip:${tripId}`);
     this.logger.log(`Socket ${client.id} joined room trip:${tripId}`);
     return { joined: tripId };
@@ -75,10 +100,20 @@ export class TransportGateway implements OnGatewayConnection, OnGatewayDisconnec
   // socket, leaking the driver's position to all riders (T-03-20).
 
   @SubscribeMessage('driver:location')
-  handleDriverLocation(
+  async handleDriverLocation(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { tripId: string; lat: number; lng: number },
-  ): void {
+  ): Promise<void> {
+    const userId = client.data.userId;
+    const trip = await this.prisma.trip.findFirst({ where: { id: data.tripId } });
+    if (!trip || !trip.driverId) return;
+    const driver = await this.prisma.driver.findFirst({
+      where: { userId, deletedAt: null },
+    });
+    if (!driver || trip.driverId !== driver.id) {
+      this.logger.warn(`Socket ${client.id} (userId=${userId}) denied driver:location emit for trip:${data.tripId} — not assigned driver`);
+      return;
+    }
     this.server.to(`trip:${data.tripId}`).emit('driver:location', {
       lat: data.lat,
       lng: data.lng,
