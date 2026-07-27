@@ -51,6 +51,10 @@ export default function RootLayout() {
           <Stack.Screen name="driver-application" options={{ title: 'Become a Driver', presentation: 'card' }} />
           <Stack.Screen name="otp-channel-settings" options={{ headerShown: false, presentation: 'card' }} />
           <Stack.Screen name="events/[id]" options={{ title: 'Event' }} />
+          <Stack.Screen name="organiser-dashboard" options={{ title: 'My Events', presentation: 'card' }} />
+          <Stack.Screen name="event-create" options={{ title: 'Create Event', presentation: 'card' }} />
+          <Stack.Screen name="event-edit/[id]" options={{ title: 'Edit Event', presentation: 'card' }} />
+          <Stack.Screen name="event-analytics/[id]" options={{ title: 'Event Analytics', presentation: 'card' }} />
           <Stack.Screen name="stays/[id]" options={{ title: 'Property' }} />
           <Stack.Screen name="tours/[id]" options={{ title: 'Tour' }} />
           <Stack.Screen name="trips/index" options={{ title: 'My trips', presentation: 'card' }} />
