@@ -208,7 +208,15 @@ export class StaysService implements OnModuleInit {
     const govtLevyPct = ministryPct;
 
     const booking = await this.prisma.$transaction(async (tx) => {
-      // SELECT FOR UPDATE prevents concurrent double-bookings
+      // Lock the (existing) property row first: FOR UPDATE on the bookings query
+      // below cannot serialize concurrent inserts because it matches zero rows
+      // until a conflicting booking already exists. Locking the parent property
+      // row instead gives every concurrent createBooking call for this property
+      // a single serialization point — the second transaction blocks here until
+      // the first commits/rolls back, so its subsequent conflict check sees the
+      // first transaction's booking.
+      await tx.$queryRaw`SELECT id FROM properties WHERE id = ${propertyId} FOR UPDATE`;
+
       const conflicts = await tx.$queryRaw<{ id: string }[]>(
         Prisma.sql`
           SELECT id FROM bookings

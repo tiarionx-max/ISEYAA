@@ -200,8 +200,20 @@ export class MarketplaceService implements OnModuleInit {
 
     for (let i = 0; i < products.length; i++) {
       if (!products[i]) throw new NotFoundException(`Product ${dto.items[i].productId} not found`);
-      if (products[i].stock < dto.items[i].quantity) {
-        throw new BadRequestException(`Insufficient stock for product: ${products[i].name}`);
+    }
+
+    // Aggregate requested quantity per productId before checking stock — a DTO
+    // with duplicate productId line items must not be checked against the same
+    // stale stock figure independently per line, or the combined quantity can
+    // exceed real stock while each individual check passes.
+    const requestedQtyByProductId = new Map<string, number>();
+    for (const item of dto.items) {
+      requestedQtyByProductId.set(item.productId, (requestedQtyByProductId.get(item.productId) ?? 0) + item.quantity);
+    }
+    for (const product of products) {
+      const requestedQty = requestedQtyByProductId.get(product.id) ?? 0;
+      if (product.stock < requestedQty) {
+        throw new BadRequestException(`Insufficient stock for product: ${product.name}`);
       }
     }
 

@@ -179,22 +179,37 @@ export class EventsService implements OnModuleInit {
     if (ticketType.event.status !== 'PUBLISHED') {
       throw new BadRequestException('Event is not open for ticket sales');
     }
-    if (ticketType.sold >= ticketType.quantity) {
-      throw new BadRequestException('Tickets sold out');
-    }
 
     const qrCode = `ISY-${uuidv4().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
     const paystackRef = `ISY-TKT-${uuidv4().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
 
-    const ticket = await this.prisma.ticket.create({
-      data: {
-        ticketTypeId: dto.ticketTypeId,
-        userId,
-        qrCode,
-        paystackRef,
-        status: 'PENDING',
-        metadata: { eventId, ticketTypeName: ticketType.name, ...(dto.purpose && { purpose: dto.purpose }) },
-      },
+    const ticket = await this.prisma.$transaction(async (tx) => {
+      // Lock the ticket type row (it already exists, unlike the ticket rows
+      // being compared) so concurrent purchases for the last remaining
+      // tickets serialize here. TicketType.sold is only incremented at
+      // payment-settlement time (webhook), long after this lock would be
+      // released, so it cannot reflect purchases still in flight — the
+      // sold-out check instead counts live PENDING+ISSUED tickets under the
+      // lock, which is updated synchronously with this transaction.
+      await tx.$queryRaw`SELECT id FROM ticket_types WHERE id = ${dto.ticketTypeId} FOR UPDATE`;
+
+      const activeCount = await tx.ticket.count({
+        where: { ticketTypeId: dto.ticketTypeId, status: { in: ['PENDING', 'ISSUED'] } },
+      });
+      if (activeCount >= ticketType.quantity) {
+        throw new BadRequestException('Tickets sold out');
+      }
+
+      return tx.ticket.create({
+        data: {
+          ticketTypeId: dto.ticketTypeId,
+          userId,
+          qrCode,
+          paystackRef,
+          status: 'PENDING',
+          metadata: { eventId, ticketTypeName: ticketType.name, ...(dto.purpose && { purpose: dto.purpose }) },
+        },
+      });
     });
 
     let payment;

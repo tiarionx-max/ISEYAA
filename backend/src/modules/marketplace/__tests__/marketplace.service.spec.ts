@@ -206,6 +206,21 @@ describe('MarketplaceService', () => {
       await expect(service.createOrder(USER_ID, { items: [{ productId: PRODUCT_ID, quantity: 5 }], email: 'x@y.com' })).rejects.toThrow(BadRequestException);
     });
 
+    it('throws BadRequestException when duplicate productId line items combined exceed stock', async () => {
+      // stock=10, two line items of 6 each individually pass a per-line check
+      // but must be rejected once aggregated (6 + 6 = 12 > 10).
+      mockPrisma.product.findFirst.mockResolvedValue({ ...mockProduct, stock: 10 });
+      await expect(
+        service.createOrder(USER_ID, {
+          items: [
+            { productId: PRODUCT_ID, quantity: 6 },
+            { productId: PRODUCT_ID, quantity: 6 },
+          ],
+          email: 'x@y.com',
+        } as any),
+      ).rejects.toThrow(BadRequestException);
+    });
+
     it('calculates fee split via resolveSplit(\'marketplace\', total) and creates order (D-02: vendor.govtLevyPct read directly, unrouted)', async () => {
       mockPrisma.product.findFirst.mockResolvedValue(mockProduct);
       mockSettlement.resolveSplit.mockResolvedValueOnce({ earnerPct: 0.90, ministryPct: 0, platformPct: 0.10 });

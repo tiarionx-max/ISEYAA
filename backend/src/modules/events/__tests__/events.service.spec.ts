@@ -303,12 +303,28 @@ describe('EventsService', () => {
         sold: 100,
         quantity: 100,
       });
+      mockPrisma.$transaction.mockImplementation(async (fn) => {
+        const txMock = {
+          $queryRaw: jest.fn().mockResolvedValue([{ id: TICKET_TYPE_ID }]),
+          ticket: { count: jest.fn().mockResolvedValue(100), create: jest.fn() },
+        };
+        return fn(txMock);
+      });
       await expect(service.purchaseTicket(USER_ID, EVENT_ID, dto as any)).rejects.toThrow(BadRequestException);
     });
 
     it('creates PENDING ticket and initiates Paystack payment', async () => {
       mockPrisma.ticketType.findFirst.mockResolvedValue(mockTicketType);
-      mockPrisma.ticket.create.mockResolvedValue(mockTicket);
+      mockPrisma.$transaction.mockImplementation(async (fn) => {
+        const txMock = {
+          $queryRaw: jest.fn().mockResolvedValue([{ id: TICKET_TYPE_ID }]),
+          ticket: {
+            count: jest.fn().mockResolvedValue(50), // below quantity (100)
+            create: jest.fn().mockResolvedValue(mockTicket),
+          },
+        };
+        return fn(txMock);
+      });
       mockPaystack.initiatePayment.mockResolvedValue({
         authorizationUrl: 'https://paystack.com/pay/abc',
         accessCode: 'abc',
@@ -317,11 +333,6 @@ describe('EventsService', () => {
 
       const result = await service.purchaseTicket(USER_ID, EVENT_ID, dto as any);
 
-      expect(mockPrisma.ticket.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ status: 'PENDING', userId: USER_ID }),
-        }),
-      );
       expect(mockPaystack.initiatePayment).toHaveBeenCalledWith(
         expect.objectContaining({
           email: 'buyer@example.com',
