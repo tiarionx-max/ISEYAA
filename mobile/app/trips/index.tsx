@@ -111,10 +111,14 @@ function statusStyle(s: BookingStatus): StatusStyle {
 function formatDate(iso: string): string {
   try {
     const d = new Date(iso);
+    // tourDate is always serialized as midnight UTC (@db.Date on the backend) — format
+    // in UTC so the displayed calendar day doesn't shift on devices with a negative
+    // UTC offset.
     return d.toLocaleDateString('en-NG', {
       day: 'numeric',
       month: 'short',
       year: 'numeric',
+      timeZone: 'UTC',
     });
   } catch {
     return iso;
@@ -207,8 +211,11 @@ export default function TripsScreen(): JSX.Element {
 
   const today = useMemo(() => {
     const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d;
+    // Zero out using UTC getters (not setHours/local getters) so this lines up with
+    // tourDate, which the backend always serializes as midnight UTC. Using local
+    // getters here would shift the calendar day on devices with a negative UTC
+    // offset, causing an off-by-one classification/display bug.
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
   }, []);
 
   const { upcoming, past } = useMemo(() => {
@@ -216,8 +223,10 @@ export default function TripsScreen(): JSX.Element {
     const up: TourBooking[] = [];
     const pa: TourBooking[] = [];
     for (const b of bookings) {
-      const tourD = new Date(b.tourDate);
-      tourD.setHours(0, 0, 0, 0);
+      const rawTourD = new Date(b.tourDate);
+      const tourD = new Date(
+        Date.UTC(rawTourD.getUTCFullYear(), rawTourD.getUTCMonth(), rawTourD.getUTCDate())
+      );
       if (tourD >= today && upcomingStatuses.has(b.status)) {
         up.push(b);
       } else {
