@@ -19,7 +19,28 @@ export class AdminGrpcController {
   }
 
   @GrpcMethod('AdminService', 'ApproveItem')
-  async approveItem(_data: admin.ApproveItemRequest): Promise<admin.ApproveItemResponse> {
-    return { success: true };
+  async approveItem(data: admin.ApproveItemRequest): Promise<admin.ApproveItemResponse> {
+    // Route to the same AdminService methods the REST admin endpoints use
+    // (AdminController: PATCH vendors/:id/status, users/:id/status,
+    // studio/slots/:id) instead of the previous no-op stub that always
+    // reported success without approving anything.
+    try {
+      switch (data.itemType) {
+        case 'vendor':
+          await this.adminService.updateVendorStatus(data.itemId, 'ACTIVE');
+          return { success: true };
+        case 'user':
+          await this.adminService.updateUserStatus(data.itemId, 'ACTIVE');
+          return { success: true };
+        case 'studio':
+        case 'studio-slot':
+          await this.adminService.updateStudioSlot(data.itemId, { isActive: true });
+          return { success: true };
+        default:
+          return { success: false };
+      }
+    } catch (err) {
+      return { success: false };
+    }
   }
 }

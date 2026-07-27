@@ -268,6 +268,56 @@ export class WalletService {
     return { userId: recipientUser.id, firstName: recipientUser.firstName, phone };
   }
 
+  // ── debitWallet ────────────────────────────────────────────────────────────
+
+  /**
+   * Debits a wallet with SELECT FOR UPDATE row-locking inside an interactive
+   * transaction, mirroring creditWallet's locking pattern (CLAUDE.md: SELECT
+   * FOR UPDATE required on every debit). The balance/insufficient-funds check
+   * happens AFTER the lock is acquired to avoid a TOCTOU race between two
+   * concurrent debits reading the same stale balance.
+   */
+  async debitWallet(
+    walletId: string,
+    amount: number,
+    reference: string,
+    description: string,
+    module = 'wallet',
+    gateway: 'PAYSTACK' | 'FLUTTERWAVE' | 'INTERNAL' = 'PAYSTACK',
+  ): Promise<{ balanceAfter: number }> {
+    return this.prisma.$transaction(async (tx) => {
+      // Lock the wallet row to prevent concurrent updates
+      await tx.$executeRaw`SELECT id FROM wallets WHERE id = ${walletId} FOR UPDATE`;
+      const locked = await tx.wallet.findUnique({ where: { id: walletId } });
+      if (!locked) throw new NotFoundException('Wallet not found');
+
+      const balanceBefore = Number(locked.balance);
+      if (balanceBefore < amount) {
+        throw new BadRequestException('Insufficient wallet balance');
+      }
+      const balanceAfter = balanceBefore - amount;
+
+      await tx.wallet.update({ where: { id: walletId }, data: { balance: balanceAfter } });
+      await tx.transaction.create({
+        data: {
+          walletId,
+          type: 'DEBIT',
+          status: 'SUCCESS',
+          amount,
+          currency: 'NGN',
+          reference,
+          gateway,
+          description,
+          balanceBefore,
+          balanceAfter,
+          metadata: { module },
+        },
+      });
+
+      return { balanceAfter };
+    });
+  }
+
   // ── transfer ───────────────────────────────────────────────────────────────
 
   async transfer(senderUserId: string, dto: TransferDto) {

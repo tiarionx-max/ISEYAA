@@ -22,34 +22,19 @@ export class WalletGrpcController {
 
   @GrpcMethod('WalletService', 'Debit')
   async debit(data: wallet.DebitRequest): Promise<wallet.DebitResponse> {
-    const wallet = await this.prisma.wallet.findUnique({ where: { id: data.walletId } });
-    if (!wallet || Number(wallet.balance) < data.amount) {
-      return { success: false, newBalance: Number(wallet?.balance ?? 0) };
+    try {
+      const result = await this.walletService.debitWallet(
+        data.walletId,
+        data.amount,
+        data.reference,
+        data.description,
+        'grpc',
+      );
+      return { success: true, newBalance: result.balanceAfter };
+    } catch (err) {
+      const current = await this.prisma.wallet.findUnique({ where: { id: data.walletId } });
+      return { success: false, newBalance: Number(current?.balance ?? 0) };
     }
-
-    const balanceBefore = Number(wallet.balance);
-    const balanceAfter = balanceBefore - data.amount;
-
-    await this.prisma.$transaction([
-      this.prisma.wallet.update({ where: { id: data.walletId }, data: { balance: balanceAfter } }),
-      this.prisma.transaction.create({
-        data: {
-          walletId: data.walletId,
-          type: 'DEBIT',
-          status: 'SUCCESS',
-          amount: data.amount,
-          currency: 'NGN',
-          reference: data.reference,
-          gateway: 'PAYSTACK',
-          description: data.description,
-          balanceBefore,
-          balanceAfter,
-          metadata: { module: 'grpc' },
-        },
-      }),
-    ]);
-
-    return { success: true, newBalance: balanceAfter };
   }
 
   @GrpcMethod('WalletService', 'GetBalance')
@@ -57,17 +42,12 @@ export class WalletGrpcController {
     const wallet = await this.prisma.wallet.findUnique({ where: { id: data.walletId } });
     if (!wallet) return { balance: 0, escrowBalance: 0, kycTier: '0' };
 
-    const user = await this.prisma.user.findUnique({
-      where: { id: wallet.userId },
-      select: { phone: true, nin: true, bvn: true },
-    });
-
-    const tier = user?.nin || user?.bvn ? '2' : user?.phone ? '1' : '0';
+    const result = await this.walletService.getBalance(wallet.userId);
 
     return {
-      balance: Number(wallet.balance),
-      escrowBalance: 0,
-      kycTier: tier,
+      balance: result.balance_ngn,
+      escrowBalance: result.escrow_balance_ngn,
+      kycTier: String(result.kyc_tier),
     };
   }
 

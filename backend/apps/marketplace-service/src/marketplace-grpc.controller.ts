@@ -24,14 +24,25 @@ export class MarketplaceGrpcController {
 
   @GrpcMethod('MarketplaceService', 'ReserveStock')
   async reserveStock(data: marketplace.ReserveStockRequest): Promise<marketplace.ReserveStockResponse> {
-    const product = await this.prisma.product.findUnique({ where: { id: data.productId } });
-    if (!product || (product.stock ?? 0) < data.quantity) {
-      return { success: false, reservedQuantity: 0 };
-    }
-    await this.prisma.product.update({
-      where: { id: data.productId },
+    // Atomic conditional decrement: the stock >= quantity floor check and the
+    // decrement happen in a single UPDATE ... WHERE statement, so concurrent
+    // reservations for the same product serialize on the row lock instead of
+    // both reading the same stale stock value and overselling below zero.
+    // Also excludes deactivated/soft-deleted products, matching
+    // marketplace.service.ts's createOrder filter.
+    const result = await this.prisma.product.updateMany({
+      where: {
+        id: data.productId,
+        deletedAt: null,
+        isActive: true,
+        stock: { gte: data.quantity },
+      },
       data: { stock: { decrement: data.quantity } },
     });
+
+    if (result.count === 0) {
+      return { success: false, reservedQuantity: 0 };
+    }
     return { success: true, reservedQuantity: data.quantity };
   }
 
