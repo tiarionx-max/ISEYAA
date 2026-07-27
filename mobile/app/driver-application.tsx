@@ -27,6 +27,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { CalendarDays } from 'lucide-react-native';
 
 import { api, fetcher, getErrorMessage } from '../lib/api';
+import * as SecureStore from 'expo-secure-store';
 import { Chip } from '../components/ui/Chip';
 import {
   SURFACE_DEEP,
@@ -70,7 +71,11 @@ function defaultExpiry(): Date {
 // otherwise 403 this action even though the user already holds DRIVER). ────
 async function ensureDriverRole(currentRole: string | undefined): Promise<void> {
   if (currentRole !== 'DRIVER') {
-    await api.patch('/users/me/role', { role: 'DRIVER' });
+    const { data } = await api.patch('/users/me/role', { role: 'DRIVER' });
+    if (data?.accessToken && data?.refreshToken) {
+      await SecureStore.setItemAsync('access_token', data.accessToken);
+      await SecureStore.setItemAsync('refresh_token', data.refreshToken);
+    }
   }
 }
 

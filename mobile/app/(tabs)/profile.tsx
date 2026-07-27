@@ -87,7 +87,11 @@ import {
 // otherwise 403 this action even though the user already holds DRIVER). ────
 async function ensureDriverRole(currentRole: string | undefined): Promise<void> {
   if (currentRole !== 'DRIVER') {
-    await api.patch('/users/me/role', { role: 'DRIVER' });
+    const { data } = await api.patch('/users/me/role', { role: 'DRIVER' });
+    if (data?.accessToken && data?.refreshToken) {
+      await SecureStore.setItemAsync('access_token', data.accessToken);
+      await SecureStore.setItemAsync('refresh_token', data.refreshToken);
+    }
   }
 }
 
@@ -389,7 +393,11 @@ export default function ProfileScreen() {
 
   const becomeDriverMutation = useMutation({
     mutationFn: () => api.post('/users/me/become-driver').then((r) => r.data),
-    onSuccess: () => {
+    onSuccess: async (data) => {
+      if (data?.accessToken && data?.refreshToken) {
+        await SecureStore.setItemAsync('access_token', data.accessToken);
+        await SecureStore.setItemAsync('refresh_token', data.refreshToken);
+      }
       queryClient.invalidateQueries({ queryKey: ['me'] });
       router.push('/driver-application' as never);
     },
