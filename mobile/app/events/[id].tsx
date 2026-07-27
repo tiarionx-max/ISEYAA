@@ -11,7 +11,6 @@ import * as WebBrowser from 'expo-web-browser';
 import { fetcher, api, getErrorMessage } from '../../lib/api';
 import { ChevronLeft, Heart, Share2, MapPin } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Rect, Line, Circle } from 'react-native-svg';
 
 import {
   SURFACE_DEEP, SURFACE_MID, SURFACE_ELEV,
@@ -21,22 +20,6 @@ import {
   FONT_DISPLAY, FONT_MONO,
   ERROR,
 } from '../../lib/tokens';
-
-// ── AdireOrnament ──────────────────────────────────
-function AdireOrnament({ size = 120, opacity = 0.2 }: { size?: number; opacity?: number }) {
-  const s = size;
-  const c = s / 2;
-  return (
-    <Svg width={s} height={s} viewBox={`0 0 ${s} ${s}`} opacity={opacity}>
-      <Rect x={s * 0.1} y={s * 0.1} width={s * 0.8} height={s * 0.8} fill="none" stroke={GOLD} strokeWidth={s * 0.018} />
-      <Rect x={s * 0.2} y={s * 0.2} width={s * 0.6} height={s * 0.6} fill="none" stroke={GOLD} strokeWidth={s * 0.012} />
-      <Line x1={s * 0.1} y1={s * 0.1} x2={s * 0.9} y2={s * 0.9} stroke={GOLD} strokeWidth={s * 0.01} />
-      <Line x1={s * 0.9} y1={s * 0.1} x2={s * 0.1} y2={s * 0.9} stroke={GOLD} strokeWidth={s * 0.01} />
-      <Circle cx={c} cy={c} r={s * 0.12} fill="none" stroke={GOLD} strokeWidth={s * 0.012} />
-      <Circle cx={c} cy={c} r={s * 0.05} fill={GOLD} />
-    </Svg>
-  );
-}
 
 // ── Helpers ───────────────────────────────────────
 function formatCurrency(amount: number) {
@@ -192,11 +175,6 @@ export default function EventDetailScreen() {
               end={{ x: 0.7, y: 1 }}
             />
           )}
-
-          {/* Adire ornament */}
-          <View style={s.ornamentWrap} pointerEvents="none">
-            <AdireOrnament size={200} opacity={0.32} />
-          </View>
 
           {/* Gradient overlay: dark top → clear → dark bottom */}
           <LinearGradient
@@ -391,11 +369,6 @@ const s = StyleSheet.create({
     position: 'relative',
     overflow: 'hidden',
     justifyContent: 'flex-end',
-  },
-  ornamentWrap: {
-    position: 'absolute',
-    top: 100,
-    right: -30,
   },
   heroNav: {
     position: 'absolute',

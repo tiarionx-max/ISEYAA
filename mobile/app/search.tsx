@@ -15,7 +15,6 @@ import { useQuery } from '@tanstack/react-query';
 import { useFocusEffect } from 'expo-router';
 import { fetcher } from '../lib/api';
 import { getRecentSearches, addRecentSearch } from '../lib/storage';
-import Svg, { Rect, Line, Circle } from 'react-native-svg';
 import {
   Search,
   Mic,
@@ -40,53 +39,6 @@ import {
   FONT_DISPLAY,
   FONT_MONO,
 } from '../lib/tokens';
-
-// ── Adire ornament ────────────────────────────────────────────────────────────
-
-function AdireOrnament({ size = 80, opacity = 0.2 }: { size?: number; opacity?: number }) {
-  const s = size;
-  const c = s / 2;
-  return (
-    <Svg width={s} height={s} viewBox={`0 0 ${s} ${s}`} opacity={opacity}>
-      <Rect
-        x={s * 0.1}
-        y={s * 0.1}
-        width={s * 0.8}
-        height={s * 0.8}
-        fill="none"
-        stroke={GOLD}
-        strokeWidth={s * 0.018}
-      />
-      <Rect
-        x={s * 0.2}
-        y={s * 0.2}
-        width={s * 0.6}
-        height={s * 0.6}
-        fill="none"
-        stroke={GOLD}
-        strokeWidth={s * 0.012}
-      />
-      <Line
-        x1={s * 0.1}
-        y1={s * 0.1}
-        x2={s * 0.9}
-        y2={s * 0.9}
-        stroke={GOLD}
-        strokeWidth={s * 0.01}
-      />
-      <Line
-        x1={s * 0.9}
-        y1={s * 0.1}
-        x2={s * 0.1}
-        y2={s * 0.9}
-        stroke={GOLD}
-        strokeWidth={s * 0.01}
-      />
-      <Circle cx={c} cy={c} r={s * 0.12} fill="none" stroke={GOLD} strokeWidth={s * 0.012} />
-      <Circle cx={c} cy={c} r={s * 0.05} fill={GOLD} />
-    </Svg>
-  );
-}
 
 // ── Section header ────────────────────────────────────────────────────────────
 
@@ -333,11 +285,6 @@ export default function SearchScreen() {
                         end={{ x: 1, y: 1 }}
                         style={styles.heroCardGradient}
                       >
-                        {/* Adire ornament top-right */}
-                        <View style={styles.heroAdire} pointerEvents="none">
-                          <AdireOrnament size={80} opacity={0.22} />
-                        </View>
-
                         {/* Bottom-left content */}
                         <View style={styles.heroCardBottom}>
                           <Text style={styles.heroCardTitle}>{topAttraction.name}</Text>
@@ -559,11 +506,6 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 14,
     justifyContent: 'flex-end',
-  },
-  heroAdire: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
   },
   heroCardBottom: {
     gap: 4,

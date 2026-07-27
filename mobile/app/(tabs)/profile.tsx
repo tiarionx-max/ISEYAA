@@ -17,7 +17,6 @@ import { getBookmarks } from '../../lib/storage';
 import * as SecureStore from 'expo-secure-store';
 import * as Location from 'expo-location';
 import { router, useFocusEffect } from 'expo-router';
-import Svg, { G, Rect, Path, Circle } from 'react-native-svg';
 import { PressableScale } from '../../components/ui/PressableScale';
 
 // expo-haptics — loaded dynamically so missing package is a runtime no-op, not a TS error
@@ -145,23 +144,6 @@ function otpChannelLabel(channel?: string): string {
   if (channel === 'WHATSAPP') return 'WhatsApp';
   if (channel === 'EMAIL') return 'Email';
   return 'SMS';
-}
-
-// ── Adire Ornament ─────────────────────────────────
-
-function AdireOrnament({ size = 120, opacity = 0.4 }: { size?: number; opacity?: number }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 80 80" opacity={opacity}>
-      <G fill="none" stroke={GOLD} strokeWidth={1}>
-        <Rect x="6" y="6" width="68" height="68" />
-        <Rect x="14" y="14" width="52" height="52" />
-        <Rect x="22" y="22" width="36" height="36" />
-        <Path d="M6 6 L74 74 M74 6 L6 74" />
-        <Circle cx="40" cy="40" r="8" />
-        <Circle cx="40" cy="40" r="14" />
-      </G>
-    </Svg>
-  );
 }
 
 // ── Avatar Ring ────────────────────────────────────
@@ -687,11 +669,6 @@ export default function ProfileScreen() {
             end={{ x: 1, y: 1 }}
             style={styles.kycGradient}
           >
-            {/* Adire ornament top-right */}
-            <View style={styles.adireContainer} pointerEvents="none">
-              <AdireOrnament size={120} opacity={0.4} />
-            </View>
-
             {/* Kicker + headline */}
             <Text style={styles.kycKicker}>KYC PROGRESS</Text>
             <Text style={styles.kycHeadline}>
@@ -1211,11 +1188,6 @@ const styles = StyleSheet.create({
     paddingBottom: SPACE_4,
     position: 'relative',
     overflow: 'hidden',
-  },
-  adireContainer: {
-    position: 'absolute',
-    top: -10,
-    right: -10,
   },
   kycKicker: {
     fontFamily: FONT_MONO,
