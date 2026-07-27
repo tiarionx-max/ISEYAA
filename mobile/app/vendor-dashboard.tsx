@@ -7,7 +7,7 @@
  * and an Orders link into vendor-orders.tsx.
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, ActivityIndicator, Alert, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -15,6 +15,7 @@ import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image as ExpoImage } from 'expo-image';
 import { Plus, Pencil, Trash2, ClipboardList, PauseCircle } from 'lucide-react-native';
+import * as SecureStore from 'expo-secure-store';
 
 import { api, fetcher, getErrorMessage } from '../lib/api';
 import { PressableScale } from '../components/ui/PressableScale';
@@ -58,10 +59,26 @@ interface Product {
   isActive: boolean;
 }
 
+interface Me {
+  role?: string;
+}
+
 // ── Helpers ──────────────────────────────────────────
 
 function fmtNaira(n: number | string | null | undefined): string {
   return `₦${Number(n ?? 0).toLocaleString()}`;
+}
+
+// Reconciles the active role to VENDOR before the my-products read fires — mirrors
+// the same-named helper in product-create.tsx used before writes.
+async function ensureVendorRole(currentRole: string | undefined): Promise<void> {
+  if (currentRole !== 'VENDOR') {
+    const { data } = await api.patch('/users/me/role', { role: 'VENDOR' });
+    if (data?.accessToken && data?.refreshToken) {
+      await SecureStore.setItemAsync('access_token', data.accessToken);
+      await SecureStore.setItemAsync('refresh_token', data.refreshToken);
+    }
+  }
 }
 
 // ── Product card ─────────────────────────────────────
@@ -155,9 +172,22 @@ function ProductCard({
 export default function VendorDashboardScreen(): JSX.Element {
   const queryClient = useQueryClient();
 
+  const { data: me } = useQuery<Me>({
+    queryKey: ['me'],
+    queryFn: () => fetcher('/users/me'),
+  });
+  const [roleReconciled, setRoleReconciled] = useState(false);
+
+  useEffect(() => {
+    if (me && !roleReconciled) {
+      ensureVendorRole(me.role).finally(() => setRoleReconciled(true));
+    }
+  }, [me, roleReconciled]);
+
   const { data, isLoading, isError } = useQuery<Product[]>({
     queryKey: ['my-products'],
     queryFn: () => fetcher('/products/mine'),
+    enabled: roleReconciled,
   });
 
   const products = data ?? [];
