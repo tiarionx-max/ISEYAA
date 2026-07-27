@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Image as ExpoImage } from 'expo-image';
 import { useQuery } from '@tanstack/react-query';
 import { fetcher } from '../../lib/api';
 import { getBookmarks } from '../../lib/storage';
@@ -39,6 +40,7 @@ import {
   Clock,
   Home,
   MessageSquare,
+  Pencil,
   type LucideProps,
 } from 'lucide-react-native';
 
@@ -79,6 +81,7 @@ interface UserProfile {
   // 08-07: host detection — backend GET /users/me returns these.
   registeredRoles?: string[];
   otpChannel?: 'SMS' | 'WHATSAPP' | 'EMAIL';
+  avatarUrl?: string | null;
 }
 
 interface WalletBalance {
@@ -140,7 +143,7 @@ function AdireOrnament({ size = 120, opacity = 0.4 }: { size?: number; opacity?:
 
 // ── Avatar Ring ────────────────────────────────────
 
-function AvatarRing({ initials }: { initials: string }) {
+function AvatarRing({ initials, avatarUrl }: { initials: string; avatarUrl?: string | null }) {
   return (
     <View style={avatarStyles.outerRing}>
       <LinearGradient
@@ -150,14 +153,25 @@ function AvatarRing({ initials }: { initials: string }) {
         style={avatarStyles.gradientRing}
       >
         <View style={avatarStyles.innerCircle}>
-          <LinearGradient
-            colors={['#3a2820', '#1c130d']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={avatarStyles.photoCircle}
-          >
-            <Text style={avatarStyles.initials}>{initials}</Text>
-          </LinearGradient>
+          {avatarUrl ? (
+            <View style={avatarStyles.photoCircle}>
+              <ExpoImage
+                source={{ uri: avatarUrl }}
+                style={avatarStyles.photoImage}
+                contentFit="cover"
+                transition={200}
+              />
+            </View>
+          ) : (
+            <LinearGradient
+              colors={['#3a2820', '#1c130d']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={avatarStyles.photoCircle}
+            >
+              <Text style={avatarStyles.initials}>{initials}</Text>
+            </LinearGradient>
+          )}
         </View>
       </LinearGradient>
       {/* Verified badge */}
@@ -197,6 +211,12 @@ const avatarStyles = StyleSheet.create({
     borderRadius: 31,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  photoImage: {
+    width: 62,
+    height: 62,
+    borderRadius: 31,
   },
   initials: {
     fontFamily: FONT_DISPLAY,
@@ -482,15 +502,24 @@ export default function ProfileScreen() {
         {/* ── Header ─────────────────────────────────── */}
         <View style={styles.header}>
           <View style={styles.avatarNameRow}>
-            <AvatarRing initials={initials} />
+            <AvatarRing initials={initials} avatarUrl={user?.avatarUrl} />
 
             <View style={styles.nameBlock}>
-              {/* Display name + inline check */}
+              {/* Display name + inline check + edit entry point */}
               <View style={styles.nameRow}>
                 <Text style={styles.displayName} numberOfLines={1}>{displayName}</Text>
                 <View style={styles.nameCheckBadge}>
                   <CheckCircle size={16} color={GOLD} fill={GOLD} />
                 </View>
+                <Pressable
+                  style={({ pressed }) => [styles.editProfileBtn, pressed && { opacity: 0.7 }]}
+                  onPress={() => router.push('/profile-edit' as any)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Edit profile"
+                  hitSlop={8}
+                >
+                  <Pencil size={13} color={INK_FAINT} />
+                </Pressable>
               </View>
               {/* Handle + member since */}
               <Text style={styles.handleText}>@{handle} · Member since {memberSince}</Text>
@@ -782,6 +811,15 @@ const styles = StyleSheet.create({
     height: 18,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  editProfileBtn: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: GOLD_DIM,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 2,
   },
   handleText: {
     fontSize: 12,
