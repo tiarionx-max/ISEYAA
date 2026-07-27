@@ -567,11 +567,43 @@ describe('AuthService', () => {
       mockJwt.verify.mockReturnValue({ sub: 'u1', role: 'CITIZEN', jti: 'jti-1', exp });
       mockRedis.exists.mockResolvedValue(false);
       mockRedis.set.mockResolvedValue(undefined);
+      mockPrisma.user.findUnique.mockResolvedValue({ role: 'CITIZEN', status: 'ACTIVE' });
       mockJwt.signAsync.mockResolvedValueOnce('new_acc').mockResolvedValueOnce('new_ref');
 
       const result = await service.refreshTokens('valid-token');
       expect(result.accessToken).toBe('new_acc');
       expect(mockRedis.set).toHaveBeenCalledWith('blacklist:jti-1', '1', expect.any(Number));
+    });
+
+    it('throws UnauthorizedException when the user no longer exists in the database', async () => {
+      const exp = Math.floor(Date.now() / 1000) + 100;
+      mockJwt.verify.mockReturnValue({ sub: 'u1', role: 'CITIZEN', jti: 'jti-1', exp });
+      mockRedis.exists.mockResolvedValue(false);
+      mockPrisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(service.refreshTokens('valid-token')).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('throws UnauthorizedException when the account is SUSPENDED', async () => {
+      const exp = Math.floor(Date.now() / 1000) + 100;
+      mockJwt.verify.mockReturnValue({ sub: 'u1', role: 'CITIZEN', jti: 'jti-1', exp });
+      mockRedis.exists.mockResolvedValue(false);
+      mockPrisma.user.findUnique.mockResolvedValue({ role: 'CITIZEN', status: 'SUSPENDED' });
+
+      await expect(service.refreshTokens('valid-token')).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('mints the new access token from the CURRENT database role, not the stale payload role', async () => {
+      const exp = Math.floor(Date.now() / 1000) + 100;
+      mockJwt.verify.mockReturnValue({ sub: 'u1', role: 'CITIZEN', jti: 'jti-x', exp });
+      mockRedis.exists.mockResolvedValue(false);
+      mockRedis.set.mockResolvedValue(undefined);
+      mockPrisma.user.findUnique.mockResolvedValue({ role: 'HOST', status: 'ACTIVE' });
+      mockJwt.signAsync.mockResolvedValueOnce('new_acc').mockResolvedValueOnce('new_ref');
+
+      await service.refreshTokens('valid-token');
+
+      expect(mockJwt.signAsync).toHaveBeenCalledWith(expect.objectContaining({ role: 'HOST' }));
     });
   });
 

@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuthService } from '../auth/auth.service';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { OtpChannel } from '../../common/enums/otp-channel.enum';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -37,7 +38,10 @@ const USER_SELECT = {
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private authService: AuthService,
+  ) {}
 
   async getMe(userId: string) {
     const user = await this.prisma.user.findUnique({
@@ -59,11 +63,13 @@ export class UsersService {
       throw new ForbiddenException(`Role ${role} is not in your registered roles`);
     }
 
-    return this.prisma.user.update({
+    const updated = await this.prisma.user.update({
       where: { id: userId },
       data: { role },
       select: USER_SELECT,
     });
+    const tokens = await this.authService.generateTokens(updated.id, updated.role as UserRole);
+    return { user: updated, ...tokens };
   }
 
   async updateOtpChannel(userId: string, channel: OtpChannel) {
@@ -92,7 +98,8 @@ export class UsersService {
       },
       select: USER_SELECT,
     });
-    return updated;
+    const tokens = await this.authService.generateTokens(updated.id, updated.role as UserRole);
+    return { user: updated, ...tokens };
   }
 
   /**
@@ -117,7 +124,8 @@ export class UsersService {
       },
       select: USER_SELECT,
     });
-    return updated;
+    const tokens = await this.authService.generateTokens(updated.id, updated.role as UserRole);
+    return { user: updated, ...tokens };
   }
 
   /**
@@ -151,7 +159,8 @@ export class UsersService {
         select: USER_SELECT,
       });
     });
-    return updated;
+    const tokens = await this.authService.generateTokens(updated.id, updated.role as UserRole);
+    return { user: updated, ...tokens };
   }
 
   /** Become an organiser — adds ORGANISER to registeredRoles and switches active role. */
@@ -172,7 +181,8 @@ export class UsersService {
       },
       select: USER_SELECT,
     });
-    return updated;
+    const tokens = await this.authService.generateTokens(updated.id, updated.role as UserRole);
+    return { user: updated, ...tokens };
   }
 
   async eraseData(userId: string) {
