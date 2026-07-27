@@ -5,7 +5,7 @@ milestone_name: — Extraction Backlog Clearance & Settlement Flexibility
 status: Awaiting next milestone
 stopped_at: Phase 22 UI-SPEC approved
 last_updated: "2026-07-27T09:47:23Z"
-last_activity: 2026-07-27 - Completed quick task 260727-6nh: Wire real reservation logic into events/stays gRPC controllers and build the event-approval workflow
+last_activity: 2026-07-27 - Completed quick task 260727-8v6: Add marketplace/tourism image upload endpoints, wire mobile image display for events/attractions, configure notification icon
 progress:
   total_phases: 5
   completed_phases: 5
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-07-19)
 Phase: Milestone v2.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-07-27 - Completed quick task 260727-6nh: Wire real reservation logic into events/stays gRPC controllers and build the event-approval workflow
+Last activity: 2026-07-27 - Completed quick task 260727-8v6: Add marketplace/tourism image upload endpoints, wire mobile image display for events/attractions, configure notification icon
 
 ## Current Status
 
@@ -88,6 +88,7 @@ None currently open for active work — 2 pre-existing todo files (add-compile-s
 - Railway production backend (`@iseyaa/backend` in project `lucid-flexibility`) was found 2026-07-24 running a build frozen at Phase 9 (commit `243ebcb5`, ~2 months / 100+ commits stale) because the service had a custom Start Command override (`npm run start`) that bypassed the Dockerfile's `start.sh` entrypoint — silently skipping `prisma migrate deploy` on every deploy. Fixed by clearing the override and redeploying from `main` (`9ca7954`); migrations now run correctly on deploy. Watch for schema-drift symptoms again if this override reappears.
 - Twilio SMS is on a trial account (error 21608: can only send to manually-verified numbers) — not viable for real users. Termii is the intended primary SMS provider (`TERMII_API_KEY` was just added 2026-07-24) but Termii calls are still failing fast via the `termiiAuth` resilience timeout (5s) while the account is mid-activation — revisit once Termii activation completes.
 - SendGrid permanently declined account activation; `SendgridService` (2026-07-24, quick task 260724-hon) is now code-complete against the Resend SDK, but a real `RESEND_API_KEY` still needs to be provisioned (resend.com → API Keys) and set in production (Railway) before transactional email actually sends — until then the service degrades gracefully rather than crashing. Resend also requires a verified sending domain (SPF/DKIM) for `noreply@iseyaa.gov.ng`, same as SendGrid required; see `MANUAL-ACTIONS.md`.
+- 2026-07-27, quick task 260727-8v6: the executor's `isolation="worktree"` agent was created from a stale pre-session base commit (`ffe4282`) instead of the intended current-HEAD commit passed via `EXPECTED_BASE`, despite the plan's embedded worktree-branch-base-correction check — the check's `git reset --hard` step apparently did not fire or did not persist. Caught before merging by comparing `git merge-base` against the expected commit; resolved via a manual dry-run merge (`git merge --no-commit --no-ff`) plus a full backend test/typecheck pass to confirm no earlier work was lost. Watch for this recurring on future worktree-isolated quick tasks — if it does, the base-correction step in `quick.md`'s worktree_branch_check may need a more robust fix upstream.
 
 ### Quick Tasks Completed
 
@@ -103,6 +104,7 @@ None currently open for active work — 2 pre-existing todo files (add-compile-s
 | 260724-hon | SendGrid permanently declined account activation — migrate SendgridService internals from @sendgrid/mail to Resend SDK (resend@^6.18.0), preserving class name, all 5 public method signatures, and each method's throw-vs-swallow contract (SMS fallback / FAILED-status tracking depend on it) | 2026-07-24 | 9bcd9b4 | [260724-hon-migrate-sendgridservice-s-internals-from](./quick/260724-hon-migrate-sendgridservice-s-internals-from/) |
 | 260726-riy | Add mobile email+password sign-in screen and verify web email login end-to-end — web NextAuth credentials flow confirmed working against a live backend (no changes needed); added mobile/app/auth/email.tsx wired to POST /auth/login, reachable from onboarding.tsx, registered in _layout.tsx | 2026-07-27 | 6b4eb3c | [260726-riy-add-mobile-email-sign-in-screen-and-veri](./quick/260726-riy-add-mobile-email-sign-in-screen-and-veri/) |
 | 260727-6nh | Wire real reservation logic into events/stays gRPC controllers (extended proto contracts with email/guests/Paystack fields, imported EventsModule/StaysModule+KafkaModule into their gRPC microservices, delegated ReserveTicket/CreateBooking to the real EventsService/StaysService with exception-safe mapping) and build the missing event-approval workflow (organizer submitForApproval, admin updateEventStatus, admin-grpc ApproveItem wiring) — followup to an ad-hoc whole-codebase bug-sweep workflow (9 commits, 21 of 25 confirmed bugs fixed, not tracked in this table) that intentionally deferred these two items as needing design decisions | 2026-07-27 | ce0eaa4 | [260727-6nh-wire-real-reservation-logic-into-events-](./quick/260727-6nh-wire-real-reservation-logic-into-events-/) |
+| 260727-8v6 | Add vendor product image upload (POST /products/:id/images, reuses ImageService.resizeProduct + S3Service, vendor-ownership gated) and admin attraction image upload (POST admin/attractions/:id/images, role-gated only — attractions have no creator field); wire mobile to display real photos (events detail hero, events list cards, Discover attraction cards) via expo-image with gradient fallback; configure Android notification icon (placeholder asset + app.json plugin config) — closes the remaining two gaps from the design-team asset brief. Executor worktree was found based on a stale pre-session commit (ffe4282) rather than current HEAD; verified via manual dry-run merge + full backend suite (886 tests) before committing | 2026-07-27 | 9a7edbe | [260727-8v6-build-marketplace-tourism-image-upload-e](./quick/260727-8v6-build-marketplace-tourism-image-upload-e/) |
 
 ## Deferred Items
 
