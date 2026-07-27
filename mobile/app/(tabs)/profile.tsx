@@ -11,7 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image as ExpoImage } from 'expo-image';
 import { useQuery } from '@tanstack/react-query';
-import { fetcher } from '../../lib/api';
+import { fetcher, api, getErrorMessage } from '../../lib/api';
 import { getBookmarks } from '../../lib/storage';
 import * as SecureStore from 'expo-secure-store';
 import { router, useFocusEffect } from 'expo-router';
@@ -41,6 +41,7 @@ import {
   Home,
   MessageSquare,
   Pencil,
+  Trash2,
   type LucideProps,
 } from 'lucide-react-native';
 
@@ -60,11 +61,14 @@ import {
   BORDER,
   SUCCESS,
   ERROR,
+  DESTRUCTIVE,
+  DESTRUCTIVE_DIM,
   RADIUS_SM,
   RADIUS_LG,
   SPACE_3,
   SPACE_4,
   SPACE_5,
+  SPACE_8,
   FONT_DISPLAY,
   FONT_MONO,
 } from '../../lib/tokens';
@@ -429,6 +433,46 @@ export default function ProfileScreen() {
     );
   }
 
+  async function handleDeleteAccount() {
+    Alert.alert(
+      'Delete your account?',
+      'This is permanent and cannot be undone. All your personal data — name, contact info, and verification records — will be anonymized per Nigerian data protection law (NDPA). You will be signed out immediately.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete my account',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await api.delete('/users/me/data');
+            } catch (err) {
+              Alert.alert(
+                'Deletion failed',
+                getErrorMessage(err, 'Could not delete your account. Please try again.'),
+              );
+              return;
+            }
+
+            // Best-effort refresh-token revocation — failure here must not
+            // block clearing local session state below.
+            try {
+              const refreshToken = await SecureStore.getItemAsync('refresh_token');
+              if (refreshToken) {
+                await api.post('/auth/logout', { refreshToken });
+              }
+            } catch (_) {
+              // Ignored — token blacklisting is best-effort, local clear below is authoritative.
+            }
+
+            await SecureStore.deleteItemAsync('access_token');
+            await SecureStore.deleteItemAsync('refresh_token');
+            router.replace('/onboarding' as any);
+          },
+        },
+      ]
+    );
+  }
+
   const tier = balance?.kyc_tier ?? 0;
   const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(' ');
   const initials = getInitials(fullName, user?.phone);
@@ -693,6 +737,23 @@ export default function ProfileScreen() {
             <Text style={styles.signOutText}>Sign out</Text>
           </Pressable>
           <Text style={styles.versionText}>Iṣẹ́yáá · v1.0.0 (Build 1)</Text>
+        </View>
+
+        {/* ── Danger Zone ─────────────────────────────── */}
+        <View style={styles.dangerZoneSection}>
+          <Text style={styles.dangerZoneKicker}>DANGER ZONE</Text>
+          <Text style={styles.dangerZoneCaption}>
+            Permanently delete your account and anonymize your data. This cannot be undone.
+          </Text>
+          <Pressable
+            style={({ pressed }) => [styles.deleteAccountBtn, pressed && { opacity: 0.8 }]}
+            onPress={handleDeleteAccount}
+            accessibilityRole="button"
+            accessibilityLabel="Delete account permanently"
+          >
+            <Trash2 size={15} color={DESTRUCTIVE} />
+            <Text style={styles.deleteAccountText}>Delete account</Text>
+          </Pressable>
         </View>
 
       </ScrollView>
@@ -1153,5 +1214,50 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
     textTransform: 'uppercase',
     lineHeight: 14,
+  },
+
+  // Danger Zone
+  dangerZoneSection: {
+    paddingHorizontal: SPACE_5,
+    marginTop: SPACE_8,
+    paddingTop: SPACE_5,
+    borderTopWidth: 1,
+    borderTopColor: BORDER,
+    gap: 8,
+  },
+  dangerZoneKicker: {
+    fontFamily: FONT_MONO,
+    fontSize: 9.5,
+    fontWeight: '600',
+    color: INK_FAINT,
+    letterSpacing: 1.8,
+    textTransform: 'uppercase',
+    lineHeight: 14,
+  },
+  dangerZoneCaption: {
+    fontSize: 11.5,
+    fontWeight: '400',
+    color: INK_MID,
+    lineHeight: 16,
+    marginBottom: 4,
+  },
+  deleteAccountBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    width: '100%',
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: DESTRUCTIVE_DIM,
+    borderWidth: 1,
+    borderColor: 'rgba(248,113,113,0.30)',
+  },
+  deleteAccountText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: DESTRUCTIVE,
+    letterSpacing: 0,
+    lineHeight: 19,
   },
 });
