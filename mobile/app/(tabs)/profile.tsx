@@ -839,8 +839,29 @@ export default function ProfileScreen() {
           </View>
         )}
 
-        {/* ── Become a Host CTA (08-07) ──────────────── */}
-        {!alreadyHost && (
+        {/* ── Host CTA (08-07) — become a host, or go to dashboard once already a host (260727-eca) ── */}
+        {alreadyHost ? (
+          <View style={styles.hostCtaWrap}>
+            <PressableScale
+              onPress={() => router.push('/host-dashboard' as never)}
+              hapticStyle="light"
+              style={styles.hostCtaCard}
+            >
+              <View style={styles.hostCtaInner}>
+                <View style={styles.hostCtaIconBox}>
+                  <LayoutDashboard size={20} color={GOLD} />
+                </View>
+                <View style={styles.hostCtaTextBlock}>
+                  <Text style={styles.hostCtaTitle}>Go to my host dashboard</Text>
+                  <Text style={styles.hostCtaSub}>
+                    Manage listings, bookings, and payouts
+                  </Text>
+                </View>
+                <ChevronRight size={16} color={INK_FAINT} />
+              </View>
+            </PressableScale>
+          </View>
+        ) : (
           <View style={styles.hostCtaWrap}>
             <PressableScale
               onPress={() => router.push('/host' as never)}
@@ -863,8 +884,29 @@ export default function ProfileScreen() {
           </View>
         )}
 
-        {/* ── Become a Vendor CTA (260727-d6v) ────────── */}
-        {!alreadyVendor && (
+        {/* ── Vendor CTA (260727-d6v) — become a vendor, or go to dashboard once already active (260727-eca) ── */}
+        {alreadyVendor ? (
+          <View style={styles.hostCtaWrap}>
+            <PressableScale
+              onPress={() => router.push('/vendor-dashboard' as never)}
+              hapticStyle="light"
+              style={styles.hostCtaCard}
+            >
+              <View style={styles.hostCtaInner}>
+                <View style={styles.hostCtaIconBox}>
+                  <LayoutDashboard size={20} color={GOLD} />
+                </View>
+                <View style={styles.hostCtaTextBlock}>
+                  <Text style={styles.hostCtaTitle}>Go to my vendor dashboard</Text>
+                  <Text style={styles.hostCtaSub}>
+                    Manage products and fulfil orders
+                  </Text>
+                </View>
+                <ChevronRight size={16} color={INK_FAINT} />
+              </View>
+            </PressableScale>
+          </View>
+        ) : (
           <View style={styles.hostCtaWrap}>
             <PressableScale
               onPress={() => router.push('/vendor' as never)}
