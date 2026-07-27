@@ -5,7 +5,7 @@ milestone_name: — Extraction Backlog Clearance & Settlement Flexibility
 status: Awaiting next milestone
 stopped_at: Phase 22 UI-SPEC approved
 last_updated: "2026-07-27T09:47:23Z"
-last_activity: 2026-07-27 - Completed quick task 260727-bgr: Add phone-OTP password recovery, change-password, and server-side logout revocation
+last_activity: 2026-07-27 - Completed quick task 260727-bph: Fix driver/rider dashboard reachability, add become-driver endpoint
 progress:
   total_phases: 5
   completed_phases: 5
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-07-19)
 Phase: Milestone v2.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-07-27 - Completed quick task 260727-bgr: Add phone-OTP password recovery, change-password, and server-side logout revocation
+Last activity: 2026-07-27 - Completed quick task 260727-bph: Fix driver/rider dashboard reachability, add become-driver endpoint
 
 ## Current Status
 
@@ -109,6 +109,7 @@ None currently open for active work — 2 pre-existing todo files (add-compile-s
 | 260727-aym | Add mobile email+password registration screen (mobile/app/auth/register.tsx) — user pointed out email.tsx (built earlier same day) only supported sign-in for existing users, no way to create a new account via email on mobile (only phone/OTP auto-registers). New screen collects firstName/lastName/email/phone/password + NDPA consent checkbox, posts to the already-complete POST /auth/register, stores tokens on success; linked from onboarding.tsx and email.tsx. Followed by a mobile completeness audit — see Blockers/Concerns for the ongoing fix sequence | 2026-07-27 | 732a4a9 | [260727-aym-add-mobile-email-password-registration-s](./quick/260727-aym-add-mobile-email-password-registration-s/) |
 | 260727-bhw | Add mobile Edit Profile screen (mobile/app/profile-edit.tsx) — firstName/lastName editing via existing PATCH /users/me, avatar picker+upload via expo-image-picker + existing POST /users/me/avatar, AvatarRing updated to render the real photo with initials fallback; and a visually-separated, explicitly-confirmed "Danger Zone" account-deletion action on the Profile tab calling the existing DELETE /users/me/data (NDPA right-to-erasure), best-effort revoking the refresh token then clearing local session and returning to onboarding. No backend changes — both endpoints were already complete | 2026-07-27 | 46f19c6 | [260727-bhw-add-mobile-profile-edit-screen-with-avat](./quick/260727-bhw-add-mobile-profile-edit-screen-with-avat/) |
 | 260727-bgr | Add phone-OTP password recovery (POST /auth/reset-password, new shared consumeValidOtp helper extracted from verifyOtp, byte-identical behavior preserved), change-password while logged in (PATCH /users/me/password), and server-side logout revocation (mobile now calls POST /auth/logout with the stored refresh token before clearing SecureStore). New mobile screens: auth/forgot-password.tsx, auth/reset-password.tsx, change-password.tsx. Real merge conflicts against 260727-bhw in profile.tsx/_layout.tsx (both touched the same import lines and icon list) resolved manually — both features' additions verified coexisting via grep + full 894-test backend suite + mobile tsc | 2026-07-27 | 336e3ff | [260727-bgr-add-password-recovery-via-phone-otp-chan](./quick/260727-bgr-add-password-recovery-via-phone-otp-chan/) |
+| 260727-bph | Add POST /users/me/become-driver (mirrors becomeHost exactly — DRIVER wasn't in REGISTERABLE_ROLES and had no self-service grant path, a chicken-and-egg gap since POST /transport/drivers itself required the DRIVER role to already exist). New mobile/app/driver-application.tsx (licence + vehicle form, chains POST /transport/drivers → POST /transport/drivers/:id/vehicles). profile.tsx rewired with 4 mutually-exclusive driver states (become-driver CTA → complete-application CTA → pending-review card → real go-online/offline toggle wired to /transport/go-online|offline, replacing a local-only UI flip) plus a driver-dashboard link and a new "My Rides" menu row reaching the previously-unreachable rider-dashboard.tsx. Third consecutive real merge conflict in profile.tsx/_layout.tsx against Tasks 1+2, resolved manually — all three tasks' additions verified coexisting, full 897-test backend suite + both tsc clean | 2026-07-27 | 9c0fb53 | [260727-bph-fix-driver-and-rider-dashboard-reachabil](./quick/260727-bph-fix-driver-and-rider-dashboard-reachabil/) |
 
 ## Deferred Items
 
