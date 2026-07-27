@@ -4,10 +4,18 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { TransportGateway } from '../transport.gateway';
+import { PrismaService } from '../../../prisma/prisma.service';
 
 // ── Mock JWT ───────────────────────────────────────────────────────────────────
 
 const mockJwt = { verify: jest.fn() };
+
+// ── Mock Prisma ────────────────────────────────────────────────────────────────
+
+const mockPrisma = {
+  trip: { findFirst: jest.fn() },
+  driver: { findFirst: jest.fn() },
+};
 
 // ── Mock Socket and Server ────────────────────────────────────────────────────
 
@@ -37,6 +45,7 @@ describe('TransportGateway', () => {
       providers: [
         TransportGateway,
         { provide: JwtService, useValue: mockJwt },
+        { provide: PrismaService, useValue: mockPrisma },
       ],
     }).compile();
 
@@ -100,27 +109,91 @@ describe('TransportGateway', () => {
   // ── handleJoinTrip ─────────────────────────────────────────────────────────
 
   describe('handleJoinTrip', () => {
-    it('calls client.join("trip:{tripId}") and returns { joined: tripId }', () => {
+    it('calls client.join("trip:{tripId}") and returns { joined: tripId } when the socket is the trip rider', async () => {
       const tripId = 'trip-uuid-001';
-      const clientWithJoin = { ...mockClient, join: jest.fn(), data: {} };
+      const userId = 'rider-uuid-001';
+      const clientWithJoin = { ...mockClient, join: jest.fn(), data: { userId } };
+      mockPrisma.trip.findFirst.mockResolvedValue({ id: tripId, riderId: userId, driverId: null });
 
-      const result = gateway.handleJoinTrip(clientWithJoin as any, tripId);
+      const result = await gateway.handleJoinTrip(clientWithJoin as any, tripId);
 
       expect(clientWithJoin.join).toHaveBeenCalledWith(`trip:${tripId}`);
       expect(result).toEqual({ joined: tripId });
+    });
+
+    it('calls client.join("trip:{tripId}") and returns { joined: tripId } when the socket is the assigned driver', async () => {
+      const tripId = 'trip-uuid-002';
+      const userId = 'driver-user-uuid-001';
+      const clientWithJoin = { ...mockClient, join: jest.fn(), data: { userId } };
+      mockPrisma.trip.findFirst.mockResolvedValue({ id: tripId, riderId: 'someone-else', driverId: 'driver-001' });
+      mockPrisma.driver.findFirst.mockResolvedValue({ id: 'driver-001', userId, deletedAt: null });
+
+      const result = await gateway.handleJoinTrip(clientWithJoin as any, tripId);
+
+      expect(clientWithJoin.join).toHaveBeenCalledWith(`trip:${tripId}`);
+      expect(result).toEqual({ joined: tripId });
+    });
+
+    it('returns { error: "forbidden" } and does not join when the socket is neither the rider nor the assigned driver', async () => {
+      const tripId = 'trip-uuid-003';
+      const clientWithJoin = { ...mockClient, join: jest.fn(), data: { userId: 'stranger-uuid' } };
+      mockPrisma.trip.findFirst.mockResolvedValue({ id: tripId, riderId: 'rider-uuid-001', driverId: 'driver-001' });
+      mockPrisma.driver.findFirst.mockResolvedValue(null);
+
+      const result = await gateway.handleJoinTrip(clientWithJoin as any, tripId);
+
+      expect(clientWithJoin.join).not.toHaveBeenCalled();
+      expect(result).toEqual({ error: 'forbidden' });
+    });
+
+    it('returns { error: "forbidden" } when the trip does not exist', async () => {
+      const clientWithJoin = { ...mockClient, join: jest.fn(), data: { userId: 'rider-uuid-001' } };
+      mockPrisma.trip.findFirst.mockResolvedValue(null);
+
+      const result = await gateway.handleJoinTrip(clientWithJoin as any, 'nonexistent-trip');
+
+      expect(clientWithJoin.join).not.toHaveBeenCalled();
+      expect(result).toEqual({ error: 'forbidden' });
     });
   });
 
   // ── handleDriverLocation ───────────────────────────────────────────────────
 
   describe('handleDriverLocation', () => {
-    it('calls server.to("trip:{tripId}").emit("driver:location", { lat, lng })', () => {
+    it('calls server.to("trip:{tripId}").emit("driver:location", { lat, lng }) when the socket is the assigned driver', async () => {
       const data = { tripId: 'trip-uuid-001', lat: 7.1608, lng: 3.3475 };
+      const userId = 'driver-user-uuid-001';
+      const client = { ...mockClient, data: { userId } };
+      mockPrisma.trip.findFirst.mockResolvedValue({ id: data.tripId, driverId: 'driver-001' });
+      mockPrisma.driver.findFirst.mockResolvedValue({ id: 'driver-001', userId, deletedAt: null });
 
-      gateway.handleDriverLocation(mockClient as any, data);
+      await gateway.handleDriverLocation(client as any, data);
 
       expect(mockServerTo).toHaveBeenCalledWith(`trip:${data.tripId}`);
       expect(mockEmit).toHaveBeenCalledWith('driver:location', { lat: data.lat, lng: data.lng });
+    });
+
+    it('does not emit when the socket is not the trip\'s assigned driver', async () => {
+      const data = { tripId: 'trip-uuid-002', lat: 7.1608, lng: 3.3475 };
+      const client = { ...mockClient, data: { userId: 'attacker-uuid' } };
+      mockPrisma.trip.findFirst.mockResolvedValue({ id: data.tripId, driverId: 'driver-001' });
+      mockPrisma.driver.findFirst.mockResolvedValue(null);
+
+      await gateway.handleDriverLocation(client as any, data);
+
+      expect(mockServerTo).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
+
+    it('does not emit when the trip has no assigned driver', async () => {
+      const data = { tripId: 'trip-uuid-003', lat: 7.1608, lng: 3.3475 };
+      const client = { ...mockClient, data: { userId: 'someone-uuid' } };
+      mockPrisma.trip.findFirst.mockResolvedValue({ id: data.tripId, driverId: null });
+
+      await gateway.handleDriverLocation(client as any, data);
+
+      expect(mockServerTo).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
     });
   });
 
