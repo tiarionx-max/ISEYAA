@@ -1,6 +1,9 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettlementService } from '../../common/services/settlement.service';
+import { ImageService } from '../../common/services/image.service';
+import { S3Service } from '../../common/services/s3.service';
 import { UpdateSplitTierDto } from './dto/update-split-tier.dto';
 import { CreateSplitTierDto } from './dto/create-split-tier.dto';
 
@@ -18,6 +21,8 @@ export class AdminService {
   constructor(
     private prisma: PrismaService,
     private settlementService: SettlementService,
+    private imageService: ImageService,
+    private s3: S3Service,
   ) {}
 
   // ── Dashboard ──────────────────────────────────────────────────────────────
@@ -232,6 +237,25 @@ export class AdminService {
       update: { value },
       create: { key, value },
     });
+  }
+
+  // ── Attractions ────────────────────────────────────────────────────────────
+
+  async uploadAttractionImage(id: string, file: Express.Multer.File) {
+    const attraction = await this.prisma.attraction.findFirst({ where: { id, deletedAt: null } });
+    if (!attraction) throw new NotFoundException('Attraction not found');
+
+    this.imageService.validateImage(file);
+    const { buffer: resized, contentType } = await this.imageService.resizeEventCover(file.buffer);
+    const key = `attractions/${id}/${uuidv4()}.webp`;
+    const url = await this.s3.upload(key, resized, contentType);
+
+    await this.prisma.attraction.update({
+      where: { id },
+      data: { imageUrls: { push: url } },
+    });
+
+    return { url };
   }
 
   // ── Settlement Split Tiers ──────────────────────────────────────────────────

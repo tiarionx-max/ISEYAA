@@ -1,8 +1,11 @@
 import {
   Controller, Get, Patch, Post, Body, Param, Query, UseGuards,
   ParseIntPipe, DefaultValuePipe,
+  UseInterceptors, UploadedFile,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
 import { UpdateSplitTierDto } from './dto/update-split-tier.dto';
 import { CreateSplitTierDto } from './dto/create-split-tier.dto';
@@ -98,6 +101,19 @@ export class AdminController {
   @ApiOperation({ summary: 'Upsert platform config value' })
   setConfig(@Param('key') key: string, @Body('value') value: any) {
     return this.adminService.setConfig(key, value);
+  }
+
+  @Post('attractions/:id/images')
+  @ApiOperation({ summary: 'Upload attraction cover image (jpg/png/webp <=5 MB, resized to 1200x630)' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }),
+  )
+  uploadAttractionImage(@Param('id') id: string, @UploadedFile() file: Express.Multer.File) {
+    return this.adminService.uploadAttractionImage(id, file);
   }
 
   @Get('settlement-splits')
