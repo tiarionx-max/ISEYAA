@@ -74,8 +74,38 @@ export class StaysService implements OnModuleInit {
         pricePerNight: dto.pricePerNight,
         maxGuests: dto.maxGuests,
         amenities: dto.amenities ?? [],
+        ...(dto.bookingMode && { bookingMode: dto.bookingMode as any }),
+        ...(dto.pricePerHour !== undefined && { pricePerHour: dto.pricePerHour }),
+        ...(dto.membershipMonthlyPrice !== undefined && { membershipMonthlyPrice: dto.membershipMonthlyPrice }),
+        ...(dto.highlights && { highlights: dto.highlights }),
+        ...(dto.category && { category: dto.category }),
+        ...(dto.coverImageUrl && { coverImageUrl: dto.coverImageUrl }),
       },
       include: { lga: { select: { name: true, slug: true } } },
+    });
+  }
+
+  async findMyProperties(hostId: string) {
+    // Deliberately no `isActive: true` filter (unlike findAllProperties) —
+    // a host must see their own paused listings on their dashboard.
+    return this.prisma.property.findMany({
+      where: { hostId, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async findPropertyBookings(propertyId: string, hostId: string) {
+    const property = await this.prisma.property.findFirst({
+      where: { id: propertyId, hostId, deletedAt: null },
+    });
+    // Not distinguishing "doesn't exist" from "not this host's property" to the
+    // caller — avoids leaking property existence to a non-owner (T-quick-02).
+    if (!property) throw new ForbiddenException('Not your property');
+
+    return this.prisma.booking.findMany({
+      where: { propertyId, deletedAt: null },
+      include: { user: { select: { firstName: true, lastName: true, phone: true } } },
+      orderBy: { checkIn: 'desc' },
     });
   }
 
@@ -134,6 +164,13 @@ export class StaysService implements OnModuleInit {
         ...(dto.pricePerNight !== undefined && { pricePerNight: dto.pricePerNight }),
         ...(dto.maxGuests !== undefined && { maxGuests: dto.maxGuests }),
         ...(dto.amenities && { amenities: dto.amenities }),
+        ...(dto.bookingMode && { bookingMode: dto.bookingMode as any }),
+        ...(dto.pricePerHour !== undefined && { pricePerHour: dto.pricePerHour }),
+        ...(dto.membershipMonthlyPrice !== undefined && { membershipMonthlyPrice: dto.membershipMonthlyPrice }),
+        ...(dto.highlights && { highlights: dto.highlights }),
+        ...(dto.category && { category: dto.category }),
+        ...(dto.coverImageUrl && { coverImageUrl: dto.coverImageUrl }),
+        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
       },
     });
   }

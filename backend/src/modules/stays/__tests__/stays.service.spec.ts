@@ -135,6 +135,39 @@ describe('StaysService', () => {
       );
       expect(result.id).toBe(PROP_ID);
     });
+
+    it('persists bookingMode/pricePerHour/highlights/category/coverImageUrl when supplied', async () => {
+      mockPrisma.property.create.mockResolvedValue({ ...mockProperty });
+      const dto = {
+        lgaId: 'lga-001', name: 'Abeokuta Lounge', type: 'LOUNGE', address: '1 Rd',
+        pricePerNight: 15000, maxGuests: 4, bookingMode: 'HOURLY', pricePerHour: 2500,
+        highlights: ['Rooftop view'], category: 'lounge', coverImageUrl: 'https://cdn/x.webp',
+      };
+
+      await service.createProperty(HOST_ID, dto as any);
+
+      expect(mockPrisma.property.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            bookingMode: 'HOURLY',
+            pricePerHour: 2500,
+            highlights: ['Rooftop view'],
+            category: 'lounge',
+            coverImageUrl: 'https://cdn/x.webp',
+          }),
+        }),
+      );
+    });
+
+    it('omits bookingMode key entirely when the DTO does not supply it (lets Prisma default apply)', async () => {
+      mockPrisma.property.create.mockResolvedValue({ ...mockProperty });
+      const dto = { lgaId: 'lga-001', name: 'Abeokuta Villa', type: 'VILLA', address: '1 Rd', pricePerNight: 15000, maxGuests: 4 };
+
+      await service.createProperty(HOST_ID, dto as any);
+
+      const data = mockPrisma.property.create.mock.calls[0][0].data;
+      expect(Object.prototype.hasOwnProperty.call(data, 'bookingMode')).toBe(false);
+    });
   });
 
   // ── findAllProperties ──────────────────────────────────────────────────────
@@ -178,6 +211,86 @@ describe('StaysService', () => {
       mockPrisma.property.update.mockResolvedValue({ ...mockProperty, maxGuests: 6 });
       const result = await service.updateProperty(PROP_ID, HOST_ID, { maxGuests: 6 } as any);
       expect(result.maxGuests).toBe(6);
+    });
+
+    it('passes isActive: false through to prisma.property.update when pausing a listing', async () => {
+      mockPrisma.property.findFirst.mockResolvedValue(mockProperty);
+      mockPrisma.property.update.mockResolvedValue({ ...mockProperty, isActive: false });
+
+      await service.updateProperty(PROP_ID, HOST_ID, { isActive: false } as any);
+
+      expect(mockPrisma.property.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ isActive: false }) }),
+      );
+    });
+
+    it('passes bookingMode/pricePerHour/membershipMonthlyPrice/highlights/category/coverImageUrl through when supplied', async () => {
+      mockPrisma.property.findFirst.mockResolvedValue(mockProperty);
+      mockPrisma.property.update.mockResolvedValue({ ...mockProperty });
+
+      await service.updateProperty(PROP_ID, HOST_ID, {
+        bookingMode: 'MEMBERSHIP',
+        membershipMonthlyPrice: 8000,
+        highlights: ['Gym access'],
+        category: 'club',
+        coverImageUrl: 'https://cdn/y.webp',
+      } as any);
+
+      expect(mockPrisma.property.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            bookingMode: 'MEMBERSHIP',
+            membershipMonthlyPrice: 8000,
+            highlights: ['Gym access'],
+            category: 'club',
+            coverImageUrl: 'https://cdn/y.webp',
+          }),
+        }),
+      );
+    });
+  });
+
+  // ── findMyProperties ───────────────────────────────────────────────────────
+
+  describe('findMyProperties', () => {
+    it('calls prisma.property.findMany with hostId + deletedAt:null but no isActive key', async () => {
+      mockPrisma.property.findMany.mockResolvedValue([mockProperty]);
+
+      const result = await service.findMyProperties(HOST_ID);
+
+      expect(mockPrisma.property.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { hostId: HOST_ID, deletedAt: null } }),
+      );
+      const where = mockPrisma.property.findMany.mock.calls[0][0].where;
+      expect(Object.prototype.hasOwnProperty.call(where, 'isActive')).toBe(false);
+      expect(result).toEqual([mockProperty]);
+    });
+  });
+
+  // ── findPropertyBookings ───────────────────────────────────────────────────
+
+  describe('findPropertyBookings', () => {
+    it('throws ForbiddenException when the ownership-filtered findFirst returns null', async () => {
+      mockPrisma.property.findFirst.mockResolvedValue(null);
+      await expect(service.findPropertyBookings(PROP_ID, HOST_ID)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('returns the booking list with guest select fields when ownership passes', async () => {
+      mockPrisma.property.findFirst.mockResolvedValue(mockProperty);
+      mockPrisma.booking.findMany.mockResolvedValue([mockBooking]);
+
+      const result = await service.findPropertyBookings(PROP_ID, HOST_ID);
+
+      expect(mockPrisma.property.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: PROP_ID, hostId: HOST_ID, deletedAt: null } }),
+      );
+      expect(mockPrisma.booking.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { propertyId: PROP_ID, deletedAt: null },
+          include: { user: { select: { firstName: true, lastName: true, phone: true } } },
+        }),
+      );
+      expect(result).toEqual([mockBooking]);
     });
   });
 

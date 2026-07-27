@@ -4,14 +4,7 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-
-export enum PropertyType {
-  HOTEL = 'HOTEL',
-  GUESTHOUSE = 'GUESTHOUSE',
-  APARTMENT = 'APARTMENT',
-  VILLA = 'VILLA',
-  RESORT = 'RESORT',
-}
+import { PropertyType, BookingMode } from '@prisma/client';
 
 export class CreatePropertyDto {
   @ApiProperty() @IsUUID() lgaId: string;
@@ -35,4 +28,20 @@ export class CreatePropertyDto {
 
   @ApiPropertyOptional({ type: [String] })
   @IsArray() @IsString({ each: true }) @IsOptional() amenities?: string[];
+
+  @ApiPropertyOptional({ enum: BookingMode })
+  @IsEnum(BookingMode) @IsOptional() bookingMode?: BookingMode;
+
+  @ApiPropertyOptional({ example: 2500 })
+  @IsNumber() @Min(0) @Type(() => Number) @IsOptional() pricePerHour?: number;
+
+  @ApiPropertyOptional({ example: 8000 })
+  @IsNumber() @Min(0) @Type(() => Number) @IsOptional() membershipMonthlyPrice?: number;
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsArray() @IsString({ each: true }) @IsOptional() highlights?: string[];
+
+  @ApiPropertyOptional() @IsString() @IsOptional() category?: string;
+
+  @ApiPropertyOptional() @IsString() @IsOptional() coverImageUrl?: string;
 }
