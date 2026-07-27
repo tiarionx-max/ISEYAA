@@ -26,6 +26,7 @@ import {
 } from 'lucide-react-native';
 
 import { api, fetcher } from '../lib/api';
+import * as SecureStore from 'expo-secure-store';
 import { PressableScale } from '../components/ui/PressableScale';
 import { Chip } from '../components/ui/Chip';
 import {
@@ -130,7 +131,11 @@ export default function HostScreen(): JSX.Element {
 
   const becomeHost = useMutation({
     mutationFn: () => api.post('/users/me/become-host').then((r) => r.data),
-    onSuccess: () => {
+    onSuccess: async (data) => {
+      if (data?.accessToken && data?.refreshToken) {
+        await SecureStore.setItemAsync('access_token', data.accessToken);
+        await SecureStore.setItemAsync('refresh_token', data.refreshToken);
+      }
       queryClient.invalidateQueries({ queryKey: ['me'] });
       Alert.alert('Welcome aboard!', 'You can now list your space.', [
         {

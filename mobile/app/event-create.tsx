@@ -28,6 +28,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { Camera, Check, CalendarDays, Clock } from 'lucide-react-native';
 
 import { api, fetcher, getErrorMessage } from '../lib/api';
+import * as SecureStore from 'expo-secure-store';
 import {
   SURFACE_DEEP,
   SURFACE_RAISED,
@@ -67,7 +68,11 @@ function deriveFilename(uri: string): string {
 // event mutation (mirrors property-create.tsx's ensureHostRole).
 async function ensureOrganiserRole(currentRole: string | undefined): Promise<void> {
   if (currentRole !== 'ORGANISER') {
-    await api.patch('/users/me/role', { role: 'ORGANISER' });
+    const { data } = await api.patch('/users/me/role', { role: 'ORGANISER' });
+    if (data?.accessToken && data?.refreshToken) {
+      await SecureStore.setItemAsync('access_token', data.accessToken);
+      await SecureStore.setItemAsync('refresh_token', data.refreshToken);
+    }
   }
 }
 

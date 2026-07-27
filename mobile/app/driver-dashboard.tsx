@@ -9,6 +9,7 @@ import { router } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as Location from 'expo-location';
 import { fetcher, api, getErrorMessage } from '../lib/api';
+import * as SecureStore from 'expo-secure-store';
 import { ChevronLeft, Car, TrendingUp, Clock, CheckCircle2, MapPin } from 'lucide-react-native';
 import {
   SURFACE_DEEP, SURFACE_MID, SURFACE_ELEV,
@@ -30,7 +31,11 @@ function fmt(n: number) {
 // otherwise 403 this action even though the user already holds DRIVER). ────
 async function ensureDriverRole(currentRole: string | undefined): Promise<void> {
   if (currentRole !== 'DRIVER') {
-    await api.patch('/users/me/role', { role: 'DRIVER' });
+    const { data } = await api.patch('/users/me/role', { role: 'DRIVER' });
+    if (data?.accessToken && data?.refreshToken) {
+      await SecureStore.setItemAsync('access_token', data.accessToken);
+      await SecureStore.setItemAsync('refresh_token', data.refreshToken);
+    }
   }
 }
 

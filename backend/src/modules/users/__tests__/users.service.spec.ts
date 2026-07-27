@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UsersService } from '../users.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { AuthService } from '../../auth/auth.service';
 import { NotFoundException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { UserRole } from '../../../common/enums/user-role.enum';
 import { OtpChannel } from '../../../common/enums/otp-channel.enum';
@@ -15,15 +16,22 @@ const mockPrisma = {
   auditLog: { create: jest.fn() },
 };
 
+const mockAuthService = { generateTokens: jest.fn() };
+
 describe('UsersService', () => {
   let service: UsersService;
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockAuthService.generateTokens.mockResolvedValue({
+      accessToken: 'mock-access-token',
+      refreshToken: 'mock-refresh-token',
+    });
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: AuthService, useValue: mockAuthService },
       ],
     }).compile();
     service = module.get<UsersService>(UsersService);
@@ -60,7 +68,9 @@ describe('UsersService', () => {
       mockPrisma.user.update.mockResolvedValue(updatedUser);
 
       const result = await service.switchRole('u1', UserRole.VENDOR);
-      expect(result.role).toBe('VENDOR');
+      expect(result.user.role).toBe('VENDOR');
+      expect(result.accessToken).toBe('mock-access-token');
+      expect(result.refreshToken).toBe('mock-refresh-token');
       expect(mockPrisma.user.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: { role: 'VENDOR' } }),
       );
@@ -79,7 +89,7 @@ describe('UsersService', () => {
 
       const result = await service.becomeDriver('u1');
 
-      expect(result.role).toBe('DRIVER');
+      expect(result.user.role).toBe('DRIVER');
       expect(mockPrisma.user.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -119,7 +129,7 @@ describe('UsersService', () => {
 
       const result = await service.becomeOrganiser('u1');
 
-      expect(result.role).toBe('ORGANISER');
+      expect(result.user.role).toBe('ORGANISER');
       expect(mockPrisma.user.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({

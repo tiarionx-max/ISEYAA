@@ -404,12 +404,27 @@ export class AuthService {
     const isBlacklisted = await this.redis.exists(blacklistKey);
     if (isBlacklisted) throw new UnauthorizedException('Token has been revoked');
 
+    // Fresh DB role/status lookup — do NOT trust payload.role, which reflects the
+    // role at the time the refresh token was originally issued and may now be stale
+    // (e.g. after become-host/become-driver/switchRole, or an admin suspension).
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub, deletedAt: null },
+      select: { role: true, status: true },
+    });
+    if (!user) throw new UnauthorizedException('Account no longer exists');
+
+    // C-10 parity: mirror login()'s status check so a SUSPENDED/DELETED account
+    // cannot keep silently minting new access tokens via refresh.
+    if (user.status === 'SUSPENDED' || user.status === 'DELETED') {
+      throw new UnauthorizedException('Account is not accessible');
+    }
+
     const remaining = payload['exp'] - Math.floor(Date.now() / 1000);
     if (remaining > 0) {
       await this.redis.set(blacklistKey, '1', remaining);
     }
 
-    return this.generateTokens(payload.sub, payload.role as UserRole);
+    return this.generateTokens(payload.sub, user.role as UserRole);
   }
 
   async logout(refreshToken: string, ip?: string, ua?: string) {
@@ -428,7 +443,7 @@ export class AuthService {
     return { message: 'Logged out successfully' };
   }
 
-  private async generateTokens(userId: string, role: UserRole) {
+  async generateTokens(userId: string, role: UserRole) {
     const jti = uuidv4();
     const payload = { sub: userId, role, jti };
 

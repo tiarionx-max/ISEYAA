@@ -24,6 +24,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Camera, Check, Trash2 } from 'lucide-react-native';
 
 import { api, fetcher, getErrorMessage } from '../../lib/api';
+import * as SecureStore from 'expo-secure-store';
 import { Chip } from '../../components/ui/Chip';
 import {
   SURFACE_DEEP,
@@ -69,7 +70,11 @@ function deriveFilename(uri: string): string {
 // Duplicated across mutation screens per this codebase's small-pure-helper convention.
 async function ensureVendorRole(currentRole: string | undefined): Promise<void> {
   if (currentRole !== 'VENDOR') {
-    await api.patch('/users/me/role', { role: 'VENDOR' });
+    const { data } = await api.patch('/users/me/role', { role: 'VENDOR' });
+    if (data?.accessToken && data?.refreshToken) {
+      await SecureStore.setItemAsync('access_token', data.accessToken);
+      await SecureStore.setItemAsync('refresh_token', data.refreshToken);
+    }
   }
 }
 

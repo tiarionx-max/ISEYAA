@@ -25,6 +25,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Camera, Check } from 'lucide-react-native';
 
 import { api, fetcher, getErrorMessage } from '../lib/api';
+import * as SecureStore from 'expo-secure-store';
 import { Chip } from '../components/ui/Chip';
 import {
   SURFACE_DEEP,
@@ -74,7 +75,11 @@ function deriveFilename(uri: string): string {
 // VENDOR even though the drift scenario is less likely than for HOST).
 async function ensureVendorRole(currentRole: string | undefined): Promise<void> {
   if (currentRole !== 'VENDOR') {
-    await api.patch('/users/me/role', { role: 'VENDOR' });
+    const { data } = await api.patch('/users/me/role', { role: 'VENDOR' });
+    if (data?.accessToken && data?.refreshToken) {
+      await SecureStore.setItemAsync('access_token', data.accessToken);
+      await SecureStore.setItemAsync('refresh_token', data.refreshToken);
+    }
   }
 }
 
