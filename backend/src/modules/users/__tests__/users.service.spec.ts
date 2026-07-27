@@ -1,9 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UsersService } from '../users.service';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { NotFoundException, ForbiddenException } from '@nestjs/common';
+import { NotFoundException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { UserRole } from '../../../common/enums/user-role.enum';
 import { OtpChannel } from '../../../common/enums/otp-channel.enum';
+import * as bcrypt from 'bcrypt';
 
 const mockPrisma = {
   user: {
@@ -111,6 +112,52 @@ describe('UsersService', () => {
       expect(mockPrisma.auditLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ action: 'NDPA_DATA_ERASURE' }),
+        }),
+      );
+    });
+  });
+
+  describe('changePassword', () => {
+    it('throws NotFoundException when user is unknown', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(null);
+      await expect(service.changePassword('u1', 'current123', 'NewPassword123')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('throws UnauthorizedException when the user has no passwordHash', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({ id: 'u1', passwordHash: null });
+      await expect(service.changePassword('u1', 'current123', 'NewPassword123')).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+
+    it('throws UnauthorizedException when currentPassword is wrong', async () => {
+      const hash = await bcrypt.hash('correct123', 12);
+      mockPrisma.user.findUnique.mockResolvedValue({ id: 'u1', passwordHash: hash });
+      await expect(service.changePassword('u1', 'wrongpassword', 'NewPassword123')).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+
+    it('updates passwordHash and creates an audit log entry when currentPassword is correct', async () => {
+      const hash = await bcrypt.hash('correct123', 12);
+      mockPrisma.user.findUnique.mockResolvedValue({ id: 'u1', passwordHash: hash });
+      mockPrisma.user.update.mockResolvedValue({});
+      mockPrisma.auditLog.create.mockResolvedValue({});
+
+      const result = await service.changePassword('u1', 'correct123', 'NewPassword123');
+
+      expect(result.message).toContain('Password changed');
+      expect(mockPrisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'u1' },
+          data: expect.objectContaining({ passwordHash: expect.any(String) }),
+        }),
+      );
+      expect(mockPrisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ action: 'PASSWORD_CHANGED' }),
         }),
       );
     });

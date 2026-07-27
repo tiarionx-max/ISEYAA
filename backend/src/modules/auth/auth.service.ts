@@ -4,6 +4,7 @@ import {
   ConflictException,
   BadRequestException,
   ForbiddenException,
+  NotFoundException,
   Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -20,6 +21,7 @@ import { LoginDto } from './dto/login.dto';
 import { OtpSendDto } from './dto/otp-send.dto';
 import { OtpVerifyDto } from './dto/otp-verify.dto';
 import { PhoneAuthDto } from './dto/phone-auth.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UserRole, REGISTERABLE_ROLES } from '../../common/enums/user-role.enum';
 import { OtpChannel } from '../../common/enums/otp-channel.enum';
 
@@ -239,30 +241,42 @@ export class AuthService {
     this.logger.log(`OTP sent via WhatsApp to ${phone}`);
   }
 
-  async verifyOtp(dto: OtpVerifyDto) {
-    const lockKey = `otp_lock:${dto.phone}`;
+  /**
+   * Shared OTP validate-and-consume helper — extracted from verifyOtp so that any
+   * flow needing "prove possession of this phone's OTP" (registration verification,
+   * password reset, etc) enforces the exact same lockout/attempt-counting logic with
+   * no duplicated redis calls. Resolves with no value on success; deletes the OTP key
+   * as its side effect. Throws ForbiddenException when locked or when this attempt
+   * trips the lock; throws BadRequestException when no OTP is stored or the OTP is wrong.
+   */
+  private async consumeValidOtp(phone: string, otp: string): Promise<void> {
+    const lockKey = `otp_lock:${phone}`;
     const isLocked = await this.redis.exists(lockKey);
     if (isLocked) {
       throw new ForbiddenException('Too many OTP attempts. Try again in 15 minutes');
     }
 
-    const stored = await this.redis.get(`otp:${dto.phone}`);
+    const stored = await this.redis.get(`otp:${phone}`);
     if (!stored) throw new BadRequestException('OTP expired or not found');
 
     const { otp: storedOtp, attempts, channel, email } = this.decodeOtpValue(stored);
 
-    if (attempts + 1 >= OTP_MAX_ATTEMPTS && dto.otp !== storedOtp) {
-      await this.redis.del(`otp:${dto.phone}`);
+    if (attempts + 1 >= OTP_MAX_ATTEMPTS && otp !== storedOtp) {
+      await this.redis.del(`otp:${phone}`);
       await this.redis.set(lockKey, '1', OTP_LOCK_TTL);
       throw new ForbiddenException('Too many invalid attempts. Try again in 15 minutes');
     }
 
-    if (dto.otp !== storedOtp) {
-      await this.redis.set(`otp:${dto.phone}`, this.encodeOtpValue(storedOtp, attempts + 1, channel, email), OTP_TTL);
+    if (otp !== storedOtp) {
+      await this.redis.set(`otp:${phone}`, this.encodeOtpValue(storedOtp, attempts + 1, channel, email), OTP_TTL);
       throw new BadRequestException(`Invalid OTP. ${OTP_MAX_ATTEMPTS - attempts - 1} attempt(s) remaining`);
     }
 
-    await this.redis.del(`otp:${dto.phone}`);
+    await this.redis.del(`otp:${phone}`);
+  }
+
+  async verifyOtp(dto: OtpVerifyDto) {
+    await this.consumeValidOtp(dto.phone, dto.otp);
 
     // L-06: use update (unique constraint on phone) instead of updateMany
     await this.prisma.user.update({
@@ -271,6 +285,31 @@ export class AuthService {
     });
 
     return { message: 'OTP verified successfully' };
+  }
+
+  /**
+   * Verify a phone OTP and set a new password, auto-signing the user in — mirrors
+   * register()'s auto-login-after-creation pattern. Password reset uses the phone
+   * OTP channel (not email) since Resend/SendGrid email delivery is not yet
+   * production-provisioned; the Termii/Meta SMS/WhatsApp OTP pipeline is already
+   * proven for phone login/registration.
+   */
+  async resetPassword(dto: ResetPasswordDto, ip?: string, ua?: string) {
+    await this.consumeValidOtp(dto.phone, dto.otp);
+
+    const user = await this.prisma.user.findFirst({ where: { phone: dto.phone, deletedAt: null } });
+    if (!user) throw new NotFoundException('No account found for this phone number');
+
+    const passwordHash = await bcrypt.hash(dto.newPassword, 12);
+    const updated = await this.prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash },
+      select: USER_SELECT,
+    });
+
+    await this.audit(user.id, 'PASSWORD_RESET', 'User', user.id, ip, ua);
+    const tokens = await this.generateTokens(updated.id, updated.role as UserRole);
+    return { user: updated, ...tokens };
   }
 
   async phoneAuth(dto: PhoneAuthDto, ip?: string, ua?: string) {
