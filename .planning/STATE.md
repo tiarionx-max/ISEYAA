@@ -4,8 +4,8 @@ milestone: v2.1
 milestone_name: — Extraction Backlog Clearance & Settlement Flexibility
 status: Awaiting next milestone
 stopped_at: Phase 22 UI-SPEC approved
-last_updated: "2026-07-27T09:47:23Z"
-last_activity: 2026-07-27 - Completed quick task 260727-c41: Add backend vendor/organiser self-service endpoints
+last_updated: "2026-07-27T10:06:21Z"
+last_activity: 2026-07-27 - Completed quick task 260727-dcp: Redesign mobile auth entry, remove Apple/Google stubs, require phone OTP on registration
 progress:
   total_phases: 5
   completed_phases: 5
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-07-19)
 Phase: Milestone v2.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-07-27 - Completed quick task 260727-c41: Add backend vendor/organiser self-service endpoints
+Last activity: 2026-07-27 - Completed quick task 260727-dcp: Redesign mobile auth entry, remove Apple/Google stubs, require phone OTP on registration
 
 ## Current Status
 
@@ -112,6 +112,7 @@ None currently open for active work — 2 pre-existing todo files (add-compile-s
 | 260727-bph | Add POST /users/me/become-driver (mirrors becomeHost exactly — DRIVER wasn't in REGISTERABLE_ROLES and had no self-service grant path, a chicken-and-egg gap since POST /transport/drivers itself required the DRIVER role to already exist). New mobile/app/driver-application.tsx (licence + vehicle form, chains POST /transport/drivers → POST /transport/drivers/:id/vehicles). profile.tsx rewired with 4 mutually-exclusive driver states (become-driver CTA → complete-application CTA → pending-review card → real go-online/offline toggle wired to /transport/go-online|offline, replacing a local-only UI flip) plus a driver-dashboard link and a new "My Rides" menu row reaching the previously-unreachable rider-dashboard.tsx. Third consecutive real merge conflict in profile.tsx/_layout.tsx against Tasks 1+2, resolved manually — all three tasks' additions verified coexisting, full 897-test backend suite + both tsc clean | 2026-07-27 | 9c0fb53 | [260727-bph-fix-driver-and-rider-dashboard-reachabil](./quick/260727-bph-fix-driver-and-rider-dashboard-reachabil/) |
 | 260727-c0m | Build a real host dashboard, replacing host.tsx's "Coming soon" stub — no property-creation UI existed anywhere in the app (mobile or web) before this. New backend: GET /properties/mine (host-scoped, deliberately no isActive filter so paused listings show), GET /properties/:id/bookings (ownership-checked, ForbiddenException on mismatch); CreatePropertyDto/UpdatePropertyDto now import PropertyType/BookingMode from @prisma/client (all 11/4 values, was hand-copied to only 5) plus bookingMode/pricePerHour/membershipMonthlyPrice/highlights/category/coverImageUrl/isActive. New mobile screens: host-dashboard.tsx, property-create.tsx, property-edit/[id].tsx, property-bookings/[id].tsx, all gated on a silent ensureHostRole reconciliation (RolesGuard checks active role not registeredRoles[], so a host who switched roles elsewhere would otherwise 403). Clean auto-merge, no conflicts — full 904-test backend suite + both tsc clean | 2026-07-27 | d889e79 | [260727-c0m-build-a-real-host-dashboard-with-propert](./quick/260727-c0m-build-a-real-host-dashboard-with-propert/) |
 | 260727-c41 | Backend-only foundation for the vendor/organiser mobile management screens (Tasks 6-7, next): GET /vendors/me, GET /products/mine (no isActive filter, unlike the public list), GET /orders/vendor (vendor order-fulfillment queue, previously nonexistent — only a buyer-facing GET /orders/mine existed), POST /users/me/become-organiser (mirrors becomeHost — ORGANISER was already self-registerable at signup but had no way for an existing user to add it), GET /events/mine (organiser's own events at ANY status, unlike the public PUBLISHED-only list, so DRAFT/PENDING_APPROVAL events are manageable). All five routes scope exclusively from the JWT subject, no client-supplied vendor/organiser id accepted. Clean auto-merge against 260727-bph's becomeDriver in the same two files (both anchored relative to becomeGuide/eraseData per plan instructions) — full 912-test backend suite + tsc clean | 2026-07-27 | ff0eb1f | [260727-c41-add-backend-self-service-endpoints-get-v](./quick/260727-c41-add-backend-self-service-endpoints-get-v/) |
+| 260727-dcp | Redesign mobile auth entry per user direction: removed non-functional Apple/Google "coming soon" stubs from onboarding.tsx, made email the primary CTA (phone secondary); closed a real registration security gap — RegisterDto now requires a 6-digit otp field and AuthService.register() consumes it via the existing consumeValidOtp() helper before creating any email/password account; phone.tsx's Email OTP-channel option removed (SMS/WhatsApp only); register.tsx converted to an in-component two-step form→OTP flow (no new route file, password never crosses expo-router params) — full 913-test backend suite (2 unrelated flaky timeout failures in vendor-outage-isolation.spec.ts confirmed passing in isolation) + both tsc clean | 2026-07-27 | 985fdc0 | [260727-dcp-redesign-mobile-auth-entry-remove-apple-](./quick/260727-dcp-redesign-mobile-auth-entry-remove-apple-/) |
 
 ## Deferred Items
 
@@ -134,8 +135,8 @@ Items acknowledged and carried forward from previous milestone close. GRPC-06/07
 
 ## Session Continuity
 
-Last session: 2026-07-24T18:19:29Z
-Stopped at: Completed quick task 260724-hon-migrate-sendgridservice-s-internals-from
+Last session: 2026-07-27T10:06:21Z
+Stopped at: Completed quick task 260727-dcp-redesign-mobile-auth-entry-remove-apple-
 Resume file: none — next step is defining the next milestone
 
 ## Operator Next Steps
