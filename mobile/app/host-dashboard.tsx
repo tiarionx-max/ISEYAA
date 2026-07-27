@@ -7,7 +7,7 @@
  * Edit / View bookings actions and an Add listing CTA.
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -22,8 +22,9 @@ import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image as ExpoImage } from 'expo-image';
 import { Plus, Pencil, CalendarCheck, MapPin, PauseCircle } from 'lucide-react-native';
+import * as SecureStore from 'expo-secure-store';
 
-import { fetcher } from '../lib/api';
+import { api, fetcher } from '../lib/api';
 import { Chip } from '../components/ui/Chip';
 import { PressableScale } from '../components/ui/PressableScale';
 import {
@@ -69,6 +70,10 @@ interface HostProperty {
   address?: string;
 }
 
+interface Me {
+  role?: string;
+}
+
 // ── Helpers ──────────────────────────────────────────
 // Duplicated from mobile/app/(tabs)/book.tsx::formatPrice (not exported from that
 // file — this codebase's convention already duplicates such small pure helpers).
@@ -93,6 +98,18 @@ function formatPrice(p: HostProperty): { primary: string; suffix: string } {
 function typeBadgeLabel(type?: string): string {
   if (!type) return '';
   return type.charAt(0) + type.slice(1).toLowerCase();
+}
+
+// Reconciles the active role to HOST before the my-properties read fires — mirrors
+// the same-named helper in property-create.tsx used before writes.
+async function ensureHostRole(currentRole: string | undefined): Promise<void> {
+  if (currentRole !== 'HOST') {
+    const { data } = await api.patch('/users/me/role', { role: 'HOST' });
+    if (data?.accessToken && data?.refreshToken) {
+      await SecureStore.setItemAsync('access_token', data.accessToken);
+      await SecureStore.setItemAsync('refresh_token', data.refreshToken);
+    }
+  }
 }
 
 // ── Property row ─────────────────────────────────────
@@ -188,9 +205,22 @@ function PropertyRow({ item, index }: { item: HostProperty; index: number }) {
 // ── Screen ───────────────────────────────────────────
 
 export default function HostDashboardScreen(): JSX.Element {
+  const { data: me } = useQuery<Me>({
+    queryKey: ['me'],
+    queryFn: () => fetcher('/users/me'),
+  });
+  const [roleReconciled, setRoleReconciled] = useState(false);
+
+  useEffect(() => {
+    if (me && !roleReconciled) {
+      ensureHostRole(me.role).finally(() => setRoleReconciled(true));
+    }
+  }, [me, roleReconciled]);
+
   const { data, isLoading, isError } = useQuery<HostProperty[]>({
     queryKey: ['my-properties'],
     queryFn: () => fetcher('/properties/mine'),
+    enabled: roleReconciled,
   });
 
   const properties = data ?? [];
