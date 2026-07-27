@@ -15,14 +15,13 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import { Eye, EyeOff, Check, MessageSquare, MessageCircle } from 'lucide-react-native';
+import { Eye, EyeOff, Check } from 'lucide-react-native';
 import { api, getErrorMessage } from '../../lib/api';
 import { registerForPushNotifications } from '../../lib/push-notifications';
 import {
   SURFACE_DEEP,
   SURFACE_MID,
   GOLD,
-  GOLD_DIM,
   GOLD_LINE,
   CREAM,
   INK_MID,
@@ -31,13 +30,6 @@ import {
   FONT_DISPLAY,
   FONT_MONO,
 } from '../../lib/tokens';
-
-type OtpChannel = 'SMS' | 'WHATSAPP';
-
-const CHANNEL_OPTIONS: { value: OtpChannel; label: string; Icon: typeof MessageSquare }[] = [
-  { value: 'SMS', label: 'SMS', Icon: MessageSquare },
-  { value: 'WHATSAPP', label: 'WhatsApp', Icon: MessageCircle },
-];
 
 const OTP_LENGTH = 6;
 
@@ -51,7 +43,6 @@ export default function RegisterScreen() {
   const [consent, setConsent] = useState(false);
 
   const [step, setStep] = useState<'form' | 'otp'>('form');
-  const [channel, setChannel] = useState<OtpChannel>('SMS');
   const [otpCode, setOtpCode] = useState('');
   const [sendingOtp, setSendingOtp] = useState(false);
   const [verifying, setVerifying] = useState(false);
@@ -85,7 +76,12 @@ export default function RegisterScreen() {
     if (!isReady || sendingOtp) return;
     setSendingOtp(true);
     try {
-      await api.post('/auth/otp/send', { phone: formattedPhone, channel });
+      // Registration verifies via EMAIL, not phone SMS/WhatsApp — Termii/Twilio
+      // are not reliably deliverable in production right now. The OTP itself is
+      // still stored/validated server-side keyed by phone (channel only controls
+      // delivery), so this requires no backend change. Phone verification is
+      // deferred to a later, optional step from Profile.
+      await api.post('/auth/otp/send', { phone: formattedPhone, channel: 'EMAIL', email });
       setStep('otp');
       setCooldown(60);
     } catch (err: any) {
@@ -131,7 +127,7 @@ export default function RegisterScreen() {
 
   async function handleResendOtp() {
     try {
-      await api.post('/auth/otp/send', { phone: formattedPhone, channel });
+      await api.post('/auth/otp/send', { phone: formattedPhone, channel: 'EMAIL', email });
       setCooldown(60);
     } catch {
       Alert.alert('Error', 'Could not resend OTP.');
@@ -145,9 +141,11 @@ export default function RegisterScreen() {
   }
 
   const otpDigits = otpCode.padEnd(OTP_LENGTH, ' ').split('');
-  const maskedPhone = formattedPhone
-    ? `${formattedPhone.slice(0, 6)}•••${formattedPhone.slice(-3)}`
-    : 'your number';
+  const maskedEmail = (() => {
+    const at = email.indexOf('@');
+    if (at <= 1) return email || 'your email';
+    return `${email.slice(0, 2)}***${email.slice(at)}`;
+  })();
 
   return (
     <KeyboardAvoidingView
@@ -253,29 +251,6 @@ export default function RegisterScreen() {
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.channelLabel}>How should we verify your number?</Text>
-          <View style={styles.channelRow}>
-            {CHANNEL_OPTIONS.map(({ value, label, Icon }) => {
-              const selected = channel === value;
-              return (
-                <TouchableOpacity
-                  key={value}
-                  style={[styles.channelCard, selected && styles.channelCardSelected]}
-                  onPress={() => setChannel(value)}
-                  activeOpacity={0.85}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected }}
-                  accessibilityLabel={`${label} verification channel`}
-                >
-                  <Icon size={22} color={selected ? GOLD : INK_MID} />
-                  <Text style={[styles.channelCardLabel, selected && styles.channelCardLabelSelected]}>
-                    {label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
           {/* NDPA consent checkbox */}
           <TouchableOpacity
             style={styles.consentRow}
@@ -323,7 +298,7 @@ export default function RegisterScreen() {
         <View style={styles.content}>
           <Text style={styles.kicker}>VERIFY</Text>
           <Text style={styles.title}>Enter the{'\n'}<Text style={styles.titleItalic}>6-digit code</Text></Text>
-          <Text style={styles.sub}>Sent to {maskedPhone}</Text>
+          <Text style={styles.sub}>Sent to {maskedEmail}</Text>
 
           {/* OTP boxes — tap to focus hidden input */}
           <TouchableOpacity
@@ -470,41 +445,6 @@ const styles = StyleSheet.create({
     color: CREAM,
     letterSpacing: 1.5,
     height: '100%',
-  },
-  channelLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: INK_MID,
-    letterSpacing: 0.3,
-    marginBottom: 8,
-  },
-  channelRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 16,
-  },
-  channelCard: {
-    flex: 1,
-    height: 76,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    backgroundColor: SURFACE_MID,
-    borderColor: 'rgba(255,255,255,0.06)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  channelCardSelected: {
-    backgroundColor: GOLD_DIM,
-    borderColor: GOLD_LINE,
-  },
-  channelCardLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: INK_MID,
-  },
-  channelCardLabelSelected: {
-    color: GOLD,
   },
   consentRow: {
     flexDirection: 'row',

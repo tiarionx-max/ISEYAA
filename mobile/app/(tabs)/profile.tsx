@@ -49,6 +49,7 @@ import {
   LayoutDashboard,
   Megaphone,
   BarChart3,
+  PhoneCall,
   type LucideProps,
 } from 'lucide-react-native';
 
@@ -103,6 +104,7 @@ interface UserProfile {
   lastName?: string;
   phone?: string;
   role: string;
+  status?: string;
   createdAt?: string;
   // 08-07: host detection — backend GET /users/me returns these.
   registeredRoles?: string[];
@@ -598,6 +600,16 @@ export default function ProfileScreen() {
       sub: 'NIN · BVN · 2FA',
       onPress: () => router.push('/kyc' as any),
     },
+    ...(user?.status === 'PENDING'
+      ? [
+          {
+            icon: PhoneCall,
+            label: 'Verify Phone Number',
+            sub: 'Confirm your number to unlock full access',
+            onPress: () => router.push('/verify-phone' as any),
+          },
+        ]
+      : []),
     {
       icon: Megaphone,
       label: 'Organiser Tools',

@@ -50,6 +50,7 @@ export default function RootLayout() {
           <Stack.Screen name="change-password" options={{ title: 'Change Password', presentation: 'card' }} />
           <Stack.Screen name="driver-application" options={{ title: 'Become a Driver', presentation: 'card' }} />
           <Stack.Screen name="otp-channel-settings" options={{ headerShown: false, presentation: 'card' }} />
+          <Stack.Screen name="verify-phone" options={{ headerShown: false, presentation: 'card' }} />
           <Stack.Screen name="events/[id]" options={{ title: 'Event' }} />
           <Stack.Screen name="organiser-dashboard" options={{ title: 'My Events', presentation: 'card' }} />
           <Stack.Screen name="event-create" options={{ title: 'Create Event', presentation: 'card' }} />
