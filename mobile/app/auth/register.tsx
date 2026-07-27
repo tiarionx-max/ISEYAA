@@ -7,6 +7,7 @@ import {
   StyleSheet,
   StatusBar,
   KeyboardAvoidingView,
+  ScrollView,
   Platform,
   ActivityIndicator,
   Alert,
@@ -15,7 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import Svg, { Rect, Line, Circle } from 'react-native-svg';
-import { Eye, EyeOff } from 'lucide-react-native';
+import { Eye, EyeOff, Check } from 'lucide-react-native';
 import { api, getErrorMessage } from '../../lib/api';
 import { registerForPushNotifications } from '../../lib/push-notifications';
 import {
@@ -25,6 +26,7 @@ import {
   GOLD_LINE,
   CREAM,
   INK_MID,
+  BORDER,
   FONT_DISPLAY,
   FONT_MONO,
 } from '../../lib/tokens';
@@ -44,19 +46,45 @@ function AdireOrnament({ size = 160, opacity = 0.12 }: { size?: number; opacity?
   );
 }
 
-export default function EmailScreen() {
+export default function RegisterScreen() {
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [consent, setConsent] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const isReady = /\S+@\S+\.\S+/.test(email) && password.length >= 8;
+  const digitsOnly = phone.replace(/[^\d+]/g, '');
+  const formattedPhone = digitsOnly.startsWith('0')
+    ? `+234${digitsOnly.slice(1)}`
+    : digitsOnly.startsWith('+')
+    ? digitsOnly
+    : digitsOnly.length > 0
+    ? `+234${digitsOnly}`
+    : '';
 
-  async function handleSignIn() {
+  const isReady =
+    firstName.trim().length > 0 &&
+    lastName.trim().length > 0 &&
+    /\S+@\S+\.\S+/.test(email) &&
+    formattedPhone.length >= 13 &&
+    password.length >= 8 &&
+    consent;
+
+  async function handleRegister() {
     if (!isReady || loading) return;
     setLoading(true);
     try {
-      const res = await api.post('/auth/login', { identifier: email, password });
+      const res = await api.post('/auth/register', {
+        email,
+        phone: formattedPhone,
+        password,
+        firstName,
+        lastName,
+        ndpaConsent: consent,
+      });
       const payload = res.data?.data ?? res.data ?? {};
       const { accessToken, refreshToken } = payload;
       if (accessToken) {
@@ -68,8 +96,8 @@ export default function EmailScreen() {
         Alert.alert('Error', 'Unexpected response from server. Please try again.');
       }
     } catch (err: any) {
-      const msg = getErrorMessage(err, 'Invalid email or password.');
-      Alert.alert('Sign in failed', msg);
+      const msg = getErrorMessage(err, 'Registration failed. Please try again.');
+      Alert.alert('Registration failed', msg);
     } finally {
       setLoading(false);
     }
@@ -100,10 +128,37 @@ export default function EmailScreen() {
         <AdireOrnament />
       </View>
 
-      <View style={styles.content}>
-        <Text style={styles.kicker}>SIGN IN</Text>
-        <Text style={styles.title}>Your email{'\n'}<Text style={styles.titleItalic}>address</Text></Text>
-        <Text style={styles.sub}>Sign in with the email and password you registered with.</Text>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={styles.kicker}>CREATE ACCOUNT</Text>
+        <Text style={styles.title}>Your account{'\n'}<Text style={styles.titleItalic}>details</Text></Text>
+        <Text style={styles.sub}>Join Iṣẹ́yáá to book stays, buy tickets, and pay with your wallet.</Text>
+
+        <View style={[styles.inputWrapper, firstName.length > 0 && styles.inputWrapperActive]}>
+          <TextInput
+            style={styles.textInput}
+            placeholder="First name"
+            placeholderTextColor="rgba(245,237,214,0.25)"
+            autoCapitalize="words"
+            value={firstName}
+            onChangeText={setFirstName}
+            autoFocus
+          />
+        </View>
+
+        <View style={[styles.inputWrapper, lastName.length > 0 && styles.inputWrapperActive]}>
+          <TextInput
+            style={styles.textInput}
+            placeholder="Last name"
+            placeholderTextColor="rgba(245,237,214,0.25)"
+            autoCapitalize="words"
+            value={lastName}
+            onChangeText={setLastName}
+          />
+        </View>
 
         <View style={[styles.inputWrapper, email.length > 0 && styles.inputWrapperActive]}>
           <TextInput
@@ -115,7 +170,22 @@ export default function EmailScreen() {
             autoComplete="email"
             value={email}
             onChangeText={setEmail}
-            autoFocus
+          />
+        </View>
+
+        <View style={[styles.inputWrapper, phone.length > 0 && styles.inputWrapperActive]}>
+          <View style={styles.countryPill}>
+            <Text style={styles.flag}>🇳🇬</Text>
+            <Text style={styles.dialCode}>+234</Text>
+          </View>
+          <TextInput
+            style={styles.phoneInput}
+            placeholder="0801 234 5678"
+            placeholderTextColor="rgba(245,237,214,0.25)"
+            keyboardType="phone-pad"
+            value={phone}
+            onChangeText={setPhone}
+            maxLength={15}
           />
         </View>
 
@@ -126,7 +196,7 @@ export default function EmailScreen() {
             placeholderTextColor="rgba(245,237,214,0.25)"
             secureTextEntry={!showPassword}
             autoCapitalize="none"
-            autoComplete="current-password"
+            autoComplete="password-new"
             value={password}
             onChangeText={setPassword}
           />
@@ -140,38 +210,49 @@ export default function EmailScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* NDPA consent checkbox */}
+        <TouchableOpacity
+          style={styles.consentRow}
+          activeOpacity={0.7}
+          onPress={() => setConsent((c) => !c)}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: consent }}
+          accessibilityLabel="Consent to NDPA data processing"
+        >
+          <View style={[styles.consentBox, consent && styles.consentBoxChecked]}>
+            {consent && <Check size={14} color={SURFACE_DEEP} />}
+          </View>
+          <Text style={styles.consentText}>
+            I consent to processing of my personal data under the{' '}
+            <Text style={styles.consentTextHighlight}>Nigerian Data Protection Act (NDPA)</Text> as part of the
+            Iṣẹ́yáá platform.
+          </Text>
+        </TouchableOpacity>
+
         <TouchableOpacity
           style={[styles.cta, !isReady && styles.ctaDisabled]}
-          onPress={handleSignIn}
+          onPress={handleRegister}
           disabled={!isReady || loading}
           activeOpacity={0.85}
         >
           {loading
             ? <ActivityIndicator color="#050E0E" />
-            : <Text style={styles.ctaText}>Sign in →</Text>
+            : <Text style={styles.ctaText}>Create account →</Text>
           }
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={() => router.push('/auth/phone' as any)}
+          onPress={() => router.push('/auth/email' as any)}
           style={styles.altLink}
           activeOpacity={0.7}
         >
-          <Text style={styles.altLinkText}>Prefer a phone number? →</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={() => router.push('/auth/register' as any)}
-          style={styles.altLink}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.altLinkText}>Don't have an account? Sign up</Text>
+          <Text style={styles.altLinkText}>Already have an account? Sign in →</Text>
         </TouchableOpacity>
 
         <TouchableOpacity onPress={() => router.back()} style={styles.backLink} activeOpacity={0.7}>
           <Text style={styles.backLinkText}>← Back to welcome</Text>
         </TouchableOpacity>
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -186,11 +267,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 1,
   },
-  content: {
-    flex: 1,
+  scrollContent: {
+    flexGrow: 1,
     paddingHorizontal: 28,
     justifyContent: 'center',
-    paddingBottom: 50,
+    paddingTop: 100,
+    paddingBottom: 60,
   },
   kicker: {
     fontFamily: FONT_MONO,
@@ -239,6 +321,58 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: CREAM,
     height: '100%',
+  },
+  countryPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingRight: 10,
+    borderRightWidth: 1,
+    borderRightColor: GOLD_LINE,
+  },
+  flag: { fontSize: 18 },
+  dialCode: {
+    fontFamily: FONT_MONO,
+    fontSize: 13,
+    color: GOLD,
+    fontWeight: '600',
+  },
+  phoneInput: {
+    flex: 1,
+    fontSize: 20,
+    color: CREAM,
+    letterSpacing: 1.5,
+    height: '100%',
+  },
+  consentRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginBottom: 20,
+  },
+  consentBox: {
+    width: 20,
+    height: 20,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: BORDER,
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  consentBoxChecked: {
+    borderColor: GOLD,
+    backgroundColor: GOLD,
+  },
+  consentText: {
+    flex: 1,
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.50)',
+    lineHeight: 18,
+  },
+  consentTextHighlight: {
+    color: GOLD,
   },
   cta: {
     height: 56,

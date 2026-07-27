@@ -119,6 +119,14 @@ export default function OnboardingScreen() {
     }
   }
 
+  function handleRegisterPress() {
+    try {
+      router.push('/auth/register' as any);
+    } catch {
+      Alert.alert('Coming soon', 'Registration screen is not yet available.');
+    }
+  }
+
   function handleApplePress() {
     Alert.alert('Apple Sign In', 'Apple sign in coming soon.');
   }
@@ -231,6 +239,17 @@ export default function OnboardingScreen() {
           accessibilityLabel="Sign in with email instead"
         >
           <Text style={styles.emailLinkText}>Sign in with email instead</Text>
+        </TouchableOpacity>
+
+        {/* Registration entry point */}
+        <TouchableOpacity
+          style={styles.emailLink}
+          onPress={handleRegisterPress}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Create a new account"
+        >
+          <Text style={styles.emailLinkText}>New to Iṣẹ́yáá? Create an account</Text>
         </TouchableOpacity>
 
         {/* Terms */}
