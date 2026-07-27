@@ -58,6 +58,17 @@ interface Recipient {
 
 const NG_PHONE_RE = /^(\+234|0)\d{10}$/;
 
+// Every account is created via auth/phone.tsx, which always stores the phone
+// in +234-prefixed form (see auth/phone.tsx's formattedPhone). Backend lookups
+// (resolveRecipient, transfer) do an exact `where: { phone }` match with no
+// normalization, so a locally-conventional 0-prefixed number — which NG_PHONE_RE
+// accepts and the search placeholder itself suggests — must be converted to
+// +234 form before it's ever sent to the API, or a real registered recipient
+// will incorrectly show up as "not found".
+function normalizePhone(phone: string): string {
+  return phone.startsWith('0') ? `+234${phone.slice(1)}` : phone;
+}
+
 const AVATAR_TONES: AvatarTone[] = ['gold', 'forest', 'rock', 'dusk', 'indigo'];
 
 function toneForPhone(phone: string): AvatarTone {
@@ -134,6 +145,22 @@ export default function SendScreen() {
   const [selectedRecipient, setSelectedRecipient] = useState<Recipient | null>(null);
   const queryClient = useQueryClient();
 
+  // Idempotency key is memoized per logical transfer attempt (recipient + amount
+  // + note), not regenerated on every tap. If a request times out client-side
+  // after the backend already committed the debit, the "Try again" retry must
+  // resend the SAME key so WalletService.transfer's reference-based dedupe
+  // recognizes it and skips re-debiting. Only a genuine change to who/how much
+  // is being sent should mint a new key.
+  const pendingTransferRef = React.useRef<{ signature: string; idempotencyKey: string } | null>(null);
+  function getIdempotencyKey(signature: string): string {
+    if (pendingTransferRef.current?.signature === signature) {
+      return pendingTransferRef.current.idempotencyKey;
+    }
+    const idempotencyKey = generateIdempotencyKey();
+    pendingTransferRef.current = { signature, idempotencyKey };
+    return idempotencyKey;
+  }
+
   const { data: walletData } = useQuery({
     queryKey: ['wallet'],
     queryFn: () => fetcher('/wallet/balance'),
@@ -171,7 +198,7 @@ export default function SendScreen() {
   // ── Live recipient lookup as the user types a phone number ─────────────────
   const [debouncedPhone, setDebouncedPhone] = useState('');
   useEffect(() => {
-    const handle = setTimeout(() => setDebouncedPhone(phoneInput.trim()), 400);
+    const handle = setTimeout(() => setDebouncedPhone(normalizePhone(phoneInput.trim())), 400);
     return () => clearTimeout(handle);
   }, [phoneInput]);
 
@@ -211,11 +238,12 @@ export default function SendScreen() {
 
   function handleSend() {
     if (!canSend || !selectedRecipient || transferMutation.isPending) return;
+    const signature = `${selectedRecipient.phone}:${numAmount}:${note}`;
     transferMutation.mutate({
       recipientPhone: selectedRecipient.phone,
       amount: numAmount,
       narration: note || undefined,
-      idempotencyKey: generateIdempotencyKey(),
+      idempotencyKey: getIdempotencyKey(signature),
     });
   }
 
