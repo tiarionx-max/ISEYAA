@@ -7,8 +7,7 @@
  * library beyond plain bar-lists (mobile has no recharts/victory-native/etc —
  * confirmed via mobile/package.json), and the web's LGA×Month heatmap is
  * replaced with a "Top LGAs by visitor count" ranked list computed client-side
- * from the already-fetched visitor-entries data (zero extra network request —
- * appended in Task 2, below the Purpose Breakdown panel).
+ * from the already-fetched visitor-entries data (zero extra network request).
  *
  * There is no self-service path to the gated roles anywhere in this codebase
  * (confirmed via exhaustive grep) — this screen never renders a "become a
@@ -63,6 +62,29 @@ interface PurposeRow {
   purpose: string;
   month: string; // "YYYY-MM"
   count: number;
+}
+
+interface ModuleRevenueRow {
+  module: string;
+  total: number;
+}
+
+interface MonthRevenueRow {
+  month: string;
+  total: number;
+}
+
+interface ModuleLgaRevenueRow {
+  module: string;
+  lgaId: string | null;
+  lgaName: string | null;
+  total: number;
+}
+
+interface RevenueData {
+  byModule: ModuleRevenueRow[];
+  byMonth: MonthRevenueRow[];
+  byModuleLga: ModuleLgaRevenueRow[];
 }
 
 interface LgaOption {
@@ -204,6 +226,13 @@ export default function MinistryDashboardScreen(): JSX.Element {
     enabled: canViewMinistry,
   });
 
+  // No lgaParam here — GET /ministry/revenue does not accept an lgaId query param.
+  const { data: revenue, isLoading: revenueLoading } = useQuery<RevenueData>({
+    queryKey: ['ministry-revenue', from, to],
+    queryFn: () => fetcher(`/ministry/revenue?from=${from}&to=${to}`),
+    enabled: canViewMinistry,
+  });
+
   if (meLoading || !canViewMinistry) {
     return (
       <SafeAreaView style={[styles.root, styles.centered]} edges={['bottom']}>
@@ -232,6 +261,35 @@ export default function MinistryDashboardScreen(): JSX.Element {
     value: agg.total,
     valueLabel: String(agg.total),
   }));
+
+  // Mirrors the web page's own empty-state check for the ministry-wallet-unresolved
+  // degradation case (backend returns {byModule:[],byMonth:[],byModuleLga:[]}, never an error).
+  const revenueIsEmpty =
+    !!revenue && revenue.byModule.length === 0 && revenue.byMonth.length === 0 && revenue.byModuleLga.length === 0;
+
+  const revenueByModuleEntries: BarListEntry[] = (revenue?.byModule ?? [])
+    .slice()
+    .sort((a, b) => b.total - a.total)
+    .map((row) => ({ key: row.module, label: row.module, value: row.total, valueLabel: formatCurrency(row.total) }));
+
+  const revenueByMonthEntries: BarListEntry[] = (revenue?.byMonth ?? [])
+    .slice()
+    .sort((a, b) => a.month.localeCompare(b.month))
+    .map((row) => ({ key: row.month, label: row.month, value: row.total, valueLabel: formatCurrency(row.total) }));
+
+  const revenueByLgaMap = new Map<string, number>();
+  for (const row of revenue?.byModuleLga ?? []) {
+    const lgaName = row.lgaName ?? 'Unknown';
+    revenueByLgaMap.set(lgaName, (revenueByLgaMap.get(lgaName) ?? 0) + row.total);
+  }
+  const revenueByLgaEntries: BarListEntry[] = Array.from(revenueByLgaMap.entries())
+    .map(([lgaName, total]) => ({ key: lgaName, label: lgaName, value: total, valueLabel: formatCurrency(total) }))
+    .sort((a, b) => b.value - a.value);
+
+  // Top LGAs panel reuses the already-fetched visitorLgaAgg (from Task 1's
+  // aggregateVisitorEntriesByLga) — zero additional network request.
+  const topLgas = visitorLgaAgg.slice(0, 10);
+  const topLgaMax = Math.max(1, ...topLgas.map((l) => l.total));
 
   return (
     <SafeAreaView style={styles.root} edges={['bottom']}>
@@ -328,7 +386,69 @@ export default function MinistryDashboardScreen(): JSX.Element {
           )}
         </View>
 
-        {/* Task 2 appends the Revenue panel and Top-LGAs panel here, below Purpose Breakdown, in this same ScrollView. */}
+        {/* Revenue panel */}
+        <View style={styles.panel}>
+          <Text style={styles.panelTitle}>Revenue to government</Text>
+          {revenueLoading ? (
+            <ActivityIndicator color={GOLD} />
+          ) : revenueIsEmpty ? (
+            <Text style={styles.emptyText}>No revenue data for this period.</Text>
+          ) : (
+            <View style={styles.revenueSubsections}>
+              <View style={styles.revenueSubsection}>
+                <Text style={styles.revenueSubsectionTitle}>By module</Text>
+                {revenueByModuleEntries.length === 0 ? (
+                  <Text style={styles.emptyText}>No data.</Text>
+                ) : (
+                  <BarList entries={revenueByModuleEntries} />
+                )}
+              </View>
+              <View style={styles.revenueSubsection}>
+                <Text style={styles.revenueSubsectionTitle}>By month</Text>
+                {revenueByMonthEntries.length === 0 ? (
+                  <Text style={styles.emptyText}>No data.</Text>
+                ) : (
+                  <BarList entries={revenueByMonthEntries} />
+                )}
+              </View>
+              <View style={styles.revenueSubsection}>
+                <Text style={styles.revenueSubsectionTitle}>By LGA (stays, marketplace, tours)</Text>
+                {revenueByLgaEntries.length === 0 ? (
+                  <Text style={styles.emptyText}>No data.</Text>
+                ) : (
+                  <BarList entries={revenueByLgaEntries} />
+                )}
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* Top LGAs panel — replaces the web's LGA×Month heatmap (screen width
+            cannot fit that grid); reuses the already-fetched visitorEntries
+            data, zero additional network request. */}
+        <View style={styles.panel}>
+          <Text style={styles.panelTitle}>Top LGAs by visitor count</Text>
+          {visitorEntriesLoading ? (
+            <ActivityIndicator color={GOLD} />
+          ) : topLgas.length === 0 ? (
+            <Text style={styles.emptyText}>No visitor data to rank.</Text>
+          ) : (
+            <View style={styles.chartList}>
+              {topLgas.map((lga, idx) => (
+                <View key={lga.lgaName} style={styles.rankRow}>
+                  <Text style={styles.rankBadge}>#{idx + 1}</Text>
+                  <Text style={styles.chartRowLabel} numberOfLines={1}>
+                    {lga.lgaName}
+                  </Text>
+                  <View style={styles.barTrack}>
+                    <View style={[styles.barFill, { width: `${(lga.total / topLgaMax) * 100}%` }]} />
+                  </View>
+                  <Text style={styles.chartRowCount}>{lga.total}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -369,6 +489,10 @@ const styles = StyleSheet.create({
   panelTitle: { ...TYPE.bodyEmphasis, fontSize: 15, color: INK },
   emptyText: { ...TYPE.body, color: INK_MID },
 
+  revenueSubsections: { gap: SPACE_4 },
+  revenueSubsection: { gap: SPACE_2 },
+  revenueSubsectionTitle: { fontFamily: FONT_UI, fontSize: 12.5, fontWeight: '700', color: INK_MID },
+
   chartList: { gap: SPACE_3 },
   chartRowWrap: { gap: 4 },
   chartRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE_3 },
@@ -385,4 +509,7 @@ const styles = StyleSheet.create({
   },
   barFill: { height: '100%', backgroundColor: GOLD, borderRadius: RADIUS_MD },
   chartRowCount: { fontFamily: FONT_MONO, fontSize: 12, fontWeight: '700', color: GOLD, width: 64, textAlign: 'right' },
+
+  rankRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE_3 },
+  rankBadge: { fontFamily: FONT_MONO, fontSize: 11, fontWeight: '700', color: GOLD, width: 28 },
 });
