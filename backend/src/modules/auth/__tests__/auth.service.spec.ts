@@ -96,6 +96,7 @@ describe('AuthService', () => {
     const dto = {
       email: 'test@example.com',
       phone: '+2348012345678',
+      otp: '123456',
       password: 'Password123',
       firstName: 'Toye',
       lastName: 'Folayan',
@@ -113,6 +114,9 @@ describe('AuthService', () => {
 
     it('creates user and returns tokens', async () => {
       mockPrisma.user.findFirst.mockResolvedValue(null);
+      mockRedis.exists.mockResolvedValue(false);
+      mockRedis.get.mockResolvedValue('123456:0:SMS:');
+      mockRedis.del.mockResolvedValue(undefined);
       mockPrisma.user.create.mockResolvedValue({
         id: 'user-1',
         email: dto.email,
@@ -134,6 +138,12 @@ describe('AuthService', () => {
           data: expect.objectContaining({ ndpaConsent: true, ndpaConsentAt: expect.any(Date) }),
         }),
       );
+    });
+
+    it('throws BadRequestException when otp is invalid or expired', async () => {
+      mockRedis.exists.mockResolvedValue(false);
+      mockRedis.get.mockResolvedValue(null);
+      await expect(service.register(dto)).rejects.toThrow(BadRequestException);
     });
   });
 

@@ -74,6 +74,8 @@ export class AuthService {
     });
     if (existing) throw new ConflictException('Email or phone already registered');
 
+    await this.consumeValidOtp(dto.phone, dto.otp);
+
     const role = dto.role ?? UserRole.CITIZEN;
     const passwordHash = await bcrypt.hash(dto.password, 12);
 
