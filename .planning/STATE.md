@@ -5,7 +5,7 @@ milestone_name: — Extraction Backlog Clearance & Settlement Flexibility
 status: Awaiting next milestone
 stopped_at: Phase 22 UI-SPEC approved
 last_updated: "2026-07-27T09:47:23Z"
-last_activity: 2026-07-27 - Completed quick task 260727-bhw: Add mobile profile edit screen (avatar upload + name edit) and account-deletion Danger Zone
+last_activity: 2026-07-27 - Completed quick task 260727-bgr: Add phone-OTP password recovery, change-password, and server-side logout revocation
 progress:
   total_phases: 5
   completed_phases: 5
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-07-19)
 Phase: Milestone v2.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-07-27 - Completed quick task 260727-bhw: Add mobile profile edit screen (avatar upload + name edit) and account-deletion Danger Zone
+Last activity: 2026-07-27 - Completed quick task 260727-bgr: Add phone-OTP password recovery, change-password, and server-side logout revocation
 
 ## Current Status
 
@@ -108,6 +108,7 @@ None currently open for active work — 2 pre-existing todo files (add-compile-s
 | 260727-8v6 | Add vendor product image upload (POST /products/:id/images, reuses ImageService.resizeProduct + S3Service, vendor-ownership gated) and admin attraction image upload (POST admin/attractions/:id/images, role-gated only — attractions have no creator field); wire mobile to display real photos (events detail hero, events list cards, Discover attraction cards) via expo-image with gradient fallback; configure Android notification icon (placeholder asset + app.json plugin config) — closes the remaining two gaps from the design-team asset brief. Executor worktree was found based on a stale pre-session commit (ffe4282) rather than current HEAD; verified via manual dry-run merge + full backend suite (886 tests) before committing | 2026-07-27 | 9a7edbe | [260727-8v6-build-marketplace-tourism-image-upload-e](./quick/260727-8v6-build-marketplace-tourism-image-upload-e/) |
 | 260727-aym | Add mobile email+password registration screen (mobile/app/auth/register.tsx) — user pointed out email.tsx (built earlier same day) only supported sign-in for existing users, no way to create a new account via email on mobile (only phone/OTP auto-registers). New screen collects firstName/lastName/email/phone/password + NDPA consent checkbox, posts to the already-complete POST /auth/register, stores tokens on success; linked from onboarding.tsx and email.tsx. Followed by a mobile completeness audit — see Blockers/Concerns for the ongoing fix sequence | 2026-07-27 | 732a4a9 | [260727-aym-add-mobile-email-password-registration-s](./quick/260727-aym-add-mobile-email-password-registration-s/) |
 | 260727-bhw | Add mobile Edit Profile screen (mobile/app/profile-edit.tsx) — firstName/lastName editing via existing PATCH /users/me, avatar picker+upload via expo-image-picker + existing POST /users/me/avatar, AvatarRing updated to render the real photo with initials fallback; and a visually-separated, explicitly-confirmed "Danger Zone" account-deletion action on the Profile tab calling the existing DELETE /users/me/data (NDPA right-to-erasure), best-effort revoking the refresh token then clearing local session and returning to onboarding. No backend changes — both endpoints were already complete | 2026-07-27 | 46f19c6 | [260727-bhw-add-mobile-profile-edit-screen-with-avat](./quick/260727-bhw-add-mobile-profile-edit-screen-with-avat/) |
+| 260727-bgr | Add phone-OTP password recovery (POST /auth/reset-password, new shared consumeValidOtp helper extracted from verifyOtp, byte-identical behavior preserved), change-password while logged in (PATCH /users/me/password), and server-side logout revocation (mobile now calls POST /auth/logout with the stored refresh token before clearing SecureStore). New mobile screens: auth/forgot-password.tsx, auth/reset-password.tsx, change-password.tsx. Real merge conflicts against 260727-bhw in profile.tsx/_layout.tsx (both touched the same import lines and icon list) resolved manually — both features' additions verified coexisting via grep + full 894-test backend suite + mobile tsc | 2026-07-27 | 336e3ff | [260727-bgr-add-password-recovery-via-phone-otp-chan](./quick/260727-bgr-add-password-recovery-via-phone-otp-chan/) |
 
 ## Deferred Items
 
