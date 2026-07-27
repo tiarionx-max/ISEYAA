@@ -160,6 +160,14 @@ export default function EmailScreen() {
           <Text style={styles.altLinkText}>Prefer a phone number? →</Text>
         </TouchableOpacity>
 
+        <TouchableOpacity
+          onPress={() => router.push('/auth/register' as any)}
+          style={styles.altLink}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.altLinkText}>Don't have an account? Sign up</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity onPress={() => router.back()} style={styles.backLink} activeOpacity={0.7}>
           <Text style={styles.backLinkText}>← Back to welcome</Text>
         </TouchableOpacity>
