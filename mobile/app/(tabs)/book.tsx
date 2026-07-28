@@ -25,6 +25,7 @@ import {
   TouchableOpacity,
   Dimensions,
   ListRenderItemInfo,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
@@ -758,7 +759,12 @@ export default function BookScreen() {
       </View>
 
       {/* Sub-section switcher */}
-      <View style={styles.switcherWrap}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.switcherWrap}
+        style={styles.switcherScroll}
+      >
         {SECTIONS.map((s) => (
           <View key={s.id} style={styles.switcherItem}>
             <Chip
@@ -768,7 +774,7 @@ export default function BookScreen() {
             />
           </View>
         ))}
-      </View>
+      </ScrollView>
 
       {/* Active sub-section */}
       <View style={styles.sectionHost}>
@@ -829,14 +835,18 @@ const styles = StyleSheet.create({
     color: SURFACE_DEEP,
   },
 
-  // Sub-section switcher
+  // Sub-section switcher — horizontally scrollable so all 5 chips are reachable
+  // even when they don't all fit on screen (previously a plain non-scrolling row).
+  switcherScroll: {
+    flexGrow: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: BORDER_SUBTLE,
+  },
   switcherWrap: {
     flexDirection: 'row',
     paddingHorizontal: SPACE_4,
     paddingVertical: 8,
     gap: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: BORDER_SUBTLE,
   },
   switcherItem: {
     // Wrapper enforces 44pt touch target around the inner Chip body.
