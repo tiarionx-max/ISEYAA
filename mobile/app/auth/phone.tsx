@@ -13,13 +13,11 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { MessageSquare, MessageCircle } from 'lucide-react-native';
 import { api, getErrorMessage } from '../../lib/api';
 import {
   SURFACE_DEEP,
   SURFACE_MID,
   GOLD,
-  GOLD_DIM,
   GOLD_LINE,
   CREAM,
   INK_MID,
@@ -27,17 +25,9 @@ import {
   FONT_MONO,
 } from '../../lib/tokens';
 
-type OtpChannel = 'SMS' | 'WHATSAPP';
-
-const CHANNEL_OPTIONS: { value: OtpChannel; label: string; Icon: typeof MessageSquare }[] = [
-  { value: 'SMS', label: 'SMS', Icon: MessageSquare },
-  { value: 'WHATSAPP', label: 'WhatsApp', Icon: MessageCircle },
-];
-
 export default function PhoneScreen() {
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
-  const [channel, setChannel] = useState<OtpChannel>('SMS');
 
   const digitsOnly = phone.replace(/[^\d+]/g, '');
   const formattedPhone = digitsOnly.startsWith('0')
@@ -57,7 +47,7 @@ export default function PhoneScreen() {
     try {
       const res = await api.post('/auth/otp/send', {
         phone: formattedPhone,
-        channel,
+        channel: 'SMS',
       });
       const payload = res.data?.data ?? res.data ?? {};
       const fallbackUsed = payload.fallbackUsed === true;
@@ -116,29 +106,6 @@ export default function PhoneScreen() {
             maxLength={15}
             autoFocus
           />
-        </View>
-
-        <Text style={styles.channelLabel}>How should we reach you?</Text>
-        <View style={styles.channelRow}>
-          {CHANNEL_OPTIONS.map(({ value, label, Icon }) => {
-            const selected = channel === value;
-            return (
-              <TouchableOpacity
-                key={value}
-                style={[styles.channelCard, selected && styles.channelCardSelected]}
-                onPress={() => setChannel(value)}
-                activeOpacity={0.85}
-                accessibilityRole="radio"
-                accessibilityState={{ selected }}
-                accessibilityLabel={`${label} verification channel`}
-              >
-                <Icon size={22} color={selected ? GOLD : INK_MID} />
-                <Text style={[styles.channelCardLabel, selected && styles.channelCardLabelSelected]}>
-                  {label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
         </View>
 
         <TouchableOpacity
@@ -210,41 +177,6 @@ const styles = StyleSheet.create({
   },
   inputWrapperActive: {
     borderColor: GOLD_LINE,
-  },
-  channelLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: INK_MID,
-    letterSpacing: 0.3,
-    marginBottom: 8,
-  },
-  channelRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 16,
-  },
-  channelCard: {
-    flex: 1,
-    height: 76,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    backgroundColor: SURFACE_MID,
-    borderColor: 'rgba(255,255,255,0.06)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  channelCardSelected: {
-    backgroundColor: GOLD_DIM,
-    borderColor: GOLD_LINE,
-  },
-  channelCardLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: INK_MID,
-  },
-  channelCardLabelSelected: {
-    color: GOLD,
   },
   countryPill: {
     flexDirection: 'row',

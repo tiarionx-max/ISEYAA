@@ -79,8 +79,10 @@ FLUTTERWAVE_SECRET_KEY="FLWSECK_TEST-..."
 # Messaging — SendgridService's internals now send via Resend (SENDGRID_API_KEY is unused)
 SENDGRID_FROM_EMAIL="noreply@iseyaa.gov.ng"
 RESEND_API_KEY="re_xxxx..."
-TERMII_API_KEY="TL..."
-TERMII_SENDER_ID="ISEYAA"
+
+# Messaging — SMS/OTP (Sendchamp — replaces Termii/Twilio/Meta WhatsApp, all rejected/blocked)
+SENDCHAMP_API_KEY="sendchamp_live_..."
+SENDCHAMP_SENDER_NAME="Sendchamp"
 
 # Maps
 GOOGLE_MAPS_API_KEY="AIza..."

@@ -18,12 +18,12 @@
   - Auth: `GOOGLE_MAPS_API_KEY`
 
 **SMS / OTP:**
-- Termii (v3 API) — Phone number OTP verification for citizen onboarding
-  - SDK/Client: Native `fetch` call to `https://v3.api.termii.com/api/sms/send`
-  - Auth: `TERMII_API_KEY`
-  - Sender ID: `TERMII_SENDER_ID` (default: `ISEYAA`)
-  - Implementation: `backend/src/modules/auth/auth.service.ts` (`sendTermii` private method)
-  - Fallback: If `TERMII_API_KEY` is absent, OTP is logged as a warning (dev stub)
+- Sendchamp — Phone number OTP verification for citizen onboarding (replaces Termii/Twilio/Meta WhatsApp — all rejected/blocked, 260728)
+  - SDK/Client: Native `fetch` call to `https://api.sendchamp.com/api/v1/sms/send`
+  - Auth: `SENDCHAMP_API_KEY` (Bearer token)
+  - Sender name: `SENDCHAMP_SENDER_NAME` (default: `Sendchamp`)
+  - Implementation: `backend/src/modules/auth/auth.service.ts` (`sendSendchampSms` private method), `backend/src/modules/delivery/delivery.service.ts` (`sendDeliveryOtp` private method)
+  - Fallback: If `SENDCHAMP_API_KEY` is absent, OTP is logged as a warning (dev stub). WHATSAPP-channel OTP requests are also delivered via this SMS path — Sendchamp's WhatsApp channel needs a separately-approved message template not yet set up
 
 **Push Notifications:**
 - Firebase Cloud Messaging (FCM) — Mobile push notifications for booking/ticket confirmations
@@ -87,7 +87,7 @@
   - Plugin: `expo-secure-store` ~13.0.x (declared in `app.json` plugins)
 
 **KYC / Identity Verification:**
-- Phone-based OTP (Termii) — Tier-1 KYC, required for wallet funding (daily limit ₦50,000)
+- Phone-based OTP (Sendchamp) — Tier-1 KYC, required for wallet funding (daily limit ₦50,000)
 - NIN / BVN verification fields — Tier-2 KYC (daily wallet limit ₦500,000); verification logic in `backend/src/modules/wallet/wallet.service.ts`
 - NDPA consent — Required at registration (`User.ndpaConsent`, `User.ndpaConsentAt`)
 
@@ -161,7 +161,7 @@
 **Outgoing:**
 - Paystack `callback_url` — optional parameter on `initiatePayment` (`backend/src/common/services/paystack.service.ts`); not globally configured
 - FCM push — outgoing HTTP to `https://fcm.googleapis.com/fcm/send`
-- Termii SMS — outgoing HTTP to `https://v3.api.termii.com/api/sms/send`
+- Sendchamp SMS — outgoing HTTP to `https://api.sendchamp.com/api/v1/sms/send`
 
 ## Environment Configuration
 
@@ -185,8 +185,8 @@
 | `AWS_CLOUDFRONT_URL` | backend | CDN prefix for media URLs |
 | `SENDGRID_API_KEY` | backend | Transactional email |
 | `SENDGRID_FROM_EMAIL` | backend | Email sender address |
-| `TERMII_API_KEY` | backend | OTP SMS delivery |
-| `TERMII_SENDER_ID` | backend | SMS sender ID |
+| `SENDCHAMP_API_KEY` | backend | OTP SMS delivery |
+| `SENDCHAMP_SENDER_NAME` | backend | SMS sender name |
 | `FIREBASE_SERVER_KEY` | backend | FCM push notifications |
 | `GOOGLE_MAPS_API_KEY` | web | Google Maps embeds |
 | `NEXT_PUBLIC_API_URL` | web | Backend API base URL |

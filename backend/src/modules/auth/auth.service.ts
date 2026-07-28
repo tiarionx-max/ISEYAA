@@ -184,8 +184,12 @@ export class AuthService {
     email?: string,
     firstName?: string,
   ): Promise<boolean> {
-    if (channel === OtpChannel.SMS) {
-      const delivered = await this.sendTermii(phone, otp);
+    // WHATSAPP shares the SMS delivery path for now — Sendchamp's WhatsApp channel
+    // needs a pre-approved message template that hasn't been set up yet (Termii,
+    // Twilio, and Meta WhatsApp direct integration were all retired — 260728 SMS
+    // provider migration). SMS delivery works either way.
+    if (channel === OtpChannel.SMS || channel === OtpChannel.WHATSAPP) {
+      const delivered = await this.sendSendchampSms(phone, otp);
       if (!delivered) {
         throw new ServiceUnavailableException(
           'We could not send your verification code right now. Please try again in a few minutes.',
@@ -195,17 +199,13 @@ export class AuthService {
     }
 
     try {
-      if (channel === OtpChannel.WHATSAPP) {
-        await this.sendMetaWhatsapp(phone, otp);
-      } else if (channel === OtpChannel.EMAIL) {
-        await this.resilience.execute('sendgrid', () =>
-          this.sendgrid.sendOtpEmail(email!, firstName ?? 'there', otp),
-        );
-      }
+      await this.resilience.execute('sendgrid', () =>
+        this.sendgrid.sendOtpEmail(email!, firstName ?? 'there', otp),
+      );
       return false;
     } catch (err) {
       this.logger.error(`${channel} OTP dispatch failed — falling back to SMS`, err);
-      const delivered = await this.sendTermii(phone, otp);
+      const delivered = await this.sendSendchampSms(phone, otp);
       if (!delivered) {
         throw new ServiceUnavailableException(
           'We could not send your verification code right now. Please try again in a few minutes.',
@@ -213,45 +213,6 @@ export class AuthService {
       }
       return true;
     }
-  }
-
-  private async sendMetaWhatsapp(phone: string, otp: string): Promise<void> {
-    const accessToken = this.config.get<string>('META_WHATSAPP_ACCESS_TOKEN');
-    const phoneNumberId = this.config.get<string>('META_WHATSAPP_PHONE_NUMBER_ID');
-    const templateName = this.config.get<string>('META_WHATSAPP_TEMPLATE_NAME');
-    const templateLangCode = this.config.get<string>('META_WHATSAPP_TEMPLATE_LANG', 'en_US');
-
-    if (!accessToken || !phoneNumberId || !templateName) {
-      throw new Error('Meta WhatsApp credentials not configured');
-    }
-
-    const response = await this.resilience.execute('metaWhatsapp', ({ signal }) =>
-      fetch(`https://graph.facebook.com/v23.0/${phoneNumberId}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-        body: JSON.stringify({
-          messaging_product: 'whatsapp',
-          recipient_type: 'individual',
-          to: phone.replace('+', ''),
-          type: 'template',
-          template: {
-            name: templateName,
-            language: { code: templateLangCode },
-            components: [
-              { type: 'body', parameters: [{ type: 'text', text: otp }] },
-              { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: otp }] },
-            ],
-          },
-        }),
-        signal,
-      }),
-    );
-    if (!response.ok) {
-      const body = await response.text();
-      this.logger.error(`Meta WhatsApp error: ${response.status} ${body}`);
-      throw new Error(`Meta WhatsApp send failed: ${response.status}`);
-    }
-    this.logger.log(`OTP sent via WhatsApp to ${phone}`);
   }
 
   /**
@@ -303,9 +264,8 @@ export class AuthService {
   /**
    * Verify a phone OTP and set a new password, auto-signing the user in — mirrors
    * register()'s auto-login-after-creation pattern. Password reset uses the phone
-   * OTP channel (not email) since Resend/SendGrid email delivery is not yet
-   * production-provisioned; the Termii/Meta SMS/WhatsApp OTP pipeline is already
-   * proven for phone login/registration.
+   * OTP channel (not email) since it mirrors phone login/registration's existing,
+   * already-proven Sendchamp SMS OTP pipeline.
    */
   async resetPassword(dto: ResetPasswordDto, ip?: string, ua?: string) {
     await this.consumeValidOtp(dto.phone, dto.otp);
@@ -469,96 +429,44 @@ export class AuthService {
   }
 
   /**
-   * Returns true when the OTP was actually delivered (Termii, Twilio, or the
-   * no-credentials-configured dev stub — the stub is a deliberate local-dev
-   * no-op, not a failure). Returns false only when credentials WERE configured
-   * for at least one provider but every attempt genuinely failed — the caller
-   * must treat that as a real delivery failure, not silently report success.
+   * Returns true when the OTP was actually delivered via Sendchamp, or via the
+   * no-credentials-configured dev stub (deliberate local-dev no-op, not a failure).
+   * Returns false only when SENDCHAMP_API_KEY was configured and the send
+   * genuinely failed — the caller must treat that as a real delivery failure,
+   * not silently report success.
    */
-  private async sendTermii(phone: string, otp: string): Promise<boolean> {
-    const termiiKey = this.config.get<string>('TERMII_API_KEY');
-    let attempted = false;
-
-    if (termiiKey) {
-      attempted = true;
-      const smsSender = this.config.get<string>('TERMII_SENDER_ID', '');
-
-      const channel = smsSender ? 'generic' : 'dnd';
-      const from = smsSender || 'N-Alert';
-
-      try {
-        const response = await this.resilience.execute('termiiAuth', ({ signal }) =>
-          fetch('https://v3.api.termii.com/api/sms/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              to: phone,
-              from,
-              sms: `Your Iṣẹ́yáá verification code is ${otp}. Valid for 5 minutes. Do not share.`,
-              type: 'plain',
-              channel,
-              api_key: termiiKey,
-            }),
-            signal,
-          }),
-        );
-        if (response.ok) {
-          this.logger.log(`OTP sent via Termii (${channel}) to ${phone}`);
-          return true;
-        }
-        this.logger.error(`Termii error: ${response.status} ${await response.text()} — falling back to Twilio`);
-      } catch (err) {
-        this.logger.error('Termii request failed — falling back to Twilio', err);
-      }
+  private async sendSendchampSms(phone: string, otp: string): Promise<boolean> {
+    const apiKey = this.config.get<string>('SENDCHAMP_API_KEY');
+    if (!apiKey) {
+      this.logger.warn(`[SMS STUB] OTP ${otp} for ${phone} — configure SENDCHAMP_API_KEY to send live SMS`);
+      return true;
     }
 
-    // Twilio fallback (trial accounts cannot send to unverified Nigerian numbers; use Termii above for NG)
-    const twilioSid = this.config.get<string>('TWILIO_ACCOUNT_SID');
-    const twilioToken = this.config.get<string>('TWILIO_AUTH_TOKEN');
-    const twilioFrom = this.config.get<string>('TWILIO_FROM_NUMBER');
+    const senderName = this.config.get<string>('SENDCHAMP_SENDER_NAME', 'Sendchamp');
+    const route = phone.startsWith('+234') ? 'dnd' : 'international';
 
-    if (twilioSid && twilioToken && twilioFrom) {
-      attempted = true;
-      const delivered = await this.sendTwilio(phone, otp, twilioSid, twilioToken, twilioFrom);
-      if (delivered) return true;
-    }
-
-    if (attempted) {
-      // At least one real provider was configured and every attempt failed —
-      // this is a genuine production delivery failure, not the dev stub case.
-      return false;
-    }
-
-    this.logger.warn(`[SMS STUB] OTP ${otp} for ${phone} — configure TERMII_API_KEY or TWILIO_* to send live SMS`);
-    return true;
-  }
-
-  private async sendTwilio(phone: string, otp: string, sid: string, token: string, from: string): Promise<boolean> {
     try {
-      const body = new URLSearchParams({
-        To: phone,
-        From: from,
-        Body: `Your Iṣẹ́yáá verification code is ${otp}. Valid for 5 minutes. Do not share.`,
-      });
-      const response = await fetch(
-        `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`,
-        {
+      const response = await this.resilience.execute('sendchampAuth', ({ signal }) =>
+        fetch('https://api.sendchamp.com/api/v1/sms/send', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            Authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString('base64')}`,
-          },
-          body: body.toString(),
-        },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+          body: JSON.stringify({
+            to: [phone],
+            message: `Your Iṣẹ́yáá verification code is ${otp}. Valid for 5 minutes. Do not share.`,
+            sender_name: senderName,
+            route,
+          }),
+          signal,
+        }),
       );
       if (!response.ok) {
-        this.logger.error(`Twilio error: ${response.status} ${await response.text()}`);
+        this.logger.error(`Sendchamp error: ${response.status} ${await response.text()}`);
         return false;
       }
-      this.logger.log(`SMS sent via Twilio to ${phone}`);
+      this.logger.log(`OTP sent via Sendchamp to ${phone}`);
       return true;
     } catch (err) {
-      this.logger.error('Twilio request failed', err);
+      this.logger.error('Sendchamp request failed', err);
       return false;
     }
   }

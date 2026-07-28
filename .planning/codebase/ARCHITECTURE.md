@@ -159,7 +159,7 @@
 
 ### OTP Phone Verification Flow
 
-1. `POST /api/v1/auth/otp/send` → Redis stores `otp:{phone}` with 5-min TTL; Termii SMS sent if `TERMII_API_KEY` set
+1. `POST /api/v1/auth/otp/send` → Redis stores `otp:{phone}` with 5-min TTL; Sendchamp SMS sent if `SENDCHAMP_API_KEY` set
 2. `POST /api/v1/auth/otp/verify` → Redis validated; on success, `user.status` set to `ACTIVE` in PostgreSQL
 3. Lock applied in Redis (`otp_lock:{phone}`, 15-min TTL) after 3 failed attempts
 
@@ -264,7 +264,7 @@
 
 **Patterns:**
 - Services throw `NotFoundException`, `ConflictException`, `BadRequestException`, `ForbiddenException`, `UnauthorizedException` — NestJS converts these to correct HTTP status codes
-- External service failures (Paystack, S3, Termii, FCM) are caught, logged via `Logger`, and either rethrown or degraded gracefully (e.g., Termii stub logs OTP to console when `TERMII_API_KEY` is absent)
+- External service failures (Paystack, S3, Sendchamp, FCM) are caught, logged via `Logger`, and either rethrown or degraded gracefully (e.g., Sendchamp stub logs OTP to console when `SENDCHAMP_API_KEY` is absent)
 - Audit log failures are swallowed silently (`catch (err) { this.logger.error(...) }`) to prevent auth flows from failing on non-critical logging
 - Webhook handlers return `{ received: true }` on success regardless of processing outcome (standard webhook pattern)
 

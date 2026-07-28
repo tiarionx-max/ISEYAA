@@ -352,8 +352,8 @@ export class DeliveryService {
     const otp = randomInt(100000, 1000000).toString();
     await this.redis.set(DELIVERY_OTP(order.id), otp, otpTtlSeconds);
 
-    // 4. Send OTP via Termii to recipientPhone (NOT sender's phone)
-    await this.sendTermiiDeliveryOtp(dto.recipientPhone, otp);
+    // 4. Send OTP via Sendchamp to recipientPhone (NOT sender's phone)
+    await this.sendDeliveryOtp(dto.recipientPhone, otp);
 
     // 5. First match attempt — same re-match logic the decline path and the
     // distributed sweep cron reuse for every subsequent attempt.
@@ -362,36 +362,37 @@ export class DeliveryService {
     return this.prisma.deliveryOrder.findFirst({ where: { id: order.id } });
   }
 
-  // ── sendTermiiDeliveryOtp ─────────────────────────────────────────────────
+  // ── sendDeliveryOtp ───────────────────────────────────────────────────────
 
-  private async sendTermiiDeliveryOtp(phone: string, otp: string): Promise<void> {
-    const apiKey = this.config.get<string>('TERMII_API_KEY');
+  private async sendDeliveryOtp(phone: string, otp: string): Promise<void> {
+    const apiKey = this.config.get<string>('SENDCHAMP_API_KEY');
     if (!apiKey) {
-      this.logger.warn(`[TERMII STUB] Delivery OTP ${otp} for ${phone} — set TERMII_API_KEY to send live SMS`);
+      this.logger.warn(`[SMS STUB] Delivery OTP ${otp} for ${phone} — set SENDCHAMP_API_KEY to send live SMS`);
       return;
     }
 
+    const senderName = this.config.get<string>('SENDCHAMP_SENDER_NAME', 'Sendchamp');
+    const route = phone.startsWith('+234') ? 'dnd' : 'international';
+
     try {
-      const response = await this.resilience.execute('termiiDelivery', ({ signal }) =>
-        fetch('https://v3.api.termii.com/api/sms/send', {
+      const response = await this.resilience.execute('sendchampDelivery', ({ signal }) =>
+        fetch('https://api.sendchamp.com/api/v1/sms/send', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
           body: JSON.stringify({
-            to: phone,
-            from: this.config.get('TERMII_SENDER_ID', 'ISEYAA'),
-            sms: `Your Iṣẹ́yáá delivery code is ${otp}. Share with the rider to complete delivery.`,
-            type: 'plain',
-            channel: 'generic',
-            api_key: apiKey,
+            to: [phone],
+            message: `Your Iṣẹ́yáá delivery code is ${otp}. Share with the rider to complete delivery.`,
+            sender_name: senderName,
+            route,
           }),
           signal,
         }),
       );
       if (!response.ok) {
-        this.logger.error(`Termii error: ${response.status} ${await response.text()}`);
+        this.logger.error(`Sendchamp error: ${response.status} ${await response.text()}`);
       }
     } catch (err) {
-      this.logger.error('Termii delivery OTP request failed', err);
+      this.logger.error('Sendchamp delivery OTP request failed', err);
     }
   }
 
@@ -579,7 +580,7 @@ export class DeliveryService {
    * The rider-facing escape hatch for the OTP TTL problem: even a generous
    * default (30 min) can still be outlived by a slow delivery. Regenerates the
    * code, resets its TTL and the brute-force attempt counter, and re-sends via
-   * the same Termii path as the original request.
+   * the same Sendchamp path as the original request.
    */
   async resendOtp(orderId: string, riderUserId: string): Promise<{ resent: true }> {
     const rider = await this.prisma.deliveryRider.findFirst({
@@ -605,7 +606,7 @@ export class DeliveryService {
     await this.redis.set(DELIVERY_OTP(orderId), otp, otpTtlSeconds);
     await this.redis.del(DELIVERY_OTP_ATTEMPTS(orderId));
 
-    await this.sendTermiiDeliveryOtp(order.recipientPhone, otp);
+    await this.sendDeliveryOtp(order.recipientPhone, otp);
 
     await this.prisma.deliveryEvent.create({
       data: { orderId, event: 'OTP_RESENT' },

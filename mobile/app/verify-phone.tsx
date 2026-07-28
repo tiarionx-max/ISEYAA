@@ -13,7 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { ChevronLeft, MessageSquare, MessageCircle, CheckCircle2 } from 'lucide-react-native';
+import { ChevronLeft, CheckCircle2 } from 'lucide-react-native';
 import { api, fetcher, getErrorMessage } from '../lib/api';
 import {
   SURFACE_DEEP,
@@ -35,13 +35,6 @@ import {
 
 const OTP_LENGTH = 6;
 
-type Channel = 'SMS' | 'WHATSAPP';
-
-const CHANNEL_OPTIONS: { value: Channel; label: string; Icon: typeof MessageSquare }[] = [
-  { value: 'SMS', label: 'SMS', Icon: MessageSquare },
-  { value: 'WHATSAPP', label: 'WhatsApp', Icon: MessageCircle },
-];
-
 interface Me {
   phone?: string;
   status?: string;
@@ -55,7 +48,6 @@ export default function VerifyPhoneScreen() {
   });
 
   const [step, setStep] = useState<'intro' | 'otp'>('intro');
-  const [channel, setChannel] = useState<Channel>('SMS');
   const [sending, setSending] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [otpCode, setOtpCode] = useState('');
@@ -75,7 +67,7 @@ export default function VerifyPhoneScreen() {
     if (!me?.phone || sending) return;
     setSending(true);
     try {
-      await api.post('/auth/otp/send', { phone: me.phone, channel });
+      await api.post('/auth/otp/send', { phone: me.phone, channel: 'SMS' });
       setStep('otp');
       setCooldown(60);
     } catch (err: any) {
@@ -88,7 +80,7 @@ export default function VerifyPhoneScreen() {
   async function handleResendOtp() {
     if (!me?.phone) return;
     try {
-      await api.post('/auth/otp/send', { phone: me.phone, channel });
+      await api.post('/auth/otp/send', { phone: me.phone, channel: 'SMS' });
       setCooldown(60);
     } catch (err: any) {
       Alert.alert('Error', getErrorMessage(err, 'Could not resend OTP.'));
@@ -151,31 +143,8 @@ export default function VerifyPhoneScreen() {
             <Text style={styles.kicker}>SECURITY</Text>
             <Text style={styles.title}>Verify {maskedPhone}</Text>
             <Text style={styles.sub}>
-              Confirm you own this phone number by entering a one-time code we send you.
+              Confirm you own this phone number by entering a one-time code we'll text you.
             </Text>
-
-            <Text style={styles.channelLabel}>How should we reach you?</Text>
-            <View style={styles.channelRow}>
-              {CHANNEL_OPTIONS.map(({ value, label, Icon }) => {
-                const selected = channel === value;
-                return (
-                  <TouchableOpacity
-                    key={value}
-                    style={[styles.channelCard, selected && styles.channelCardSelected]}
-                    onPress={() => setChannel(value)}
-                    activeOpacity={0.85}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected }}
-                    accessibilityLabel={`${label} verification channel`}
-                  >
-                    <Icon size={22} color={selected ? GOLD : INK_MID} />
-                    <Text style={[styles.channelCardLabel, selected && styles.channelCardLabelSelected]}>
-                      {label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
 
             <TouchableOpacity
               style={[styles.cta, sending && styles.ctaDisabled]}
@@ -238,7 +207,7 @@ export default function VerifyPhoneScreen() {
             </View>
 
             <TouchableOpacity onPress={() => setStep('intro')} style={styles.backLink} activeOpacity={0.7}>
-              <Text style={styles.backLinkText}>← Change channel</Text>
+              <Text style={styles.backLinkText}>← Back</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -288,41 +257,6 @@ const styles = StyleSheet.create({
     color: INK_MID,
     lineHeight: 21,
     marginBottom: 28,
-  },
-  channelLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: INK_MID,
-    letterSpacing: 0.3,
-    marginBottom: 8,
-  },
-  channelRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 24,
-  },
-  channelCard: {
-    flex: 1,
-    height: 76,
-    borderRadius: RADIUS_MD,
-    borderWidth: 1.5,
-    backgroundColor: SURFACE_MID,
-    borderColor: BORDER,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  channelCardSelected: {
-    backgroundColor: GOLD_DIM,
-    borderColor: GOLD_LINE,
-  },
-  channelCardLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: INK_MID,
-  },
-  channelCardLabelSelected: {
-    color: GOLD,
   },
   cta: {
     height: 56,

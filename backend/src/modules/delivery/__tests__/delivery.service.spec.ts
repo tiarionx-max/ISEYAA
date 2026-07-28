@@ -380,7 +380,7 @@ describe('DeliveryService', () => {
   // ── resendOtp ──────────────────────────────────────────────────────────────
 
   describe('resendOtp', () => {
-    it('regenerates the OTP, resets its TTL and the attempt counter, and re-sends via Termii', async () => {
+    it('regenerates the OTP, resets its TTL and the attempt counter, and re-sends via Sendchamp', async () => {
       mockPrisma.deliveryRider.findFirst.mockResolvedValue(mockRider);
       mockPrisma.deliveryOrder.findFirst.mockResolvedValue({
         ...mockOrder,
@@ -805,23 +805,23 @@ describe('DeliveryService', () => {
     });
   });
 
-  // ── sendTermiiDeliveryOtp ──────────────────────────────────────────────────
+  // ── sendDeliveryOtp ──────────────────────────────────────────────────────
 
-  describe('sendTermiiDeliveryOtp', () => {
-    it('routes the Termii fetch call through resilience.execute with the termiiDelivery vendor key', async () => {
+  describe('sendDeliveryOtp', () => {
+    it('routes the Sendchamp fetch call through resilience.execute with the sendchampDelivery vendor key', async () => {
       mockConfig.get.mockImplementation((key: string, def?: unknown) =>
-        key === 'TERMII_API_KEY' ? 'test-termii-key' : (def ?? undefined),
+        key === 'SENDCHAMP_API_KEY' ? 'test-sendchamp-key' : (def ?? undefined),
       );
       jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true } as any);
 
-      await (service as any).sendTermiiDeliveryOtp('+2348012345678', '654321');
+      await (service as any).sendDeliveryOtp('+2348012345678', '654321');
 
-      expect(mockResilience.execute).toHaveBeenCalledWith('termiiDelivery', expect.any(Function));
+      expect(mockResilience.execute).toHaveBeenCalledWith('sendchampDelivery', expect.any(Function));
     });
 
     it("forwards the exact AbortSignal instance into fetch()'s init object (reference-identity, mirrors paystack.service.spec.ts Test 7)", async () => {
       mockConfig.get.mockImplementation((key: string, def?: unknown) =>
-        key === 'TERMII_API_KEY' ? 'test-termii-key' : (def ?? undefined),
+        key === 'SENDCHAMP_API_KEY' ? 'test-sendchamp-key' : (def ?? undefined),
       );
       const controller = new AbortController();
       mockResilience.execute.mockImplementationOnce(
@@ -830,19 +830,19 @@ describe('DeliveryService', () => {
       );
       jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true } as any);
 
-      await (service as any).sendTermiiDeliveryOtp('+2348012345678', '654321');
+      await (service as any).sendDeliveryOtp('+2348012345678', '654321');
 
       expect((global.fetch as jest.Mock).mock.calls[0][1]?.signal).toBe(controller.signal);
     });
 
     it('resolves without throwing when resilience.execute rejects (circuit open) — log-and-swallow fallback preserved', async () => {
       mockConfig.get.mockImplementation((key: string, def?: unknown) =>
-        key === 'TERMII_API_KEY' ? 'test-termii-key' : (def ?? undefined),
+        key === 'SENDCHAMP_API_KEY' ? 'test-sendchamp-key' : (def ?? undefined),
       );
       mockResilience.execute.mockRejectedValueOnce(new Error('circuit open'));
 
       await expect(
-        (service as any).sendTermiiDeliveryOtp('+2348012345678', '654321'),
+        (service as any).sendDeliveryOtp('+2348012345678', '654321'),
       ).resolves.toBeUndefined();
     });
   });

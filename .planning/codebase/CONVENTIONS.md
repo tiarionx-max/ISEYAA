@@ -105,7 +105,7 @@ private readonly logger = new Logger(AuthService.name);
 Every service that has side effects or external calls creates an instance. Pure data-access services (e.g., `LgasService`) omit it.
 
 **When to log:**
-- `logger.warn()` — missing optional config (e.g., `TERMII_API_KEY` not set, stub mode active)
+- `logger.warn()` — missing optional config (e.g., `SENDCHAMP_API_KEY` not set, stub mode active)
 - `logger.error()` — caught exceptions in side-effect handlers, external API failures
 - `logger.log()` — successful important business events (e.g., escrow release, wallet credit)
 

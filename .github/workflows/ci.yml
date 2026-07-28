@@ -47,8 +47,8 @@ jobs:
       SENDGRID_API_KEY: stub
       SENDGRID_FROM_EMAIL: noreply@example.com
       RESEND_API_KEY: stub
-      TERMII_API_KEY: stub
-      TERMII_SENDER_ID: stub
+      SENDCHAMP_API_KEY: stub
+      SENDCHAMP_SENDER_NAME: stub
       AWS_ACCESS_KEY_ID: stub
       AWS_SECRET_ACCESS_KEY: stub
       AWS_S3_BUCKET: stub

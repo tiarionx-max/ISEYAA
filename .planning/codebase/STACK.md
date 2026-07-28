@@ -78,7 +78,7 @@
 - `sharp` 0.34.x — Image resize/conversion (`backend/src/common/services/image.service.ts`)
 - `qrcode` 1.5.x — QR code PNG generation for tickets (`backend/src/common/services/qr.service.ts`)
 - `uuid` 9.0.x — UUID v4 generation for references and JTI claims
-- `axios` 1.6.x — HTTP client (Paystack, Termii, FCM calls; web/mobile API client)
+- `axios` 1.6.x — HTTP client (Paystack, Sendchamp, FCM calls; web/mobile API client)
 - `framer-motion` 11.x — Animation library (web)
 - `lucide-react` 0.359.x — Icon set (web)
 - `recharts` 3.8.x — Charts for admin dashboards (web)
@@ -111,7 +111,7 @@
 - `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_S3_BUCKET` / `AWS_REGION` — S3 uploads
 - `AWS_CLOUDFRONT_URL` — CDN base URL for media
 - `SENDGRID_API_KEY` / `SENDGRID_FROM_EMAIL` — Transactional email
-- `TERMII_API_KEY` / `TERMII_SENDER_ID` — OTP SMS delivery
+- `SENDCHAMP_API_KEY` / `SENDCHAMP_SENDER_NAME` — OTP SMS delivery (replaces Termii/Twilio/Meta WhatsApp — all rejected/blocked, 260728)
 - `FIREBASE_SERVER_KEY` — FCM push notifications
 - `GOOGLE_MAPS_API_KEY` — Maps integration (web)
 - `NEXTAUTH_SECRET` — NextAuth session signing secret

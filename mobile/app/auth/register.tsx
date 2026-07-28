@@ -76,11 +76,11 @@ export default function RegisterScreen() {
     if (!isReady || sendingOtp) return;
     setSendingOtp(true);
     try {
-      // Registration verifies via EMAIL, not phone SMS/WhatsApp — Termii/Twilio
-      // are not reliably deliverable in production right now. The OTP itself is
-      // still stored/validated server-side keyed by phone (channel only controls
-      // delivery), so this requires no backend change. Phone verification is
-      // deferred to a later, optional step from Profile.
+      // Registration verifies via EMAIL, not phone SMS — email delivery (Resend)
+      // is production-confirmed while SMS provider migration was in flux. The OTP
+      // itself is still stored/validated server-side keyed by phone (channel only
+      // controls delivery), so this requires no backend change. Phone verification
+      // is deferred to a later, optional step from Profile.
       await api.post('/auth/otp/send', { phone: formattedPhone, channel: 'EMAIL', email });
       setStep('otp');
       setCooldown(60);

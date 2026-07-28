@@ -6,7 +6,6 @@ import { router } from 'expo-router';
 import {
   ChevronLeft,
   MessageSquare,
-  MessageCircle,
   Mail,
   CheckCircle2,
   type LucideProps,
@@ -37,7 +36,7 @@ try {
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────
-type OtpChannel = 'SMS' | 'WHATSAPP' | 'EMAIL';
+type OtpChannel = 'SMS' | 'EMAIL';
 
 interface Me {
   otpChannel?: OtpChannel;
@@ -52,7 +51,6 @@ interface ChannelOption {
 
 const CHANNEL_OPTIONS: ChannelOption[] = [
   { key: 'SMS', Icon: MessageSquare, label: 'SMS', sub: 'Delivered via text message' },
-  { key: 'WHATSAPP', Icon: MessageCircle, label: 'WhatsApp', sub: 'Delivered via WhatsApp' },
   { key: 'EMAIL', Icon: Mail, label: 'Email', sub: 'Delivered via email' },
 ];
 

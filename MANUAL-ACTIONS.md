@@ -29,7 +29,7 @@ Full list of env vars that need real values before production (stub mode is acce
 | `AWS_CLOUDFRONT_URL` | R2 public domain | Your R2 public bucket URL |
 | `SENDGRID_API_KEY` | SendGrid | app.sendgrid.com → Settings → API Keys |
 | `RESEND_API_KEY` | Resend | resend.com → API Keys |
-| `TERMII_API_KEY` | Termii SMS | termii.com → developer portal |
+| `SENDCHAMP_API_KEY` | Sendchamp SMS/OTP | sendchamp.com → dashboard → API Keys (replaces Termii/Twilio/Meta WhatsApp — all rejected/blocked, 260728) |
 | `FIREBASE_SERVER_KEY` | FCM push | Firebase Console → Project Settings → Cloud Messaging |
 | `ENCRYPTION_KEY` | KYC (AES-256-GCM) | Generate above |
 | `UPSTASH_VECTOR_REST_URL` | AI vector search | Upstash Console → Vector database |
@@ -42,12 +42,8 @@ Full list of env vars that need real values before production (stub mode is acce
 | `INFISICAL_TOKEN` + `INFISICAL_PROJECT_ID` | Secrets manager | app.infisical.com → Project Settings |
 | `NEXTAUTH_SECRET` | Web admin auth | `openssl rand -base64 32` |
 | `GOOGLE_MAPS_API_KEY` | Maps | Google Cloud Console → APIs & Services |
-| `META_WHATSAPP_ACCESS_TOKEN` | Meta Business Cloud API | Meta Business Manager → WhatsApp → API Setup → System User permanent token |
-| `META_WHATSAPP_PHONE_NUMBER_ID` | Meta Business Cloud API | Meta Business Manager → WhatsApp → API Setup → Phone number ID |
-| `META_WHATSAPP_TEMPLATE_NAME` | Meta Business Cloud API | Meta Business Manager → WhatsApp → Message Templates → approved template name |
-| `META_WHATSAPP_TEMPLATE_LANG` | Meta Business Cloud API | Language code of the approved template (default `en_US`) |
 
-> **Stub mode:** If `TERMII_API_KEY`, `DOJAH_API_KEY`, `SMILE_IDENTITY_*`, `UPSTASH_VECTOR_*` are absent, the backend runs in stub mode — OTPs are printed to the console log, KYC tiers auto-verify, and AI personalisation is skipped. Stub mode is acceptable for manual testing.
+> **Stub mode:** If `SENDCHAMP_API_KEY`, `DOJAH_API_KEY`, `SMILE_IDENTITY_*`, `UPSTASH_VECTOR_*` are absent, the backend runs in stub mode — OTPs are printed to the console log, KYC tiers auto-verify, and AI personalisation is skipped. Stub mode is acceptable for manual testing.
 
 ---
 
@@ -224,9 +220,9 @@ Sender (D-4) shows rider marker on map. Move Rider device — confirm marker upd
 Rider approaches pickup location within 200 m. **"I've Collected"** CTA activates (was previously disabled). Tap it. Rider navigates to R-4 Active Delivery screen.
 
 ### Step 8 — OTP entry
-Check SMS on the recipient's phone. If Termii is not configured, check backend logs for:
+Check SMS on the recipient's phone. If Sendchamp is not configured, check backend logs for:
 ```
-[TERMII STUB] Delivery OTP {OTP} for {phone}
+[SMS STUB] Delivery OTP {OTP} for {phone}
 ```
 Once near the dropoff (within 200 m), R-4 shows 6-digit OTP input cells. Enter the OTP. Cells turn green. Photo upload button activates.
 
@@ -696,7 +692,9 @@ See `monitoring/grafana-dashboard.json` and `monitoring/sentry-alerts.md` for co
 
 ---
 
-## Phase 15 — Meta WhatsApp Business Cloud API Setup + Template Submission
+## Phase 15 — Meta WhatsApp Business Cloud API Setup + Template Submission — RETIRED (260728)
+
+**This phase is retired.** Termii, Twilio, and this Meta WhatsApp direct integration were all abandoned (accounts rejected/blocked) in favor of Sendchamp — see the env var table above (`SENDCHAMP_API_KEY`) and the "Messaging — SMS/OTP" quick-task history for the 260728 migration. `META_WHATSAPP_*` env vars are no longer read by any code path; do not set them. Everything below is kept only as a historical record — do not follow it.
 
 Phase 15 replaces the old Termii-routed WhatsApp OTP path with a direct integration against Meta's WhatsApp Business Cloud API (D-01/D-02). None of this is blocking — until it's complete, every WhatsApp-channel OTP send fails and automatically falls back to SMS (D-04/D-08). This is expected behavior, not a bug.
 

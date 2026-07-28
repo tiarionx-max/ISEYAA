@@ -33,12 +33,8 @@ support, and mobile reads `EXPO_PUBLIC_*` variables bundled at build time by Exp
 | `SENDGRID_API_KEY` | Optional | — | Legacy SendGrid key; superseded by `RESEND_API_KEY` |
 | `SENDGRID_FROM_EMAIL` | Optional | — | Legacy SendGrid sender address |
 | `RESEND_API_KEY` | Required for transactional email | — | Resend API key — replaces `SENDGRID_API_KEY` as of the SendGrid-to-Resend migration; `SendgridService` internals now call the Resend SDK |
-| `TERMII_API_KEY` | Optional | stub mode | OTP SMS delivery via Termii. If absent, OTPs are logged to the console instead of sent (stub mode) |
-| `TERMII_SENDER_ID` | Optional | `ISEYAA` | Termii SMS sender ID |
-| `META_WHATSAPP_ACCESS_TOKEN` | Optional | — | Meta Business Cloud API access token (WhatsApp messaging, Phase 15) |
-| `META_WHATSAPP_PHONE_NUMBER_ID` | Optional | — | Meta WhatsApp phone number ID |
-| `META_WHATSAPP_TEMPLATE_NAME` | Optional | — | Approved WhatsApp message template name |
-| `META_WHATSAPP_TEMPLATE_LANG` | Optional | `en_US` | WhatsApp template language code |
+| `SENDCHAMP_API_KEY` | Optional | stub mode | OTP SMS delivery via Sendchamp (replaces Termii/Twilio/Meta WhatsApp — all rejected/blocked, 260728). If absent, OTPs are logged to the console instead of sent (stub mode). WHATSAPP-channel requests are also delivered via this SMS path — Sendchamp's WhatsApp channel needs a separately-approved message template not yet set up |
+| `SENDCHAMP_SENDER_NAME` | Optional | `Sendchamp` | Sendchamp SMS sender name — must be a registered alphanumeric sender ID once one exists; defaults to the literal string `Sendchamp` until then |
 | `GOOGLE_MAPS_API_KEY` | Required for maps | — | Google Maps integration (mobile); consumed by `mobile/app.json`, `mobile/android/app/build.gradle`, and `AndroidManifest.xml` — not referenced under `web/` |
 | `ANTHROPIC_API_KEY` | Required for AI features | — | Claude API key (`@anthropic-ai/sdk`) for streaming chat and itinerary generation |
 | `CF_ACCOUNT_ID` | Required for R2 mode | — | Cloudflare account ID; used to build the R2 S3-compatible endpoint |
@@ -128,7 +124,7 @@ fi
 
 Everything else degrades gracefully rather than blocking startup:
 
-- **Stub mode** — `TERMII_API_KEY`, `DOJAH_API_KEY`, and `UPSTASH_VECTOR_*`
+- **Stub mode** — `SENDCHAMP_API_KEY`, `DOJAH_API_KEY`, and `UPSTASH_VECTOR_*`
   each fall back to a stub/no-op path (OTPs logged to console, AI personalisation
   skipped) when absent. Acceptable for local development, not for production. Tier 3 liveness
   (`completeLiveness()` in `kyc.service.ts`) is an unconditional MVP stub regardless of env vars —
@@ -149,8 +145,7 @@ central config schema:
 | `APP_ENV` | `development` | `backend/src/main.ts` (Sentry `environment`) |
 | `AWS_S3_BUCKET` / `R2_BUCKET` | `iseyaa-media` | `backend/src/common/services/s3.service.ts` |
 | `AWS_REGION` | `af-south-1` | `backend/src/common/services/s3.service.ts` |
-| `TERMII_SENDER_ID` | `ISEYAA` | `.env.example` |
-| `META_WHATSAPP_TEMPLATE_LANG` | `en_US` | `.env.example` |
+| `SENDCHAMP_SENDER_NAME` | `Sendchamp` | `.env.example` |
 | `TYPESENSE_HOST` / `TYPESENSE_PROTOCOL` / `TYPESENSE_PORT` | `localhost` / `http` / `8108` | `.env.example` |
 | `OTEL_SERVICE_NAME` | `iseyaa-api` | `.env.example` |
 | `NEXT_PUBLIC_API_URL` / `EXPO_PUBLIC_API_URL` | `http://localhost:3001/api/v1` | `web/src/lib/api.ts`, `mobile/lib/api.ts` |

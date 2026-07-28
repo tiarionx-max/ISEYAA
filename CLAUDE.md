@@ -75,7 +75,7 @@ Operated by LJ Entertainment under contract with Ogun State. Confidential govern
 - `sharp` 0.34.x — Image resize/conversion (`backend/src/common/services/image.service.ts`)
 - `qrcode` 1.5.x — QR code PNG generation for tickets (`backend/src/common/services/qr.service.ts`)
 - `uuid` 9.0.x — UUID v4 generation for references and JTI claims
-- `axios` 1.6.x — HTTP client (Paystack, Termii, FCM calls; web/mobile API client)
+- `axios` 1.6.x — HTTP client (Paystack, Sendchamp, FCM calls; web/mobile API client)
 - `framer-motion` 11.x — Animation library (web)
 - `lucide-react` 0.359.x — Icon set (web)
 - `recharts` 3.8.x — Charts for admin dashboards (web)
@@ -104,7 +104,7 @@ Operated by LJ Entertainment under contract with Ogun State. Confidential govern
 - `AWS_CLOUDFRONT_URL` — CDN base URL for media
 - `SENDGRID_API_KEY` / `SENDGRID_FROM_EMAIL` — Transactional email
 - `RESEND_API_KEY` — Resend API key for transactional email (replaces `SENDGRID_API_KEY`; SendgridService's internals were migrated to Resend, see quick task 260724-hon)
-- `TERMII_API_KEY` / `TERMII_SENDER_ID` — OTP SMS delivery
+- `SENDCHAMP_API_KEY` / `SENDCHAMP_SENDER_NAME` — OTP SMS delivery (replaces Termii/Twilio/Meta WhatsApp, all rejected/blocked — 260728 SMS provider migration)
 - `FIREBASE_SERVER_KEY` — FCM push notifications
 - `GOOGLE_MAPS_API_KEY` — Maps integration (web)
 - `NEXTAUTH_SECRET` — NextAuth session signing secret
@@ -171,7 +171,7 @@ Operated by LJ Entertainment under contract with Ogun State. Confidential govern
 - Mobile: relative paths (e.g., `../../lib/api`)
 ## Error Handling
 ## Logging
-- `logger.warn()` — missing optional config (e.g., `TERMII_API_KEY` not set, stub mode active)
+- `logger.warn()` — missing optional config (e.g., `SENDCHAMP_API_KEY` not set, stub mode active)
 - `logger.error()` — caught exceptions in side-effect handlers, external API failures
 - `logger.log()` — successful important business events (e.g., escrow release, wallet credit)
 - Normal request/response flow (handled by NestJS interceptors)
@@ -325,7 +325,7 @@ Operated by LJ Entertainment under contract with Ogun State. Confidential govern
 ### `any` type casts on shared data
 ## Error Handling
 - Services throw `NotFoundException`, `ConflictException`, `BadRequestException`, `ForbiddenException`, `UnauthorizedException` — NestJS converts these to correct HTTP status codes
-- External service failures (Paystack, S3, Termii, FCM) are caught, logged via `Logger`, and either rethrown or degraded gracefully (e.g., Termii stub logs OTP to console when `TERMII_API_KEY` is absent)
+- External service failures (Paystack, S3, Sendchamp, FCM) are caught, logged via `Logger`, and either rethrown or degraded gracefully (e.g., Sendchamp stub logs OTP to console when `SENDCHAMP_API_KEY` is absent)
 - Audit log failures are swallowed silently (`catch (err) { this.logger.error(...) }`) to prevent auth flows from failing on non-critical logging
 - Webhook handlers return `{ received: true }` on success regardless of processing outcome (standard webhook pattern)
 ## Cross-Cutting Concerns
