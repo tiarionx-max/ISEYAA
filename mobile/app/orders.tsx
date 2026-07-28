@@ -8,7 +8,7 @@ import { fetcher } from '../lib/api';
 import {
   SURFACE_DEEP, SURFACE_MID, BORDER,
   GOLD, GOLD_DIM, CREAM, INK, INK_MID, INK_FAINT,
-  FONT_DISPLAY, FONT_MONO,
+  FONT_DISPLAY, FONT_MONO, FONT_UI,
 } from '../lib/tokens';
 
 type OrderItem = { id: string; quantity: number; unitPrice: number; product?: { name?: string } };
@@ -98,5 +98,5 @@ const styles = StyleSheet.create({
   statusPill: { backgroundColor: GOLD_DIM, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 },
   statusText: { fontSize: 9.5, fontWeight: '700', color: GOLD, letterSpacing: 0.4 },
   itemSummary: { fontSize: 13, color: INK },
-  rowTotal: { fontFamily: FONT_MONO, fontSize: 14, fontWeight: '700', color: GOLD },
+  rowTotal: { fontFamily: FONT_UI, fontSize: 14, fontWeight: '700', color: GOLD },
 });

@@ -18,6 +18,7 @@ import {
   CREAM, INK, INK_MID, INK_FAINT,
   BORDER, BORDER_MID,
   FONT_DISPLAY, FONT_MONO,
+  FONT_UI,
   ERROR,
 } from '../../lib/tokens';
 
@@ -586,7 +587,7 @@ const s = StyleSheet.create({
     color: INK_MID,
   },
   tierPrice: {
-    fontFamily: FONT_MONO,
+    fontFamily: FONT_UI,
     fontSize: 15,
     fontWeight: '600',
     color: INK_MID,

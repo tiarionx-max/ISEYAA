@@ -33,6 +33,7 @@ import {
   ERROR_TEXT,
   FONT_DISPLAY,
   FONT_MONO,
+  FONT_UI,
 } from '../lib/tokens';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -420,7 +421,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: GOLD_LINE, borderRadius: 14, padding: 18, gap: 4,
   },
   feeLabel: { fontFamily: FONT_MONO, fontSize: 10, color: INK_MID, letterSpacing: 1.4 },
-  feeValue: { fontFamily: FONT_DISPLAY, fontSize: 30, color: GOLD },
+  feeValue: { fontFamily: FONT_UI, fontSize: 30, color: GOLD },
 
   ctaBtn: {
     marginTop: 28, height: 52, borderRadius: 14, backgroundColor: GOLD,

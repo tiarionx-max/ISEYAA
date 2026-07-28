@@ -79,6 +79,7 @@ import {
   SPACE_8,
   FONT_DISPLAY,
   FONT_MONO,
+  FONT_UI,
 } from '../../lib/tokens';
 
 // ── Shared local helper duplicated across mutation screens — reconciles the
@@ -1298,7 +1299,7 @@ const styles = StyleSheet.create({
     color: GOLD_LINE,
   },
   tierLimit: {
-    fontFamily: FONT_MONO,
+    fontFamily: FONT_UI,
     fontSize: 14,
     fontWeight: '600',
     lineHeight: 20,
@@ -1350,7 +1351,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   statValue: {
-    fontFamily: FONT_DISPLAY,
+    fontFamily: FONT_UI,
     fontSize: 22,
     fontWeight: '400',
     color: GOLD,

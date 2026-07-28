@@ -508,7 +508,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   barFill: { height: '100%', backgroundColor: GOLD, borderRadius: RADIUS_MD },
-  chartRowCount: { fontFamily: FONT_MONO, fontSize: 12, fontWeight: '700', color: GOLD, width: 64, textAlign: 'right' },
+  chartRowCount: { fontFamily: FONT_UI, fontSize: 12, fontWeight: '700', color: GOLD, width: 64, textAlign: 'right' },
 
   rankRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE_3 },
   rankBadge: { fontFamily: FONT_MONO, fontSize: 11, fontWeight: '700', color: GOLD, width: 28 },

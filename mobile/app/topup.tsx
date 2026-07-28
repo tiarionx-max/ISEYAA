@@ -28,6 +28,7 @@ import {
   BORDER,
   FONT_DISPLAY,
   FONT_MONO,
+  FONT_UI,
 } from '../lib/tokens';
 
 // ── Data ───────────────────────────────────────────────────────────────────────
@@ -206,7 +207,7 @@ const styles = StyleSheet.create({
   amountSection: { paddingTop: 24, paddingHorizontal: 24, alignItems: 'center' },
   amountLabel: { fontFamily: FONT_MONO, fontSize: 9, fontWeight: '600', letterSpacing: 1.8, color: INK_MID, textTransform: 'uppercase' },
   amountRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', gap: 6, marginTop: 6 },
-  amountSymbol: { fontFamily: FONT_DISPLAY, fontSize: 32, color: CREAM, opacity: 0.7, lineHeight: 40 },
+  amountSymbol: { fontFamily: FONT_UI, fontSize: 32, color: CREAM, opacity: 0.7, lineHeight: 40 },
   amountValue: { fontSize: 56, fontWeight: '600', color: INK, letterSpacing: -1.5, lineHeight: 64 },
   amountSub: { fontSize: 11, color: INK_MID, marginTop: 8 },
 
@@ -218,7 +219,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   quickChipActive: { backgroundColor: GOLD_DIM, borderColor: GOLD_LINE },
-  quickChipText: { fontFamily: FONT_MONO, fontSize: 12, fontWeight: '600', color: INK },
+  quickChipText: { fontFamily: FONT_UI, fontSize: 12, fontWeight: '600', color: INK },
   quickChipTextActive: { color: GOLD },
 
   // CTA

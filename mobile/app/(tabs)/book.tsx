@@ -1011,13 +1011,13 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   productPrice: {
-    fontFamily: FONT_MONO,
+    fontFamily: FONT_UI,
     fontSize: 15,
     fontWeight: '700',
     color: GOLD,
   },
   productCompareAt: {
-    fontFamily: FONT_MONO,
+    fontFamily: FONT_UI,
     fontSize: 11,
     color: INK_FAINT,
     textDecorationLine: 'line-through',
@@ -1144,7 +1144,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   legacyPrice: {
-    fontFamily: FONT_MONO,
+    fontFamily: FONT_UI,
     fontSize: 15,
     fontWeight: '600',
     color: GOLD,

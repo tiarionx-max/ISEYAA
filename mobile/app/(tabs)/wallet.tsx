@@ -69,6 +69,7 @@ import {
   SPACE_6,
   FONT_DISPLAY,
   FONT_MONO,
+  FONT_UI,
   TYPE,
 } from '../../lib/tokens';
 
@@ -721,12 +722,12 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   balanceFlowIn: {
-    fontFamily: FONT_MONO,
+    fontFamily: FONT_UI,
     fontSize: 11,
     color: SUCCESS_TEXT,
   },
   balanceFlowOut: {
-    fontFamily: FONT_MONO,
+    fontFamily: FONT_UI,
     fontSize: 11,
     color: CREAM,
     opacity: 0.75,
@@ -930,7 +931,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   txAmount: {
-    fontFamily: FONT_MONO,
+    fontFamily: FONT_UI,
     fontSize: 13,
     fontWeight: '600',
     fontVariant: ['tabular-nums'],

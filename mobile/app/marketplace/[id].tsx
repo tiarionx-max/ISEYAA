@@ -58,6 +58,7 @@ import {
   TYPE,
   FONT_DISPLAY,
   FONT_MONO,
+  FONT_UI,
   SPACE_2,
   SPACE_3,
   SPACE_4,
@@ -429,7 +430,7 @@ const styles = StyleSheet.create({
 
   priceRow: { flexDirection: 'row', alignItems: 'baseline', gap: SPACE_3, flexWrap: 'wrap' },
   priceGold: {
-    fontFamily: FONT_DISPLAY,
+    fontFamily: FONT_UI,
     fontSize: 28,
     fontWeight: '700',
     color: GOLD,

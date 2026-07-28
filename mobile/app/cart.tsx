@@ -55,6 +55,7 @@ import {
   TYPE,
   FONT_DISPLAY,
   FONT_MONO,
+  FONT_UI,
   SPACE_2,
   SPACE_3,
   SPACE_4,
@@ -328,7 +329,7 @@ const styles = StyleSheet.create({
     marginTop: SPACE_2,
   },
   rowPrice: {
-    fontFamily: FONT_MONO,
+    fontFamily: FONT_UI,
     fontSize: 13,
     color: GOLD,
     fontWeight: '700',
@@ -412,7 +413,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   subtotalValue: {
-    fontFamily: FONT_DISPLAY,
+    fontFamily: FONT_UI,
     fontSize: 22,
     color: GOLD,
     fontWeight: '700',

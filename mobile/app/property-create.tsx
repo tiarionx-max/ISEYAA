@@ -22,7 +22,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { Camera, Check } from 'lucide-react-native';
+import { Camera, Check, MapPin } from 'lucide-react-native';
 
 import { api, fetcher, getErrorMessage } from '../lib/api';
 import * as SecureStore from 'expo-secure-store';
@@ -94,6 +94,11 @@ interface Me {
   role?: string;
 }
 
+interface Lga {
+  id: string;
+  name: string;
+}
+
 // ── Screen ───────────────────────────────────────────
 
 export default function PropertyCreateScreen(): JSX.Element {
@@ -102,6 +107,11 @@ export default function PropertyCreateScreen(): JSX.Element {
   const { data: me } = useQuery<Me>({
     queryKey: ['me'],
     queryFn: () => fetcher('/users/me'),
+  });
+
+  const { data: lgas, isLoading: lgasLoading } = useQuery<Lga[]>({
+    queryKey: ['lgas'],
+    queryFn: () => fetcher('/lgas'),
   });
 
   const [name, setName] = useState('');
@@ -344,16 +354,26 @@ export default function PropertyCreateScreen(): JSX.Element {
           onChangeText={setAddress}
         />
 
-        <Text style={styles.label}>LGA ID</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="LGA UUID"
-          placeholderTextColor={INK_FAINT}
-          value={lgaId}
-          onChangeText={setLgaId}
-        />
-        {/* Known simplification: no LGA picker component exists anywhere in mobile
-            yet (confirmed via grep). Plain text input pending a future LGA picker. */}
+        <Text style={styles.label}>Local Government Area</Text>
+        {lgasLoading ? (
+          <ActivityIndicator color={GOLD} style={{ marginTop: 8 }} />
+        ) : (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.lgaScroll}
+          >
+            {(lgas ?? []).map((lga) => (
+              <Chip
+                key={lga.id}
+                label={lga.name}
+                icon={MapPin}
+                active={lga.id === lgaId}
+                onPress={() => setLgaId(lga.id)}
+              />
+            ))}
+          </ScrollView>
+        )}
 
         <Text style={styles.label}>Max guests</Text>
         <TextInput
@@ -412,6 +432,7 @@ const styles = StyleSheet.create({
   scroll: { paddingHorizontal: SPACE_5, paddingTop: SPACE_5, paddingBottom: 60, gap: SPACE_3 },
 
   label: { fontSize: 12.5, fontWeight: '600', color: INK_MID, marginTop: SPACE_3, marginBottom: -4 },
+  lgaScroll: { gap: 8, paddingVertical: 2 },
   input: {
     height: 48,
     borderRadius: RADIUS_MD,

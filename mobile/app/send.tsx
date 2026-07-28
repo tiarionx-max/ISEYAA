@@ -40,6 +40,7 @@ import {
   SUCCESS_TEXT,
   FONT_DISPLAY,
   FONT_MONO,
+  FONT_UI,
   CARD_GRADIENTS,
 } from '../lib/tokens';
 
@@ -545,7 +546,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'baseline',
     justifyContent: 'center', gap: 6, marginTop: 6,
   },
-  amountSymbol: { fontFamily: FONT_DISPLAY, fontSize: 32, color: CREAM, opacity: 0.7, lineHeight: 40 },
+  amountSymbol: { fontFamily: FONT_UI, fontSize: 32, color: CREAM, opacity: 0.7, lineHeight: 40 },
   amountValue: { fontSize: 56, fontWeight: '600', color: INK, letterSpacing: -1.5, lineHeight: 64, minWidth: 60 },
   freeChip: {
     marginTop: 12, backgroundColor: 'rgba(46,204,113,0.10)',

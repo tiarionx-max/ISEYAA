@@ -25,10 +25,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Camera, Check, CalendarDays, Clock } from 'lucide-react-native';
+import { Camera, Check, CalendarDays, Clock, MapPin } from 'lucide-react-native';
 
 import { api, fetcher, getErrorMessage } from '../lib/api';
 import * as SecureStore from 'expo-secure-store';
+import { Chip } from '../components/ui/Chip';
 import {
   SURFACE_DEEP,
   SURFACE_RAISED,
@@ -82,6 +83,11 @@ interface Me {
   role?: string;
 }
 
+interface Lga {
+  id: string;
+  name: string;
+}
+
 // ── Default near-future dates ────────────────────────
 
 function defaultStart(): Date {
@@ -114,6 +120,11 @@ export default function EventCreateScreen(): JSX.Element {
   const { data: me } = useQuery<Me>({
     queryKey: ['me'],
     queryFn: () => fetcher('/users/me'),
+  });
+
+  const { data: lgas, isLoading: lgasLoading } = useQuery<Lga[]>({
+    queryKey: ['lgas'],
+    queryFn: () => fetcher('/lgas'),
   });
 
   const [title, setTitle] = useState('');
@@ -299,16 +310,27 @@ export default function EventCreateScreen(): JSX.Element {
           onChangeText={setAddress}
         />
 
-        <Text style={styles.label}>LGA ID</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="LGA UUID"
-          placeholderTextColor={INK_FAINT}
-          value={lgaId}
-          onChangeText={setLgaId}
-        />
-        {/* Known simplification: no LGA picker component exists anywhere in mobile
-            yet (confirmed via grep). Plain text input pending a future LGA picker. */}
+        <Text style={styles.label}>Local Government Area</Text>
+        {lgasLoading ? (
+          <ActivityIndicator color={GOLD} style={{ marginTop: 8 }} />
+        ) : (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.lgaScroll}
+          >
+            {(lgas ?? []).map((lga) => (
+              <Chip
+                key={lga.id}
+                label={lga.name}
+                icon={MapPin}
+                active={lga.id === lgaId}
+                onPress={() => setLgaId(lga.id)}
+                style={styles.lgaChip}
+              />
+            ))}
+          </ScrollView>
+        )}
 
         <Text style={styles.label}>Start date</Text>
         <View style={styles.dateTimeRow}>
@@ -450,6 +472,9 @@ const styles = StyleSheet.create({
     color: INK,
   },
   inputMultiline: { height: 90, paddingTop: 12, textAlignVertical: 'top' },
+
+  lgaScroll: { gap: 8, paddingVertical: 2 },
+  lgaChip: { marginRight: 0 },
 
   dateTimeRow: { flexDirection: 'row', gap: 8 },
   dateTimeField: {
