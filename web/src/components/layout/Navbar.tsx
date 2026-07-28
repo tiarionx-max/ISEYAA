@@ -8,7 +8,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Map, Calendar, Home, ShoppingBag, Music, LayoutDashboard, LogOut, Menu, X,
-  ChevronDown, Shield, Sparkles, RefreshCw, ShoppingCart,
+  ChevronDown, Shield, Sparkles, RefreshCw, ShoppingCart, HelpCircle, FileText,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import clsx from 'clsx';
@@ -135,6 +135,22 @@ export function Navbar() {
 
         {/* Right side */}
         <div className="hidden md:flex items-center gap-2">
+          {/* Help & Terms — always visible (logged-in or not) */}
+          <Link
+            href="/help"
+            className="hidden lg:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium text-white/60 hover:text-white hover:bg-[rgba(0,0,0,0.35)] transition-all"
+          >
+            <HelpCircle size={13} />
+            Help
+          </Link>
+          <Link
+            href="/terms"
+            className="hidden lg:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium text-white/60 hover:text-white hover:bg-[rgba(0,0,0,0.35)] transition-all"
+          >
+            <FileText size={13} />
+            Terms
+          </Link>
+
           {/* Cart icon — always visible (logged-in or not) */}
           <button
             onClick={openCart}
@@ -378,6 +394,23 @@ export function Navbar() {
                     Sign in →
                   </Link>
                 )}
+              </div>
+
+              <div className="pt-2 border-t border-white/8 mt-2">
+                <Link
+                  href="/help"
+                  onClick={() => setMobileOpen(false)}
+                  className="flex items-center gap-2.5 px-3 py-3 rounded-xl text-sm text-white/60 hover:text-white hover:bg-[rgba(0,0,0,0.35)]"
+                >
+                  <HelpCircle size={16} /> Help
+                </Link>
+                <Link
+                  href="/terms"
+                  onClick={() => setMobileOpen(false)}
+                  className="flex items-center gap-2.5 px-3 py-3 rounded-xl text-sm text-white/60 hover:text-white hover:bg-[rgba(0,0,0,0.35)]"
+                >
+                  <FileText size={16} /> Terms
+                </Link>
               </div>
             </div>
           </motion.div>
