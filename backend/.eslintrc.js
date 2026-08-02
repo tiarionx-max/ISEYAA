@@ -1,7 +1,12 @@
 module.exports = {
   parser: '@typescript-eslint/parser',
   parserOptions: {
-    project: 'tsconfig.json',
+    // Lint globs over {src,test}/**/*.ts, so ESLint's typed-linting needs a
+    // project that includes test/. tsconfig.json is src-only; tsconfig.e2e.json
+    // includes both src/** and test/**. Listing both lets each file resolve to
+    // a project that includes it (the 3 files under test/ were otherwise
+    // unparseable — "TSConfig does not include this file").
+    project: ['tsconfig.json', 'tsconfig.e2e.json'],
     tsconfigRootDir: __dirname,
     sourceType: 'module',
   },
