@@ -32,13 +32,16 @@ const mockConfig: any = {
   ),
 };
 const mockEvents: any = { emit: jest.fn() };
-const mockKafka: any = { emit: jest.fn().mockResolvedValue(undefined) };
+// isEnabled=false by default → single-path dispatch uses the in-process EventEmitter.
+// Individual tests flip isEnabled=true to exercise the Kafka path.
+const mockKafka: any = { emit: jest.fn().mockResolvedValue(undefined), isEnabled: false };
 
 describe('WebhooksService', () => {
   let service: WebhooksService;
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockKafka.isEnabled = false; // reset dispatch bus to in-process default each test
     const moduleRef: TestingModule = await Test.createTestingModule({
       providers: [
         WebhooksService,
@@ -89,6 +92,7 @@ describe('WebhooksService', () => {
     const result = await service.handlePaystack(signature, body, rawBody);
 
     expect(result).toEqual({ received: true });
+    // Kafka disabled → dispatch goes to the in-process EventEmitter ONLY (single path).
     expect(mockEvents.emit).toHaveBeenCalledTimes(1);
     expect(mockEvents.emit).toHaveBeenCalledWith(
       'payment.tour_booking',
@@ -98,13 +102,33 @@ describe('WebhooksService', () => {
         metadata: expect.objectContaining({ type: 'tour_booking', bookingId: 'BKG-1' }),
       }),
     );
+    // The same event must NOT also go to Kafka — that double-dispatch was the bug.
+    expect(mockKafka.emit).not.toHaveBeenCalled();
+    // No wallet writes — settlement lives in TourSettlementService.
+    expect(mockWallet.creditWallet).not.toHaveBeenCalled();
+  });
+
+  it('dispatches to Kafka ONLY (not EventEmitter) when Kafka is enabled', async () => {
+    mockKafka.isEnabled = true;
+    const body = {
+      event: 'charge.success',
+      data: {
+        reference: 'ISY-TOUR-KAFKA1',
+        amount: 1_000_000,
+        metadata: { type: 'tour_booking', bookingId: 'BKG-K' },
+      },
+    };
+    const { rawBody, signature } = makeSignedPayload(body);
+
+    await service.handlePaystack(signature, body, rawBody);
+
     expect(mockKafka.emit).toHaveBeenCalledTimes(1);
     expect(mockKafka.emit).toHaveBeenCalledWith(
       'payment.tour_booking',
-      expect.objectContaining({ reference: 'ISY-TOUR-ABC12345' }),
+      expect.objectContaining({ reference: 'ISY-TOUR-KAFKA1' }),
     );
-    // No wallet writes — settlement lives in TourSettlementService.
-    expect(mockWallet.creditWallet).not.toHaveBeenCalled();
+    // EventEmitter must NOT also fire — otherwise the handler runs twice.
+    expect(mockEvents.emit).not.toHaveBeenCalled();
   });
 
   it('forwards split-bill child metadata (shareKey, parentReference) on tour_booking', async () => {
@@ -137,7 +161,8 @@ describe('WebhooksService', () => {
     );
   });
 
-  it('swallows Kafka emit failure for tour_booking without throwing', async () => {
+  it('swallows a Kafka emit failure (when Kafka is the active bus) without throwing the webhook', async () => {
+    mockKafka.isEnabled = true;
     mockKafka.emit.mockRejectedValueOnce(new Error('kafka down'));
     const body = {
       event: 'charge.success',
@@ -149,14 +174,11 @@ describe('WebhooksService', () => {
     };
     const { rawBody, signature } = makeSignedPayload(body);
 
+    // A transient Kafka publish failure must not 500 the webhook (Paystack would retry
+    // and re-deliver anyway; creditWallet/settlement are idempotent on the reference).
     await expect(
       service.handlePaystack(signature, body, rawBody),
     ).resolves.toEqual({ received: true });
-    // EventEmitter still fired even though Kafka failed
-    expect(mockEvents.emit).toHaveBeenCalledWith(
-      'payment.tour_booking',
-      expect.any(Object),
-    );
   });
 
   // ── Existing cases still work (regression guard) ───────────────────────────

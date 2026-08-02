@@ -9,7 +9,13 @@ interface CacheEntry<T> {
 
 export async function cacheSet<T>(key: string, data: T): Promise<void> {
   const entry: CacheEntry<T> = { data, timestamp: Date.now() };
-  await AsyncStorage.setItem(`cache:${key}`, JSON.stringify(entry));
+  try {
+    await AsyncStorage.setItem(`cache:${key}`, JSON.stringify(entry));
+  } catch {
+    // Caching is best-effort: a quota rejection (SQLITE_FULL / QuotaExceeded) or a
+    // serialization failure must never crash the screen that was only trying to warm
+    // the offline cache. Swallow it — the next fetch simply misses the cache.
+  }
 }
 
 export async function cacheGet<T>(key: string): Promise<T | null> {
@@ -17,7 +23,11 @@ export async function cacheGet<T>(key: string): Promise<T | null> {
     const raw = await AsyncStorage.getItem(`cache:${key}`);
     if (!raw) return null;
     const entry: CacheEntry<T> = JSON.parse(raw);
-    if (Date.now() - entry.timestamp > CACHE_TTL) return null;
+    if (Date.now() - entry.timestamp > CACHE_TTL) {
+      // Evict the expired entry so stale keys don't accumulate unbounded in storage.
+      await AsyncStorage.removeItem(`cache:${key}`);
+      return null;
+    }
     return entry.data;
   } catch {
     return null;

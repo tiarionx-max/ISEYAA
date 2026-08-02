@@ -1,9 +1,9 @@
 import {
-  View, Text, StyleSheet, TouchableOpacity, Alert,
+  View, Text, StyleSheet, TouchableOpacity, Alert, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useEffect, useRef, useState } from 'react';
-import { Camera, CameraView, useCameraPermissions } from 'expo-camera';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { router } from 'expo-router';
 import { api } from '../lib/api';
 import { CheckCircle, XCircle, AlertCircle } from 'lucide-react-native';
@@ -59,9 +59,18 @@ export default function QrCheckinScreen() {
       <SafeAreaView style={styles.container}>
         <View style={styles.centered}>
           <Text style={styles.permText}>Camera access is required for QR check-in.</Text>
-          <TouchableOpacity style={styles.permButton} onPress={requestPermission}>
-            <Text style={styles.permButtonText}>Allow Camera</Text>
-          </TouchableOpacity>
+          {permission.canAskAgain ? (
+            <TouchableOpacity style={styles.permButton} onPress={requestPermission}>
+              <Text style={styles.permButtonText}>Allow Camera</Text>
+            </TouchableOpacity>
+          ) : (
+            // Permanently denied — the OS will no longer show the in-app prompt, so the
+            // only way back is the system Settings app. Without this the user is stuck
+            // on a dead screen with a button that silently does nothing.
+            <TouchableOpacity style={styles.permButton} onPress={() => Linking.openSettings()}>
+              <Text style={styles.permButtonText}>Open Settings</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </SafeAreaView>
     );

@@ -206,11 +206,16 @@ export class WalletService {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
+    // F-01: count PENDING reservations as well as SUCCESS credits. Previously the cap
+    // summed only already-SUCCESS credits, but the actual credit happens later in the
+    // webhook — so a user could fire N sequential top-ups (each passing because none had
+    // completed yet) and blow past the CBN daily limit. Counting PENDING reservations
+    // (created below, before Paystack is even called) closes that bypass.
     const todayCredits = await this.prisma.transaction.aggregate({
       where: {
         walletId: wallet.id,
         type: 'CREDIT',
-        status: 'SUCCESS',
+        status: { in: ['SUCCESS', 'PENDING'] },
         createdAt: { gte: todayStart },
         deletedAt: null,
       },
@@ -225,7 +230,9 @@ export class WalletService {
     }
 
     // C-02: idempotency lock — prevents two concurrent topup requests from both passing
-    // the daily-limit check at the same millisecond (TOCTOU race).
+    // the daily-limit check at the same millisecond (TOCTOU race). Sequential requests
+    // are now bounded by the PENDING reservation above; this still serialises truly
+    // concurrent ones so only one reservation is created per lock window.
     const idempKey = `topup:lock:${userId}`;
     const acquired = await this.redis.setNx(idempKey, '1', 30); // 30s lock
     if (!acquired) {
@@ -233,6 +240,24 @@ export class WalletService {
     }
 
     const reference = `ISY-FUND-${uuidv4().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
+
+    // Reserve the amount against the daily cap by writing a PENDING credit row. The
+    // webhook's creditWallet() finalizes this same row (by reference) to SUCCESS.
+    await this.prisma.transaction.create({
+      data: {
+        walletId: wallet.id,
+        type: 'CREDIT',
+        status: 'PENDING',
+        amount: new Prisma.Decimal(dto.amount),
+        currency: 'NGN',
+        reference,
+        gateway: 'PAYSTACK',
+        description: 'Wallet top-up (pending)',
+        balanceBefore: new Prisma.Decimal(wallet.balance),
+        balanceAfter: new Prisma.Decimal(wallet.balance),
+        metadata: { module: 'wallet' },
+      },
+    });
 
     try {
       const payment = await this.paystack.initiatePayment({
@@ -243,6 +268,13 @@ export class WalletService {
       });
 
       return { reference, authorizationUrl: payment.authorizationUrl };
+    } catch (err) {
+      // Paystack initiation failed → release the reservation so it doesn't permanently
+      // consume the user's daily cap for a top-up that never started.
+      await this.prisma.transaction
+        .delete({ where: { reference } })
+        .catch(() => undefined);
+      throw err;
     } finally {
       // Release the lock regardless of success or failure
       await this.redis.del(idempKey);
@@ -291,11 +323,15 @@ export class WalletService {
       const locked = await tx.wallet.findUnique({ where: { id: walletId } });
       if (!locked) throw new NotFoundException('Wallet not found');
 
-      const balanceBefore = Number(locked.balance);
-      if (balanceBefore < amount) {
+      // F-02: do money arithmetic in Prisma.Decimal, never IEEE-754 doubles. The
+      // Decimal constructor accepts a number OR an existing Decimal, so this is safe
+      // whether locked.balance is a real Prisma.Decimal or a plain-number test mock.
+      const balanceBefore = new Prisma.Decimal(locked.balance);
+      const debit = new Prisma.Decimal(amount);
+      if (balanceBefore.lessThan(debit)) {
         throw new BadRequestException('Insufficient wallet balance');
       }
-      const balanceAfter = balanceBefore - amount;
+      const balanceAfter = balanceBefore.minus(debit);
 
       await tx.wallet.update({ where: { id: walletId }, data: { balance: balanceAfter } });
       await tx.transaction.create({
@@ -303,7 +339,7 @@ export class WalletService {
           walletId,
           type: 'DEBIT',
           status: 'SUCCESS',
-          amount,
+          amount: debit,
           currency: 'NGN',
           reference,
           gateway,
@@ -314,7 +350,7 @@ export class WalletService {
         },
       });
 
-      return { balanceAfter };
+      return { balanceAfter: balanceAfter.toNumber() };
     });
   }
 
@@ -344,7 +380,10 @@ export class WalletService {
     // (network timeout, double-tap) double-debit the sender every time, since the
     // unique constraint on Transaction.reference would never be hit twice.
     const reference = `ISY-TRF-${dto.idempotencyKey.replace(/[^a-zA-Z0-9]/g, '').slice(0, 32).toUpperCase()}`;
-    const amount = Number(dto.amount);
+    // F-02: keep the authoritative amount as a Decimal for balance math; `amount`
+    // (number) is used only for display strings (toLocaleString) and the return value.
+    const amountDec = new Prisma.Decimal(dto.amount);
+    const amount = amountDec.toNumber();
 
     // Precheck: an existing OUT leg for this reference means this exact transfer
     // already ran — return its recorded result instead of re-debiting (mirrors
@@ -379,17 +418,17 @@ export class WalletService {
         const lockedSender = await tx.wallet.findUnique({ where: { id: senderWallet.id } });
         if (!lockedSender) throw new NotFoundException('Sender wallet not found');
 
-        const senderBalanceBefore = Number(lockedSender.balance);
-        if (senderBalanceBefore < amount) {
+        const senderBalanceBefore = new Prisma.Decimal(lockedSender.balance);
+        if (senderBalanceBefore.lessThan(amountDec)) {
           throw new BadRequestException('Insufficient wallet balance');
         }
-        const senderBalanceAfter = senderBalanceBefore - amount;
+        const senderBalanceAfter = senderBalanceBefore.minus(amountDec);
 
         const lockedRecipient = await tx.wallet.findUnique({ where: { id: recipientWallet.id } });
         if (!lockedRecipient) throw new NotFoundException('Recipient wallet not found');
 
-        const recipientBalanceBefore = Number(lockedRecipient.balance);
-        const recipientBalanceAfter = recipientBalanceBefore + amount;
+        const recipientBalanceBefore = new Prisma.Decimal(lockedRecipient.balance);
+        const recipientBalanceAfter = recipientBalanceBefore.plus(amountDec);
 
         await tx.wallet.update({
           where: { id: senderWallet.id },
@@ -405,7 +444,7 @@ export class WalletService {
             walletId: senderWallet.id,
             type: 'TRANSFER',
             status: 'SUCCESS',
-            amount,
+            amount: amountDec,
             currency: 'NGN',
             reference: `${reference}-OUT`,
             gateway: 'INTERNAL',
@@ -427,7 +466,7 @@ export class WalletService {
             walletId: recipientWallet.id,
             type: 'TRANSFER',
             status: 'SUCCESS',
-            amount,
+            amount: amountDec,
             currency: 'NGN',
             reference: `${reference}-IN`,
             gateway: 'INTERNAL',
@@ -443,7 +482,7 @@ export class WalletService {
           },
         });
 
-        return { newBalance: senderBalanceAfter };
+        return { newBalance: senderBalanceAfter.toNumber() };
       });
     } catch (err) {
       // Race fallback: two near-simultaneous duplicate requests (same idempotencyKey)
@@ -509,6 +548,7 @@ export class WalletService {
     // an inflated value (double-credit). CLAUDE.md requires SELECT FOR UPDATE on all
     // wallet mutations.
     let creditedUserId: string | null = null;
+    let alreadyProcessed = false;
     await this.prisma.$transaction(async (tx) => {
       // Lock the wallet row to prevent concurrent updates
       await tx.$executeRaw`SELECT id FROM wallets WHERE id = ${walletId} FOR UPDATE`;
@@ -516,16 +556,42 @@ export class WalletService {
       if (!locked) throw new NotFoundException('Wallet not found');
       creditedUserId = locked.userId;
 
-      const balanceBefore = Number(locked.balance);
-      const balanceAfter = balanceBefore + amount;
+      // F-03: idempotency by reference. Paystack/Flutterwave legitimately re-deliver the
+      // same webhook; previously the reference unique-constraint turned a replay into a
+      // P2002 that rolled back and 500'd, so the gateway retried forever. Handle the
+      // three states explicitly instead:
+      const existing = await tx.transaction.findUnique({ where: { reference } });
 
+      // F-02: Decimal arithmetic (constructor accepts number or Decimal).
+      const creditAmt = new Prisma.Decimal(amount);
+      const balanceBefore = new Prisma.Decimal(locked.balance);
+      const balanceAfter = balanceBefore.plus(creditAmt);
+
+      if (existing) {
+        if (existing.status === 'SUCCESS') {
+          // Duplicate delivery of an already-applied credit → no-op replay (no double credit).
+          alreadyProcessed = true;
+          return;
+        }
+        // A PENDING reservation created at top-up initiation (F-01) — finalize it:
+        // move the balance and flip the same row to SUCCESS (no second row, so the
+        // reference stays unique and the daily-limit reservation is consumed exactly once).
+        await tx.wallet.update({ where: { id: walletId }, data: { balance: balanceAfter } });
+        await tx.transaction.update({
+          where: { id: existing.id },
+          data: { status: 'SUCCESS', gateway, description, balanceBefore, balanceAfter },
+        });
+        return;
+      }
+
+      // No prior record (e.g. internal earnings/settlement credit) → create a fresh SUCCESS row.
       await tx.wallet.update({ where: { id: walletId }, data: { balance: balanceAfter } });
       await tx.transaction.create({
         data: {
           walletId,
           type: 'CREDIT',
           status: 'SUCCESS',
-          amount,
+          amount: creditAmt,
           currency: 'NGN',
           reference,
           gateway,
@@ -536,6 +602,9 @@ export class WalletService {
         },
       });
     });
+
+    // A pure replay of an already-applied credit must not re-fire the push notification.
+    if (alreadyProcessed) return;
 
     // Push notification (best-effort) — scoped to direct wallet top-ups (the default
     // `module === 'wallet'` callers, e.g. Paystack top-up webhook). Earnings credits

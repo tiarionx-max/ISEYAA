@@ -28,7 +28,7 @@ import {
   FONT_DISPLAY, FONT_MONO,
 } from '../lib/tokens';
 
-import { API_BASE } from '../lib/api';
+import { API_BASE, refreshAccessToken } from '../lib/api';
 const CHAT_STORAGE_KEY = 'ai_chat_history';
 const MAX_STORED_MESSAGES = 100;
 
@@ -386,51 +386,72 @@ export default function AiChatScreen() {
     setMessages((prev) => [...prev, userMessage]);
     setInputText('');
 
-    const token = await SecureStore.getItemAsync('access_token');
-
     const payload = {
       messages: [...currentHistory, userMessage].map((m) => ({ role: m.role, content: m.content })),
     };
 
     setIsStreaming(true);
 
-    const es = new EventSource(`${API_BASE}/ai/chat`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    } as any);
-    esRef.current = es;
+    // The SSE stream carries the access token in the Authorization header, read once
+    // when the connection opens. A 15-minute-old token yields a 401 and the stream
+    // errors out. `openStream` refreshes the token a single time and reopens before
+    // falling back to the error UI — mirroring the axios interceptor's recovery.
+    const openStream = async (isRetry: boolean): Promise<void> => {
+      const token = await SecureStore.getItemAsync('access_token');
 
-    es.addEventListener('message', (event: any) => {
-      if (event.data === '[DONE]') {
-        onDone();
-        return;
-      }
-      try {
-        const parsed = JSON.parse(event.data);
-        if (parsed.error) {
-          handleError(parsed.error);
-          return;
-        }
-        if (parsed.text) {
-          onChunk(parsed.text);
-          return;
-        }
-        if (parsed.tool) {
-          onToolCard({ name: parsed.tool, result: parsed.result });
-          return;
-        }
-      } catch {
-        // ignore malformed SSE data
-      }
-    });
+      const es = new EventSource(`${API_BASE}/ai/chat`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      } as any);
+      esRef.current = es;
 
-    es.addEventListener('error', () => {
-      handleError('connection');
-    });
+      es.addEventListener('message', (event: any) => {
+        if (event.data === '[DONE]') {
+          onDone();
+          return;
+        }
+        try {
+          const parsed = JSON.parse(event.data);
+          if (parsed.error) {
+            handleError(parsed.error);
+            return;
+          }
+          if (parsed.text) {
+            onChunk(parsed.text);
+            return;
+          }
+          if (parsed.tool) {
+            onToolCard({ name: parsed.tool, result: parsed.result });
+            return;
+          }
+        } catch {
+          // ignore malformed SSE data
+        }
+      });
+
+      es.addEventListener('error', async (event: any) => {
+        const status = event?.xhrStatus;
+        // First failure — an auth 401/403 or an unknown connection drop: refresh the
+        // token once and reopen. Give up (error UI) only if we've already retried or
+        // the refresh itself fails.
+        if (!isRetry && (status === 401 || status === 403 || !status)) {
+          es.close();
+          if (esRef.current === es) esRef.current = null;
+          const newToken = await refreshAccessToken();
+          if (newToken) {
+            void openStream(true);
+            return;
+          }
+        }
+        handleError('connection');
+      });
+    };
+
+    void openStream(false);
   }, [inputText, isStreaming, messages, onChunk, onDone, onToolCard, handleError]);
 
   return (

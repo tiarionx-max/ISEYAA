@@ -72,8 +72,10 @@ export default function LoginPage() {
         <div className="glass rounded-3xl p-7 border border-white/10" style={{ boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="text-[11px] text-white/45 mb-2 block font-semibold uppercase tracking-wider">Email</label>
+              <label htmlFor="email" className="text-[11px] text-white/45 mb-2 block font-semibold uppercase tracking-wider">Email</label>
               <input
+                id="email"
+                name="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -85,9 +87,11 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="text-[11px] text-white/45 mb-2 block font-semibold uppercase tracking-wider">Password</label>
+              <label htmlFor="password" className="text-[11px] text-white/45 mb-2 block font-semibold uppercase tracking-wider">Password</label>
               <div className="relative">
                 <input
+                  id="password"
+                  name="password"
                   type={showPw ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -99,11 +103,18 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPw(!showPw)}
+                  aria-label={showPw ? 'Hide password' : 'Show password'}
                   className="absolute right-3.5 top-1/2 -translate-y-1/2 text-white/25 hover:text-white/60 transition-colors"
                 >
                   {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
               </div>
+            </div>
+
+            <div className="flex justify-end -mt-1">
+              <Link href="/forgot-password" className="text-gold/80 hover:text-gold text-xs font-medium transition-colors">
+                Forgot password?
+              </Link>
             </div>
 
             <button

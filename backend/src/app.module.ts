@@ -1,7 +1,8 @@
 import * as path from 'path';
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from './prisma/prisma.module';
@@ -75,6 +76,14 @@ import { KafkaModule } from './kafka/kafka.module';
     SearchModule,
     HealthModule,
     KafkaModule,
+  ],
+  providers: [
+    // F-05: ThrottlerModule.forRoot() only registers configuration — the guard must
+    // be bound globally or no throttling (global or per-route @Throttle) is enforced.
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
   ],
 })
 export class AppModule {}

@@ -20,4 +20,23 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
+// Global 401 handling: if the backend rejects a request as unauthenticated
+// (stale/expired token, revoked session), sign the user out and bounce to
+// /login instead of letting each component swallow the error and render empty
+// data. Non-401 errors are re-thrown unchanged for local handling.
+let signingOut = false;
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    if (axios.isCancel(error)) {
+      return Promise.reject(error);
+    }
+    if (error?.response?.status === 401 && !signingOut) {
+      signingOut = true;
+      await signOut({ callbackUrl: '/login' });
+    }
+    return Promise.reject(error);
+  },
+);
+
 export const fetcher = (url: string) => api.get(url).then((r) => r.data);

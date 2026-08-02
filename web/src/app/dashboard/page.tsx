@@ -2,7 +2,7 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Navbar } from '@/components/layout/Navbar';
 import { PageTransition } from '@/components/ui/PageTransition';
 import { fetcher, api } from '@/lib/api';
@@ -299,15 +299,6 @@ function SendMoneyCard() {
   const [narration, setNarration] = useState('');
   const qc = useQueryClient();
 
-  // Stable per-attempt idempotency key: regenerates only when the transfer's
-  // details change, so retrying the *same* send after a lost response reuses the
-  // key and the backend treats it as a replay instead of double-debiting.
-  // CLAUDE.md requires an idempotency key on all wallet mutations.
-  const idempotencyKey = useMemo(
-    () => generateIdempotencyKey(),
-    [recipientPhone, amount, narration],
-  );
-
   const transfer = useMutation({
     mutationFn: (payload: {
       recipientPhone: string;
@@ -342,11 +333,14 @@ function SendMoneyCard() {
       toast.error('Minimum transfer is ₦100');
       return;
     }
+    // Fresh idempotency key per submit — unique per wallet mutation (CLAUDE.md
+    // requires one on all wallet mutations) and never shared across distinct
+    // transfers, which would let the backend replay a stale result.
     transfer.mutate({
       recipientPhone: recipientPhone.trim(),
       amount: n,
       ...(narration.trim() ? { narration: narration.trim() } : {}),
-      idempotencyKey,
+      idempotencyKey: generateIdempotencyKey(),
     });
   }
 
@@ -430,8 +424,22 @@ function SendMoneyCard() {
 
 /* ── Tabs ────────────────────────────────────────────────────────────────── */
 function WalletTab({ email }: { email: string }) {
-  const { data: balance } = useQuery({ queryKey: ['wallet-balance'], queryFn: () => fetcher('/wallet/balance') });
-  const { data: txns } = useQuery({ queryKey: ['wallet-txns'], queryFn: () => fetcher('/wallet/transactions?limit=10') });
+  const { status } = useSession();
+  const {
+    data: balance,
+    isError: balanceError,
+    isLoading: balanceLoading,
+    refetch: refetchBalance,
+  } = useQuery({
+    queryKey: ['wallet-balance'],
+    queryFn: () => fetcher('/wallet/balance'),
+    enabled: status === 'authenticated',
+  });
+  const { data: txns } = useQuery({
+    queryKey: ['wallet-txns'],
+    queryFn: () => fetcher('/wallet/transactions?limit=10'),
+    enabled: status === 'authenticated',
+  });
   const [topupOpen, setTopupOpen] = useState(false);
 
   // Compute total spent from transactions (real data, not hardcoded)
@@ -442,8 +450,37 @@ function WalletTab({ email }: { email: string }) {
 
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
-      {/* Wallet card */}
-      <WalletCard balance={balance} spent={totalSpent} />
+      {/* Wallet card — surface a real error state instead of silently showing ₦0 */}
+      {balanceError ? (
+        <div
+          className="relative rounded-3xl p-6 overflow-hidden border border-red-700/30"
+          style={{ background: 'linear-gradient(135deg, #2a0a0a 0%, #3d0f0f 100%)' }}
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <ShieldCheck size={16} className="text-red-400" />
+            <span className="text-red-300 text-xs font-semibold tracking-wider uppercase">Wallet unavailable</span>
+          </div>
+          <p className="text-white font-bold text-lg mb-1">Couldn&apos;t load your balance</p>
+          <p className="text-white/50 text-sm mb-4">
+            We couldn&apos;t reach the wallet service. Your balance is not ₦0 — this is a connection error.
+          </p>
+          <button
+            onClick={() => refetchBalance()}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-white text-sm font-semibold transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      ) : balanceLoading ? (
+        <div
+          className="relative rounded-3xl p-6 overflow-hidden flex items-center justify-center min-h-[196px]"
+          style={{ background: 'linear-gradient(135deg, #0a2e16 0%, #1A6B3C 50%, #0f3d20 100%)' }}
+        >
+          <Loader2 size={24} className="text-white/60 animate-spin" />
+        </div>
+      ) : (
+        <WalletCard balance={balance} spent={totalSpent} />
+      )}
 
       {/* Stat pills */}
       <div className="grid grid-cols-3 gap-3 mt-4">
@@ -503,7 +540,12 @@ function WalletTab({ email }: { email: string }) {
 }
 
 function TicketsTab() {
-  const { data } = useQuery({ queryKey: ['my-tickets'], queryFn: () => fetcher('/events/tickets/mine') });
+  const { status } = useSession();
+  const { data } = useQuery({
+    queryKey: ['my-tickets'],
+    queryFn: () => fetcher('/events/tickets/mine'),
+    enabled: status === 'authenticated',
+  });
   const tickets = data ?? [];
 
   return (
@@ -538,7 +580,12 @@ function TicketsTab() {
 }
 
 function BookingsTab() {
-  const { data } = useQuery({ queryKey: ['my-bookings'], queryFn: () => fetcher('/bookings/mine') });
+  const { status } = useSession();
+  const { data } = useQuery({
+    queryKey: ['my-bookings'],
+    queryFn: () => fetcher('/bookings/mine'),
+    enabled: status === 'authenticated',
+  });
   const bookings = data ?? [];
 
   return (
@@ -577,7 +624,12 @@ function BookingsTab() {
 }
 
 function OrdersTab() {
-  const { data } = useQuery({ queryKey: ['my-orders'], queryFn: () => fetcher('/orders/mine') });
+  const { status } = useSession();
+  const { data } = useQuery({
+    queryKey: ['my-orders'],
+    queryFn: () => fetcher('/orders/mine'),
+    enabled: status === 'authenticated',
+  });
   const orders = data ?? [];
 
   const STATUS_COLORS: Record<string, string> = {

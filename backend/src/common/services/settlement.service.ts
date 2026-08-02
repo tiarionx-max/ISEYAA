@@ -124,10 +124,19 @@ export class SettlementService implements OnModuleInit {
   // ── Main settlement entry point ────────────────────────────────────────────
 
   async settle(input: SettlementInput): Promise<SettlementResult> {
-    // 1. Idempotency precheck — any existing row prefixed with this reference means
+    // 1. Idempotency precheck — if any settlement leg for this reference already exists,
     //    settlement already ran. Return a no-op replay result.
+    //    Perf (F-05 review): use an exact `in` list of the deterministic leg references
+    //    instead of `startsWith: '${reference}-'`. A LIKE-prefix match cannot use the
+    //    `Transaction.reference` unique btree under normal DB collation and forces a
+    //    sequential scan of the (unbounded, ~7M-user) transactions table on every
+    //    settlement — the hottest write path. `in` on the unique btree is an index scan.
+    const candidateRefs = [
+      ...input.recipients.map((r) => `${input.reference}-${r.refSuffix}`),
+      `${input.reference}-PLAT`,
+    ];
     const existing = await this.prisma.transaction.findFirst({
-      where: { reference: { startsWith: `${input.reference}-` } },
+      where: { reference: { in: candidateRefs } },
       select: { id: true },
     });
     if (existing) {

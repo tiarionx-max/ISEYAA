@@ -41,6 +41,10 @@ jobs:
       REDIS_PORT: "6379"
       JWT_SECRET: ci_jwt_secret_at_least_32_characters_long
       JWT_REFRESH_SECRET: ci_refresh_secret_at_least_32_characters
+      # AES-256-GCM key for PII (BVN/NIN) encryption. EncryptionService's
+      # constructor throws unless this is exactly 64 hex chars (32 bytes), which
+      # fails full-AppModule boot in the e2e suites. Test-only value.
+      ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
       # Stub values — services degrade gracefully when keys are absent
       PAYSTACK_SECRET_KEY: stub
       PAYSTACK_WEBHOOK_SECRET: stub
@@ -74,9 +78,15 @@ jobs:
         working-directory: backend
         run: npx prisma generate
 
-      - name: Push schema to test DB
+      - name: Apply migrations to test DB
         working-directory: backend
-        run: npx prisma db push --force-reset
+        # Use migrate deploy (the same path production/Railway runs) rather than
+        # `db push`, which only syncs schema.prisma and silently skips raw-SQL
+        # migrations — including the partial UNIQUE indexes (e.g.
+        # settlement_split_tiers_module_tierName_active_key) that can't be
+        # expressed in schema.prisma and that the settlement-split e2e suite
+        # asserts. Fresh CI Postgres service = empty DB, so no reset needed.
+        run: npx prisma migrate deploy
 
       - name: Lint
         working-directory: backend

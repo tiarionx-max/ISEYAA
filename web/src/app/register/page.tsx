@@ -100,8 +100,10 @@ export default function RegisterPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-[11px] text-white/45 mb-2 block font-semibold uppercase tracking-wider">First name</label>
+                <label htmlFor="firstName" className="text-[11px] text-white/45 mb-2 block font-semibold uppercase tracking-wider">First name</label>
                 <input
+                  id="firstName"
+                  name="firstName"
                   type="text"
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
@@ -112,8 +114,10 @@ export default function RegisterPage() {
                 />
               </div>
               <div>
-                <label className="text-[11px] text-white/45 mb-2 block font-semibold uppercase tracking-wider">Last name</label>
+                <label htmlFor="lastName" className="text-[11px] text-white/45 mb-2 block font-semibold uppercase tracking-wider">Last name</label>
                 <input
+                  id="lastName"
+                  name="lastName"
                   type="text"
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
@@ -126,8 +130,10 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="text-[11px] text-white/45 mb-2 block font-semibold uppercase tracking-wider">Email</label>
+              <label htmlFor="email" className="text-[11px] text-white/45 mb-2 block font-semibold uppercase tracking-wider">Email</label>
               <input
+                id="email"
+                name="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -139,8 +145,10 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="text-[11px] text-white/45 mb-2 block font-semibold uppercase tracking-wider">Phone</label>
+              <label htmlFor="phone" className="text-[11px] text-white/45 mb-2 block font-semibold uppercase tracking-wider">Phone</label>
               <input
+                id="phone"
+                name="phone"
                 type="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
@@ -152,9 +160,11 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="text-[11px] text-white/45 mb-2 block font-semibold uppercase tracking-wider">Password</label>
+              <label htmlFor="password" className="text-[11px] text-white/45 mb-2 block font-semibold uppercase tracking-wider">Password</label>
               <div className="relative">
                 <input
+                  id="password"
+                  name="password"
                   type={showPw ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -167,6 +177,7 @@ export default function RegisterPage() {
                 <button
                   type="button"
                   onClick={() => setShowPw(!showPw)}
+                  aria-label={showPw ? 'Hide password' : 'Show password'}
                   className="absolute right-3.5 top-1/2 -translate-y-1/2 text-white/25 hover:text-white/60 transition-colors"
                 >
                   {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
@@ -176,6 +187,8 @@ export default function RegisterPage() {
 
             <label className="flex items-start gap-2.5 cursor-pointer pt-1">
               <input
+                id="ndpaConsent"
+                name="ndpaConsent"
                 type="checkbox"
                 checked={ndpaConsent}
                 onChange={(e) => setNdpaConsent(e.target.checked)}

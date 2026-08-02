@@ -54,6 +54,22 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     if (this.client) await this.client.quit();
   }
 
+  /**
+   * Liveness for the health endpoint.
+   *  - 'disabled': REDIS_URL was never configured (local dev) — not an error.
+   *  - 'up':       configured and a PING round-trips.
+   *  - 'down':     configured but unreachable / erroring.
+   */
+  async healthStatus(): Promise<'up' | 'down' | 'disabled'> {
+    if (!this.client) return 'disabled';
+    try {
+      const pong = await this.client.ping();
+      return pong === 'PONG' ? 'up' : 'down';
+    } catch {
+      return 'down';
+    }
+  }
+
   async get(key: string): Promise<string | null> {
     if (!this.client || !this.enabled) return null;
     try { return await this.client.get(key); } catch { return null; }

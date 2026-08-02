@@ -50,7 +50,14 @@ const mockPrisma = {
   wallet: { findUnique: jest.fn(), update: jest.fn() },
   user: { findUnique: jest.fn(), findFirst: jest.fn() },
   booking: { aggregate: jest.fn() },
-  transaction: { findMany: jest.fn(), aggregate: jest.fn(), create: jest.fn(), update: jest.fn() },
+  transaction: {
+    findMany: jest.fn(),
+    aggregate: jest.fn(),
+    create: jest.fn(),
+    update: jest.fn(),
+    findUnique: jest.fn(),
+    delete: jest.fn(),
+  },
   platformConfig: { findMany: jest.fn() },
   $transaction: jest.fn(),
 };
@@ -61,7 +68,11 @@ const mockTx = {
     findUnique: jest.fn().mockImplementation((...args) => mockPrisma.wallet.findUnique(...args)),
     update: jest.fn().mockResolvedValue({}),
   },
-  transaction: { create: jest.fn().mockImplementation((...args) => mockPrisma.transaction.create(...args)) },
+  transaction: {
+    create: jest.fn().mockImplementation((...args) => mockPrisma.transaction.create(...args)),
+    update: jest.fn().mockImplementation((...args) => mockPrisma.transaction.update(...args)),
+    findUnique: jest.fn().mockImplementation((...args) => mockPrisma.transaction.findUnique(...args)),
+  },
   $executeRaw: jest.fn().mockResolvedValue(1),
 };
 
@@ -76,6 +87,10 @@ describe('WalletService', () => {
     jest.clearAllMocks();
     // Default: PlatformConfig returns seeded KYC tier limits
     mockPrisma.platformConfig.findMany.mockResolvedValue(PLATFORM_CONFIG_TIERS);
+    // Default: no existing transaction for a given reference (fresh credit path)
+    mockPrisma.transaction.findUnique.mockResolvedValue(null);
+    mockPrisma.transaction.update.mockResolvedValue({});
+    mockPrisma.transaction.delete.mockResolvedValue({});
     // Default: interactive $transaction calls callback with mockTx
     mockPrisma.$transaction.mockImplementation(async (fn) => {
       if (typeof fn === 'function') return fn(mockTx);
@@ -233,6 +248,42 @@ describe('WalletService', () => {
         service.initiateTopup(USER_ID, { amount: 499000, email: 'a@b.com' }),
       ).resolves.toBeDefined();
     });
+
+    it('F-01: reserves the amount as a PENDING credit before calling Paystack', async () => {
+      mockPrisma.wallet.findUnique.mockResolvedValue(mockWallet);
+      mockPrisma.user.findUnique.mockResolvedValue(mockUserTier1);
+      mockPrisma.transaction.aggregate.mockResolvedValue({ _sum: { amount: 0 } });
+      mockPaystack.initiatePayment.mockResolvedValue({
+        authorizationUrl: 'https://paystack.com/pay/xyz',
+        reference: 'ISY-FUND-RES',
+      });
+
+      await service.initiateTopup(USER_ID, { amount: 10000, email: 'a@b.com' });
+
+      // The daily-limit aggregate must include PENDING, and a PENDING reservation row is written.
+      expect(mockPrisma.transaction.aggregate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ status: { in: ['SUCCESS', 'PENDING'] } }),
+        }),
+      );
+      expect(mockPrisma.transaction.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ type: 'CREDIT', status: 'PENDING' }),
+        }),
+      );
+    });
+
+    it('F-01: releases (deletes) the reservation if Paystack initiation fails', async () => {
+      mockPrisma.wallet.findUnique.mockResolvedValue(mockWallet);
+      mockPrisma.user.findUnique.mockResolvedValue(mockUserTier1);
+      mockPrisma.transaction.aggregate.mockResolvedValue({ _sum: { amount: 0 } });
+      mockPaystack.initiatePayment.mockRejectedValue(new Error('paystack down'));
+
+      await expect(
+        service.initiateTopup(USER_ID, { amount: 10000, email: 'a@b.com' }),
+      ).rejects.toThrow('paystack down');
+      expect(mockPrisma.transaction.delete).toHaveBeenCalledWith({ where: { reference: expect.any(String) } });
+    });
   });
 
   // ── creditWallet ───────────────────────────────────────────────────────────
@@ -273,6 +324,34 @@ describe('WalletService', () => {
           data: expect.objectContaining({ gateway: 'INTERNAL' }),
         }),
       );
+    });
+
+    it('F-03: is an idempotent no-op when the reference already succeeded (no double credit)', async () => {
+      mockPrisma.wallet.findUnique.mockResolvedValue(mockWallet);
+      mockPrisma.transaction.findUnique.mockResolvedValue({ id: 'tx-1', status: 'SUCCESS' });
+
+      await service.creditWallet(WALLET_ID, 5000, 'ISY-FUND-DUP', 'Wallet topup');
+
+      // Replay must NOT create a new transaction nor move the balance.
+      expect(mockTx.transaction.create).not.toHaveBeenCalled();
+      expect(mockTx.wallet.update).not.toHaveBeenCalled();
+      expect(mockNotifications.sendPush).not.toHaveBeenCalled();
+    });
+
+    it('F-01: finalizes a PENDING reservation by updating (not re-creating) the row', async () => {
+      mockPrisma.wallet.findUnique.mockResolvedValue(mockWallet);
+      mockPrisma.transaction.findUnique.mockResolvedValue({ id: 'tx-pending', status: 'PENDING' });
+
+      await service.creditWallet(WALLET_ID, 5000, 'ISY-FUND-PEND', 'Wallet topup');
+
+      expect(mockTx.transaction.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'tx-pending' },
+          data: expect.objectContaining({ status: 'SUCCESS' }),
+        }),
+      );
+      expect(mockTx.transaction.create).not.toHaveBeenCalled();
+      expect(mockTx.wallet.update).toHaveBeenCalled();
     });
   });
 

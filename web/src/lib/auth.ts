@@ -4,6 +4,18 @@ import axios from 'axios';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1';
 
+// NEXTAUTH_SECRET signs the session JWT. A hardcoded fallback in production
+// would let anyone forge sessions, so require the env var when running in
+// production and only fall back to a throwaway dev constant otherwise.
+function resolveNextAuthSecret(): string {
+  const secret = process.env.NEXTAUTH_SECRET;
+  if (secret) return secret;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('NEXTAUTH_SECRET must be set in production');
+  }
+  return 'iseyaa-dev-secret';
+}
+
 // Backend access tokens are 15 minutes (backend/src/modules/auth/auth.service.ts).
 // The NextAuth session cookie lasts 7 days, but without this refresh the embedded
 // backend accessToken silently goes stale after 15 minutes — every API call then
@@ -88,5 +100,5 @@ export const authOptions: NextAuthOptions = {
     error: '/login',
   },
   session: { strategy: 'jwt', maxAge: 7 * 24 * 60 * 60 },
-  secret: process.env.NEXTAUTH_SECRET ?? 'iseyaa-dev-secret',
+  secret: resolveNextAuthSecret(),
 };
