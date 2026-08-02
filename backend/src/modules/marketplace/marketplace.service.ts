@@ -350,19 +350,15 @@ export class MarketplaceService implements OnModuleInit {
         include: {
           user: { select: { email: true, firstName: true } },
           orderItems: { include: { product: { select: { name: true } } } },
+          vendor: { select: { userId: true } },
         },
       });
 
       if (!order || order.status !== 'PENDING') return;
 
-      // Order.vendorId has no Prisma relation defined (only a raw FK column, no
-      // DB constraint — see 12-04 deviation notes), so the vendor is resolved via
-      // a direct lookup rather than `include: { vendor: true }`.
-      const vendor = order.vendorId
-        ? await this.prisma.vendor.findUnique({ where: { id: order.vendorId } })
-        : null;
-      const vendorWallet = vendor
-        ? await this.prisma.wallet.findUnique({ where: { userId: vendor.userId } })
+      // Vendor wallet resolved via the Order→Vendor relation (optional; null for vendorless orders).
+      const vendorWallet = order.vendor
+        ? await this.prisma.wallet.findUnique({ where: { userId: order.vendor.userId } })
         : null;
       const ministryWallet = await this.settlementService.resolveMinistryWallet();
       const buyerWallet = await this.prisma.wallet.findUnique({ where: { userId: order.userId } });
