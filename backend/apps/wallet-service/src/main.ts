@@ -1,19 +1,51 @@
 import { NestFactory } from '@nestjs/core';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { HealthImplementation, protoPath as healthCheckProtoPath } from 'grpc-health-check';
 import { join } from 'path';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.createMicroservice<MicroserviceOptions>(AppModule, {
+  const app = await NestFactory.create(AppModule);
+
+  app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.GRPC,
     options: {
       package: 'wallet',
-      protoPath: join(__dirname, '../../../../../packages/proto/wallet.proto'),
-      url: '0.0.0.0:5002',
+      protoPath: [
+        join(__dirname, '../../../../../packages/proto/wallet.proto'),
+        healthCheckProtoPath,
+      ],
+      // Railway's private network (<name>.railway.internal) is IPv6-only —
+      // an IPv4-only 0.0.0.0 bind makes this service unreachable for inter-service gRPC calls once deployed.
+      url: '[::]:5002',
+      onLoadPackageDefinition: (() => {
+        let registered = false;
+        return (pkg, server) => {
+          if (registered) return;
+          registered = true;
+          const healthImpl = new HealthImplementation({ '': 'UNKNOWN' });
+          healthImpl.addToServer(server);
+          healthImpl.setStatus('', 'SERVING');
+        };
+      })(),
     },
   });
-  await app.listen();
-  console.log('wallet-service gRPC listening on :5002');
+
+  await app.startAllMicroservices();
+
+  const config = new DocumentBuilder()
+    .setTitle('wallet-service')
+    .setDescription(
+      'gRPC-internal microservice — HTTP surface is health-only (/healthz). Real API contract is the gRPC "wallet" package in packages/proto/wallet.proto.',
+    )
+    .setVersion('1.0')
+    .build();
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('docs', app, document);
+
+  await app.listen(process.env.PORT ?? 8080);
+  console.log('wallet-service gRPC :5002, HTTP healthz :8080');
 }
 
 bootstrap();

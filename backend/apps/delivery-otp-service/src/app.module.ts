@@ -14,6 +14,7 @@ import { SettlementService } from '../../../src/common/services/settlement.servi
 import { PaystackService } from '../../../src/common/services/paystack.service';
 import { RefundService } from '../../../src/common/services/refund.service';
 import { ReferenceService } from '../../../src/common/services/reference.service';
+import { NotificationsClientService } from '../../../src/modules/notifications-client/notifications-client.service';
 import { DeliveryOtpGrpcController } from './delivery-otp-grpc.controller';
 import { HealthController } from './health.controller';
 
@@ -78,6 +79,19 @@ import { HealthController } from './health.controller';
     {
       provide: DeliveryGateway,
       useValue: { server: { to: () => ({ emit: () => {} }) } } as unknown as DeliveryGateway,
+    },
+    // NotificationsClientService token override — satisfies DeliveryService's constructor
+    // param index 7 without pulling in NotificationsClientModule's real gRPC client wiring.
+    // `verifyOtp`, the only RPC DeliveryOtpGrpcController exposes in this process, never
+    // calls this.notifications; the real dependency is only reached by other
+    // DeliveryService methods (e.g. near delivery.service.ts:906) that this scoped-down
+    // service never invokes. NotificationsClientModule is deliberately NOT imported
+    // wholesale here, for the same reason this file already documents for
+    // WalletModule/CommonModule/AuthModule above: it would pull in real gRPC client
+    // wiring and/or additional surface this OTP-only process has no business exposing.
+    {
+      provide: NotificationsClientService,
+      useValue: { sendPush: async () => ({ sent: false }) } as unknown as NotificationsClientService,
     },
   ],
   // The ONLY two controllers ever registered in this module, by construction — no

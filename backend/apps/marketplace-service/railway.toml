@@ -4,5 +4,7 @@ buildContext = "."
 
 [deploy]
 watchPaths = ["backend/apps/marketplace-service/**", "backend/src/modules/marketplace/**", "packages/proto/**"]
+healthcheckPath = "/healthz"
+healthcheckTimeout = 60
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3

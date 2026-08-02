@@ -28,7 +28,7 @@ const CATEGORIES: Category[] = [
   { id: 'all',         label: 'All',          icon: Sparkles },
   { id: 'stays',       label: 'Stays',        icon: Home,     types: 'HOTEL,GUESTHOUSE,APARTMENT,VILLA,RESORT' },
   { id: 'lounges',     label: 'Lounges',      icon: Wine,     types: 'LOUNGE' },
-  { id: 'clubs',       label: 'Clubs',        icon: Music2,   types: 'CLUB' },
+  { id: 'clubs',       label: 'Social Clubs', icon: Music2,   types: 'CLUB' },
   { id: 'beach',       label: 'Beach',        icon: Waves,    types: 'BEACH' },
   { id: 'tours',       label: 'Tours',        icon: MapPin,   types: 'TOUR' },
   { id: 'experiences', label: 'Experiences',  icon: Sparkles, types: 'EXPERIENCE' },

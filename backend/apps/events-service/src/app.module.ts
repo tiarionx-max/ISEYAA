@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { TerminusModule } from '@nestjs/terminus';
 import { PrismaModule } from '../../../src/prisma/prisma.module';
 import { RedisModule } from '../../../src/redis/redis.module';
 import { CommonModule } from '../../../src/common/common.module';
@@ -7,6 +8,7 @@ import { ResilienceModule } from '../../../src/resilience/resilience.module';
 import { EventsModule } from '../../../src/modules/events/events.module';
 import { KafkaModule } from '../../../src/kafka/kafka.module';
 import { EventsGrpcController } from './events-grpc.controller';
+import { HealthController } from './health.controller';
 
 @Module({
   imports: [
@@ -17,7 +19,8 @@ import { EventsGrpcController } from './events-grpc.controller';
     ResilienceModule,
     EventsModule,
     KafkaModule,
+    TerminusModule,
   ],
-  controllers: [EventsGrpcController],
+  controllers: [EventsGrpcController, HealthController],
 })
 export class AppModule {}
