@@ -214,6 +214,8 @@ export default function TourRevenueAdminPage() {
                 <div className="px-5 py-4 border-b border-white/6">
                   <h2 className="font-bold text-white text-sm">Vendor Summary</h2>
                 </div>
+                <div className="overflow-x-auto">
+                  <div className="min-w-[620px]">
                 <div className="grid grid-cols-[1fr_1fr_120px_100px] gap-4 px-5 py-3 border-b border-white/6 text-[10px] font-bold text-white/30 uppercase tracking-widest">
                   <span>Vendor Type</span>
                   <span>Vendor ID</span>
@@ -233,6 +235,8 @@ export default function TourRevenueAdminPage() {
                     <p className="text-white/55 text-sm">{v.transactionCount}</p>
                   </div>
                 ))}
+                  </div>
+                </div>
               </div>
             )}
           </>
