@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { HealthImplementation, protoPath as healthCheckProtoPath } from 'grpc-health-check';
 import { join } from 'path';
 import { AppModule } from './app.module';
@@ -15,7 +16,9 @@ async function bootstrap() {
         join(__dirname, '../../../../../packages/proto/notifications.proto'),
         healthCheckProtoPath,
       ],
-      url: '0.0.0.0:5008',
+      // Railway's private network (<name>.railway.internal) is IPv6-only —
+      // an IPv4-only 0.0.0.0 bind makes this service unreachable for inter-service gRPC calls once deployed.
+      url: '[::]:5008',
       onLoadPackageDefinition: (() => {
         let registered = false;
         return (pkg, server) => {
@@ -30,6 +33,17 @@ async function bootstrap() {
   });
 
   await app.startAllMicroservices();
+
+  const config = new DocumentBuilder()
+    .setTitle('notifications-service')
+    .setDescription(
+      'gRPC-internal microservice — HTTP surface is health-only (/healthz). Real API contract is the gRPC "notifications" package in packages/proto/notifications.proto.',
+    )
+    .setVersion('1.0')
+    .build();
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('docs', app, document);
+
   await app.listen(process.env.PORT ?? 8080);
   console.log('notifications-service gRPC :5008, HTTP healthz :8080');
 }
