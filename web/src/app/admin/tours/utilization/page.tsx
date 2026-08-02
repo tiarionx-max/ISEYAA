@@ -117,7 +117,7 @@ export default function TourUtilizationAdminPage() {
         </div>
 
         {/* Summary */}
-        <div className="grid grid-cols-2 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
           <div className="glass rounded-2xl border border-white/6 p-5">
             <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1.5">
               Confirmed Bookings
