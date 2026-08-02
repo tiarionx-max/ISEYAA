@@ -17,6 +17,24 @@ export class WebhooksService {
     private kafka: KafkaService,
   ) {}
 
+  /**
+   * Dispatch a payment event to EXACTLY ONE bus: Kafka when it is configured,
+   * otherwise the in-process EventEmitter. Previously every event was published to
+   * BOTH buses while feature services subscribed to both (`kafka.consume` + `@OnEvent`),
+   * so with Kafka enabled each payment ran its fulfillment handler twice — double
+   * QR-gen / email / settlement, guarded only by a downstream unique-constraint
+   * backstop. Single-path dispatch removes the double-processing at the source.
+   */
+  private async dispatch(topic: string, payload: unknown): Promise<void> {
+    if (this.kafka.isEnabled) {
+      await this.kafka.emit(topic, payload).catch((err) =>
+        this.logger.error(`Kafka emit failed for ${topic}`, err),
+      );
+    } else {
+      this.eventEmitter.emit(topic, payload);
+    }
+  }
+
   async handlePaystack(signature: string, body: any, rawBody?: Buffer) {
     // C-11: rawBody is required — JSON.stringify of parsed body does not reproduce
     // original byte order and HMAC will never match. Throw 400 if absent.
@@ -44,45 +62,27 @@ export class WebhooksService {
 
       switch (type) {
         case 'ticket_purchase':
-          this.eventEmitter.emit('payment.ticket_purchase', eventPayload);
-          await this.kafka.emit('payment.ticket_purchase', eventPayload).catch((err) =>
-            this.logger.error('Kafka emit failed for ticket_purchase', err),
-          );
+          await this.dispatch('payment.ticket_purchase', eventPayload);
           break;
 
         case 'stay_booking':
-          this.eventEmitter.emit('payment.stay_booking', eventPayload);
-          await this.kafka.emit('payment.stay_booking', eventPayload).catch((err) =>
-            this.logger.error('Kafka emit failed for stay_booking', err),
-          );
+          await this.dispatch('payment.stay_booking', eventPayload);
           break;
 
         case 'membership_signup':
-          this.eventEmitter.emit('payment.membership_signup', eventPayload);
-          await this.kafka.emit('payment.membership_signup', eventPayload).catch((err) =>
-            this.logger.error('Kafka emit failed for membership_signup', err),
-          );
+          await this.dispatch('payment.membership_signup', eventPayload);
           break;
 
         case 'order_payment':
-          this.eventEmitter.emit('payment.order_payment', eventPayload);
-          await this.kafka.emit('payment.order_payment', eventPayload).catch((err) =>
-            this.logger.error('Kafka emit failed for order_payment', err),
-          );
+          await this.dispatch('payment.order_payment', eventPayload);
           break;
 
         case 'studio_booking':
-          this.eventEmitter.emit('payment.studio_booking', eventPayload);
-          await this.kafka.emit('payment.studio_booking', eventPayload).catch((err) =>
-            this.logger.error('Kafka emit failed for studio_booking', err),
-          );
+          await this.dispatch('payment.studio_booking', eventPayload);
           break;
 
         case 'tour_booking':
-          this.eventEmitter.emit('payment.tour_booking', eventPayload);
-          await this.kafka.emit('payment.tour_booking', eventPayload).catch((err) =>
-            this.logger.error('Kafka emit failed for tour_booking', err),
-          );
+          await this.dispatch('payment.tour_booking', eventPayload);
           break;
 
         // M-08: explicit case prevents silent fallback to default for future type mismatches
@@ -128,7 +128,53 @@ export class WebhooksService {
     }
 
     if (body.event === 'charge.completed' && body.data?.status === 'successful') {
-      this.logger.log(`Flutterwave charge completed: ${body.data.tx_ref}`);
+      // F-09: Flutterwave is the CBN-required fallback gateway. Previously a successful
+      // charge here only logged and NEVER credited the wallet or ran settlement, so any
+      // payment that fell back to Flutterwave was silently dropped. Mirror the Paystack
+      // path. NOTE: Flutterwave `amount` is in the major unit (naira) already — do NOT
+      // divide by 100 the way Paystack's kobo amount is divided.
+      const data = body.data;
+      const reference: string = data.tx_ref;
+      const metadata = data.meta ?? {};
+      const type: string = metadata?.type ?? '';
+      const amountNgn = Number(data.amount);
+      const eventPayload = {
+        reference,
+        metadata,
+        // downstream handlers expect a kobo `amount` (they divide by 100) — normalise
+        amount: Math.round(amountNgn * 100),
+        authorization: data.card ?? null,
+      };
+
+      switch (type) {
+        case 'ticket_purchase':
+        case 'stay_booking':
+        case 'membership_signup':
+        case 'order_payment':
+        case 'studio_booking':
+        case 'tour_booking':
+          await this.dispatch(`payment.${type}`, eventPayload);
+          break;
+
+        case 'wallet_topup':
+          if (metadata?.walletId) {
+            await this.walletService.creditWallet(
+              metadata.walletId,
+              amountNgn,
+              reference,
+              'Wallet top-up via Flutterwave',
+              'wallet',
+              'FLUTTERWAVE',
+            );
+            this.logger.log(`Wallet ${metadata.walletId} credited ₦${amountNgn} (Flutterwave) — ref: ${reference}`);
+          } else {
+            this.logger.warn(`Flutterwave wallet_topup missing walletId — ref: ${reference}`);
+          }
+          break;
+
+        default:
+          this.logger.warn(`Unhandled Flutterwave charge — ref: ${reference}, type: ${type}`);
+      }
     }
 
     return { received: true };
