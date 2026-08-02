@@ -72,8 +72,10 @@ export default function LoginPage() {
         <div className="glass rounded-3xl p-7 border border-white/10" style={{ boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="text-[11px] text-white/45 mb-2 block font-semibold uppercase tracking-wider">Email</label>
+              <label htmlFor="email" className="text-[11px] text-white/45 mb-2 block font-semibold uppercase tracking-wider">Email</label>
               <input
+                id="email"
+                name="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -85,9 +87,11 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="text-[11px] text-white/45 mb-2 block font-semibold uppercase tracking-wider">Password</label>
+              <label htmlFor="password" className="text-[11px] text-white/45 mb-2 block font-semibold uppercase tracking-wider">Password</label>
               <div className="relative">
                 <input
+                  id="password"
+                  name="password"
                   type={showPw ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
