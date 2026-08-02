@@ -4,6 +4,16 @@ import { router } from 'expo-router';
 
 export const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1';
 
+// The localhost default is only ever correct in local dev. In a production build a
+// missing EXPO_PUBLIC_API_URL means every request silently points at a dev machine
+// that isn't there — surface it loudly instead of failing invisibly on-device.
+if (!process.env.EXPO_PUBLIC_API_URL && !__DEV__) {
+  console.warn(
+    '[api] EXPO_PUBLIC_API_URL is not set in a non-dev build — falling back to ' +
+      'http://localhost:3001/api/v1, which will not reach the backend from a device.',
+  );
+}
+
 export const api = axios.create({ baseURL: API_BASE, timeout: 15_000 });
 
 api.interceptors.request.use(async (config) => {
@@ -20,7 +30,7 @@ api.interceptors.request.use(async (config) => {
 // firing one refresh per failed request would race and revoke each other.
 let refreshPromise: Promise<string | null> | null = null;
 
-async function refreshAccessToken(): Promise<string | null> {
+export async function refreshAccessToken(): Promise<string | null> {
   const refreshToken = await SecureStore.getItemAsync('refresh_token');
   if (!refreshToken) return null;
 
