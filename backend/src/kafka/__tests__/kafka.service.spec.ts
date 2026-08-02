@@ -91,15 +91,30 @@ describe('KafkaService', () => {
     expect(mockRun).toHaveBeenCalledTimes(1);
   });
 
-  it('Test 6: consume() catches handler errors and does not rethrow', async () => {
+  it('Test 6: consume() lets handler errors PROPAGATE so kafkajs does not commit the offset (retry, no message loss)', async () => {
     const handler = jest.fn().mockRejectedValue(new Error('handler error'));
+    let capturedEachMessage: any;
     mockRun.mockImplementation(async ({ eachMessage }) => {
-      try {
-        await eachMessage({ message: { value: Buffer.from(JSON.stringify({ type: 'test' })) } });
-      } catch {
-        // consume should catch internally
-      }
+      capturedEachMessage = eachMessage; // capture without invoking so consume() resolves
     });
     await expect(service.consume('some.topic', 'group-1', handler)).resolves.not.toThrow();
+    // Delivering a message whose handler throws must reject out of eachMessage —
+    // that is what tells kafkajs to skip the offset commit and redeliver.
+    await expect(
+      capturedEachMessage({ message: { value: Buffer.from(JSON.stringify({ type: 'test' })) } }),
+    ).rejects.toThrow('handler error');
+  });
+
+  it('Test 7: consume() SKIPS an unparseable poison message without calling the handler or throwing', async () => {
+    const handler = jest.fn().mockResolvedValue(undefined);
+    let capturedEachMessage: any;
+    mockRun.mockImplementation(async ({ eachMessage }) => {
+      capturedEachMessage = eachMessage;
+    });
+    await service.consume('some.topic', 'group-2', handler);
+    await expect(
+      capturedEachMessage({ message: { value: Buffer.from('not-json{') } }),
+    ).resolves.toBeUndefined();
+    expect(handler).not.toHaveBeenCalled();
   });
 });
