@@ -32,6 +32,7 @@ import {
   bootstrapE2EApp,
   resetTourTables,
   seedBaselineUsers,
+  seedTourReferenceData,
   mintJwt,
   signPaystackWebhook,
   BaselineUsers,
@@ -154,6 +155,9 @@ describeE2E('Tour Booking E2E Happy Path (11 steps)', () => {
 
     await resetTourTables(prisma);
     users = await seedBaselineUsers(prisma);
+    // Guarantee the LGA + Attraction reference data the package flow needs,
+    // even in CI where the full demo seed script hasn't run (idempotent).
+    await seedTourReferenceData(prisma);
 
     guideToken   = mintJwt(jwtService, users.guideId,   'TOUR_GUIDE');
     adminToken   = mintJwt(jwtService, users.adminId,   'LGA_ADMIN');

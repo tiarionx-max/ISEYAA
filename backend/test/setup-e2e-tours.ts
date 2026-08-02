@@ -18,6 +18,33 @@ import { JwtService } from '@nestjs/jwt';
 import { createHmac, randomUUID } from 'crypto';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { PaystackService } from '../src/common/services/paystack.service';
+
+// ── Paystack mock ─────────────────────────────────────────────────────────────
+
+// PaystackService.initiatePayment() has no offline/stub mode — with a real key
+// it calls Paystack (HTTP 401 on CI's placeholder key), and with no key it
+// throws. The e2e never needs a real gateway call: it drives the payment
+// lifecycle itself by POSTing a signed charge.success webhook. Override the
+// provider with a deterministic mock that echoes the caller's reference so the
+// booking stores the same ref the webhook later settles against.
+const paystackE2EMock = {
+  initiatePayment: async (params: { reference: string }) => ({
+    authorizationUrl: `https://checkout.paystack.test/${params.reference}`,
+    accessCode: `acc_${params.reference}`,
+    reference: params.reference,
+  }),
+  chargeAuthorization: async (params: { reference?: string }) => ({
+    reference: params?.reference ?? 'e2e-charge-ref',
+    status: 'success',
+  }),
+  resolveBvn: async () => ({ verified: true, firstName: 'E2E', lastName: 'Test' }),
+  refundCharge: async (reference: string, amountKobo?: number) => ({
+    id: `refund_${reference}`,
+    amount: amountKobo ?? 0,
+    status: 'pending',
+  }),
+};
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 
@@ -28,7 +55,10 @@ export async function bootstrapE2EApp(): Promise<{
 }> {
   const moduleRef = await Test.createTestingModule({
     imports: [AppModule],
-  }).compile();
+  })
+    .overrideProvider(PaystackService)
+    .useValue(paystackE2EMock)
+    .compile();
 
   // rawBody: true is required — mirrors src/main.ts's NestFactory.create() option.
   // Without it, req.rawBody is undefined and WebhooksService.handlePaystack()'s HMAC
@@ -165,6 +195,69 @@ export async function seedBaselineUsers(
     adminId: ADMIN_ID,
     govtId: GOVT_ID,
   };
+}
+
+// ── Reference data seed (LGA + Attraction) ──────────────────────────────────────
+
+/**
+ * Upserts the minimal reference data the tour-booking flow needs: one LGA and
+ * one Attraction within it. CreateTourPackageDto requires a real lgaId and
+ * >=1 attractionId, and the suite reads the first available rows. The full
+ * 20-LGA/attraction reference set is seeded by the demo seed script, which CI
+ * does not run — so seed a deterministic minimum here. Idempotent via fixed
+ * unique slugs, and additive: in environments that already have the real
+ * reference data, findFirst() still returns a real row.
+ */
+export async function seedTourReferenceData(
+  prisma: PrismaService,
+): Promise<{ lgaId: string; attractionId: string }> {
+  const lga = await prisma.lGA.upsert({
+    where: { slug: 'e2e-abeokuta-south' },
+    create: {
+      name: 'E2E Abeokuta South',
+      slug: 'e2e-abeokuta-south',
+      stateCode: 'OG',
+    },
+    update: {},
+    select: { id: true },
+  });
+
+  const attraction = await prisma.attraction.upsert({
+    where: { slug: 'e2e-olumo-rock' },
+    create: {
+      lgaId: lga.id,
+      name: 'E2E Olumo Rock',
+      slug: 'e2e-olumo-rock',
+      category: 'HISTORICAL' as any,
+    },
+    update: {},
+    select: { id: true },
+  });
+
+  // Tour bookings settle under module 'tour'. The seed *migration* seeds six
+  // other modules but not 'tour', so resolveSplit('tour', …) would throw
+  // "No active SettlementSplitTier" and leave the ledger empty (breaking the
+  // TOUR-10 invariant check). Seed one active tier that sums to 1.0
+  // (0.85 earner + 0.05 ministry + 0.10 platform). Idempotent and safe against
+  // the partial UNIQUE index — never creates a second ACTIVE row.
+  const tourTier = await prisma.settlementSplitTier.findFirst({
+    where: { module: 'tour', isActive: true },
+    select: { id: true },
+  });
+  if (!tourTier) {
+    await prisma.settlementSplitTier.create({
+      data: {
+        module: 'tour',
+        tierName: 'default',
+        earnerPct: 0.85,
+        ministryPct: 0.05,
+        platformPct: 0.1,
+        isActive: true,
+      },
+    });
+  }
+
+  return { lgaId: lga.id, attractionId: attraction.id };
 }
 
 // ── JWT helpers ───────────────────────────────────────────────────────────────
