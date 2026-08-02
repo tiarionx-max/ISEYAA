@@ -7,6 +7,7 @@ import {
   UseGuards,
   Req,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Request } from 'express';
 import { AuthService } from './auth.service';
@@ -25,12 +26,18 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  // F-05: stricter than the app-wide default (100 req/60s) to slow credential-stuffing
+  // and brute-force attempts against registration specifically.
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('register')
   @ApiOperation({ summary: 'Register a new account' })
   register(@Body() dto: RegisterDto, @Req() req: Request) {
     return this.authService.register(dto, req.ip, req.headers['user-agent']);
   }
 
+  // F-05: stricter than the app-wide default (100 req/60s) to slow credential-stuffing
+  // and brute-force attempts against login specifically.
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Login and receive JWT tokens' })
