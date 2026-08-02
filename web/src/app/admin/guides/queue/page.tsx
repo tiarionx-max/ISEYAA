@@ -143,6 +143,8 @@ export default function TourGuidesQueuePage() {
           </div>
         ) : (
           <div className="glass rounded-2xl border border-white/6 overflow-hidden">
+            <div className="overflow-x-auto">
+              <div className="min-w-[760px]">
             <div className="grid grid-cols-[1fr_80px_1fr_80px_100px_160px] gap-3 px-5 py-3 border-b border-white/6 text-[10px] font-bold text-white/30 uppercase tracking-widest">
               <span>Name</span>
               <span>Exp.</span>
@@ -196,6 +198,8 @@ export default function TourGuidesQueuePage() {
                 </div>
               );
             })}
+              </div>
+            </div>
           </div>
         )}
       </div>

@@ -250,7 +250,7 @@ export default function AdminPage() {
           </div>
 
           {/* ── Supporting row ───────────────────────────────────────────── */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {[
               { label: 'Daily Active', value: dau, icon: Activity, cls: 'bg-teal-900/30 border-teal-700/20 text-teal-300' },
               { label: 'Live Events',  value: activeEvents, icon: Calendar, cls: 'bg-amber-900/25 border-amber-700/15 text-amber-400' },

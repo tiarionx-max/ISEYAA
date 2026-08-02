@@ -150,6 +150,8 @@ export default function ReviewsQueuePage() {
           </div>
         ) : (
           <div className="glass rounded-2xl border border-white/6 overflow-hidden">
+            <div className="overflow-x-auto">
+              <div className="min-w-[680px]">
             <div className="grid grid-cols-[1fr_1fr_80px_1fr_160px] gap-4 px-5 py-3 border-b border-white/6 text-[10px] font-bold text-white/30 uppercase tracking-widest">
               <span>Target</span>
               <span>Reviewer</span>
@@ -224,6 +226,8 @@ export default function ReviewsQueuePage() {
                 </div>
               );
             })}
+              </div>
+            </div>
           </div>
         )}
       </div>
