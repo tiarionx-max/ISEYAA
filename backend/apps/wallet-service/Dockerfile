@@ -20,6 +20,11 @@ RUN cd packages/proto && npx tsc -p tsconfig.json
 RUN mkdir -p node_modules/@nestjs && ln -s /app/backend/node_modules/@nestjs/platform-express node_modules/@nestjs/platform-express
 
 COPY backend/ ./backend/
+# gRPC client modules (e.g. NotificationsClientModule) resolve protoPath to
+# /app/backend/packages/proto in the per-app nest build output (one level deeper
+# than the monolith build, whose 4x '../' reaches the repo root). Symlink it to the
+# real proto location so ClientGrpcProxy.loadProto finds the .proto files at runtime.
+RUN mkdir -p /app/backend/packages && ln -s /app/packages/proto /app/backend/packages/proto
 # musl-specific sharp binary for Alpine — lockfile has the glibc build from Windows
 RUN npm install --os=linux --libc=musl --cpu=x64 sharp
 RUN cd backend && npx prisma generate
