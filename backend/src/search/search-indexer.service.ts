@@ -44,7 +44,26 @@ export class SearchIndexerService implements OnModuleInit {
         this.indexProperties(),
         this.indexProducts(),
       ]);
-      this.logger.log('Bulk index complete');
+
+      // Verify the index is actually populated before declaring success. indexDocument()
+      // swallows per-document errors, so without this a run where every write failed would
+      // still log "Bulk index complete" and leave search silently empty (looks healthy).
+      const [aAfter, eAfter, pAfter, prAfter] = await Promise.all([
+        this.searchService.getCollectionCount('attractions'),
+        this.searchService.getCollectionCount('events'),
+        this.searchService.getCollectionCount('properties'),
+        this.searchService.getCollectionCount('products'),
+      ]);
+      const totalIndexed = aAfter + eAfter + pAfter + prAfter;
+      if (totalIndexed === 0) {
+        this.logger.error(
+          'Bulk index finished but Typesense reports 0 documents — indexing failed silently (check Typesense connectivity/schema)',
+        );
+      } else {
+        this.logger.log(
+          `Bulk index complete — attractions:${aAfter} events:${eAfter} properties:${pAfter} products:${prAfter}`,
+        );
+      }
     } catch (err: any) {
       // Non-fatal: Typesense may be unavailable in dev. App continues to start.
       this.logger.warn(`Typesense unavailable — skipping index on startup: ${err?.message}`);
