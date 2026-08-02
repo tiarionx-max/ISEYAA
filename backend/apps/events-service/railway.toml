@@ -4,5 +4,7 @@ buildContext = "."
 
 [deploy]
 watchPaths = ["backend/apps/events-service/**", "backend/src/modules/events/**", "packages/proto/**"]
+healthcheckPath = "/healthz"
+healthcheckTimeout = 60
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
