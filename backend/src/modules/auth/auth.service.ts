@@ -29,6 +29,7 @@ import { OtpChannel } from '../../common/enums/otp-channel.enum';
 const OTP_TTL = 300; // 5 minutes
 const OTP_LOCK_TTL = 900; // 15 minutes
 const OTP_MAX_ATTEMPTS = 3;
+const OTP_SEND_COOLDOWN = 45; // min seconds between OTP sends to one phone (F-05 anti SMS-bomb)
 const REFRESH_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
 
 const USER_SELECT = {
@@ -101,6 +102,14 @@ export class AuthService {
     return { user, ...tokens };
   }
 
+  // F-07: lazily-computed valid bcrypt hash, used only to equalise timing on the
+  // login not-found path. Computed once on first use so suites that never log in
+  // don't pay the hash cost.
+  private enumerationGuardHash: string | null = null;
+  private getEnumerationGuardHash(): string {
+    return (this.enumerationGuardHash ??= bcrypt.hashSync('enumeration-guard', 12));
+  }
+
   async login(dto: LoginDto, ip?: string, ua?: string) {
     const user = await this.prisma.user.findFirst({
       where: {
@@ -108,7 +117,12 @@ export class AuthService {
         deletedAt: null,
       },
     });
-    if (!user || !user.passwordHash) throw new UnauthorizedException('Invalid credentials');
+    if (!user || !user.passwordHash) {
+      // F-07: burn an equivalent bcrypt.compare on the not-found path so login response
+      // time doesn't reveal whether an account exists (user-enumeration side channel).
+      await bcrypt.compare(dto.password, this.getEnumerationGuardHash());
+      throw new UnauthorizedException('Invalid credentials');
+    }
 
     // C-10: status check BEFORE bcrypt.compare to avoid leaking that password was valid
     if (user.status === 'SUSPENDED' || user.status === 'DELETED') {
@@ -144,6 +158,15 @@ export class AuthService {
       throw new ForbiddenException('Too many OTP attempts. Try again in 15 minutes');
     }
 
+    // F-05: per-phone send cooldown. Verification lockout only triggers on failed
+    // *verifies*, so without this an attacker could loop sendOtp against any victim
+    // number and trigger unlimited Sendchamp SMS (SMS-bombing + direct provider cost).
+    const cooldownKey = `otp_send_cooldown:${dto.phone}`;
+    const onCooldown = await this.redis.exists(cooldownKey);
+    if (onCooldown) {
+      throw new ForbiddenException('A code was just sent. Please wait a moment before requesting another.');
+    }
+
     const existingUser = await this.prisma.user.findFirst({
       where: { phone: dto.phone, deletedAt: null },
       select: { otpChannel: true, email: true, firstName: true },
@@ -160,6 +183,9 @@ export class AuthService {
     await this.redis.set(`otp:${dto.phone}`, this.encodeOtpValue(otp, 0, channel, email), OTP_TTL);
 
     const fallbackUsed = await this.dispatchOtp(dto.phone, otp, channel, email, existingUser?.firstName);
+    // Arm the send cooldown only after a successful dispatch, so a delivery failure
+    // doesn't lock the user out of retrying.
+    await this.redis.set(cooldownKey, '1', OTP_SEND_COOLDOWN);
     return { message: 'OTP sent successfully', fallbackUsed };
   }
 
