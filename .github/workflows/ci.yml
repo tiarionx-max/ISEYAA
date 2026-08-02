@@ -74,9 +74,15 @@ jobs:
         working-directory: backend
         run: npx prisma generate
 
-      - name: Push schema to test DB
+      - name: Apply migrations to test DB
         working-directory: backend
-        run: npx prisma db push --force-reset
+        # Use migrate deploy (the same path production/Railway runs) rather than
+        # `db push`, which only syncs schema.prisma and silently skips raw-SQL
+        # migrations — including the partial UNIQUE indexes (e.g.
+        # settlement_split_tiers_module_tierName_active_key) that can't be
+        # expressed in schema.prisma and that the settlement-split e2e suite
+        # asserts. Fresh CI Postgres service = empty DB, so no reset needed.
+        run: npx prisma migrate deploy
 
       - name: Lint
         working-directory: backend
