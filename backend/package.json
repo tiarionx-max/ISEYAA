@@ -6,7 +6,7 @@
     "build": "prisma generate && nest build",
     "start": "node dist/main",
     "start:prod": "node --require ./dist/instrumentation.js dist/main.js",
-    "start:prod:notifications-service": "node --require ./dist/src/instrumentation.js dist/apps/notifications-service/src/main.js",
+    "start:prod:notifications-service": "node --require ./dist/instrumentation.js dist/apps/notifications-service/src/main.js",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "lint": "eslint \"{src,test}/**/*.ts\" --fix",
