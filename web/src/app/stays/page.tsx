@@ -327,7 +327,7 @@ export default function StaysPage() {
                 e.preventDefault();
                 /* local-state only for now */
               }}
-              className="mt-8 bg-jungle-2/95 border border-white/10 rounded-full shadow-[0_12px_40px_rgba(0,0,0,0.45)] flex flex-col md:flex-row md:items-stretch overflow-hidden divide-y md:divide-y-0 md:divide-x divide-white/8 max-w-4xl"
+              className="mt-8 bg-jungle-2/95 border border-white/10 rounded-3xl md:rounded-full shadow-[0_12px_40px_rgba(0,0,0,0.45)] flex flex-col md:flex-row md:items-stretch overflow-hidden divide-y md:divide-y-0 md:divide-x divide-white/8 max-w-4xl"
             >
               <label className="flex-1 flex items-center gap-3 px-5 py-3 hover:bg-[rgba(255,255,255,0.03)] transition-colors">
                 <Search size={15} className="text-white/40 shrink-0" />
@@ -388,10 +388,10 @@ export default function StaysPage() {
                 </div>
               </label>
 
-              <div className="flex items-center justify-end px-3 py-3">
+              <div className="flex items-center justify-stretch md:justify-end p-3">
                 <button
                   type="submit"
-                  className="btn-gold inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm"
+                  className="btn-gold inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full text-sm w-full md:w-auto min-h-[44px]"
                   aria-label="Search"
                 >
                   <Search size={14} /> Search
