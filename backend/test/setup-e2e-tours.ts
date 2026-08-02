@@ -167,6 +167,46 @@ export async function seedBaselineUsers(
   };
 }
 
+// ── Reference data seed (LGA + Attraction) ──────────────────────────────────────
+
+/**
+ * Upserts the minimal reference data the tour-booking flow needs: one LGA and
+ * one Attraction within it. CreateTourPackageDto requires a real lgaId and
+ * >=1 attractionId, and the suite reads the first available rows. The full
+ * 20-LGA/attraction reference set is seeded by the demo seed script, which CI
+ * does not run — so seed a deterministic minimum here. Idempotent via fixed
+ * unique slugs, and additive: in environments that already have the real
+ * reference data, findFirst() still returns a real row.
+ */
+export async function seedTourReferenceData(
+  prisma: PrismaService,
+): Promise<{ lgaId: string; attractionId: string }> {
+  const lga = await prisma.lGA.upsert({
+    where: { slug: 'e2e-abeokuta-south' },
+    create: {
+      name: 'E2E Abeokuta South',
+      slug: 'e2e-abeokuta-south',
+      stateCode: 'OG',
+    },
+    update: {},
+    select: { id: true },
+  });
+
+  const attraction = await prisma.attraction.upsert({
+    where: { slug: 'e2e-olumo-rock' },
+    create: {
+      lgaId: lga.id,
+      name: 'E2E Olumo Rock',
+      slug: 'e2e-olumo-rock',
+      category: 'HISTORICAL' as any,
+    },
+    update: {},
+    select: { id: true },
+  });
+
+  return { lgaId: lga.id, attractionId: attraction.id };
+}
+
 // ── JWT helpers ───────────────────────────────────────────────────────────────
 
 /**
