@@ -9,7 +9,9 @@ async function bootstrap() {
     options: {
       package: 'events',
       protoPath: join(__dirname, '../../../../../packages/proto/events.proto'),
-      url: '0.0.0.0:5003',
+      // Railway's private network (<name>.railway.internal) is IPv6-only —
+      // an IPv4-only 0.0.0.0 bind makes this service unreachable for inter-service gRPC calls once deployed.
+      url: '[::]:5003',
     },
   });
   await app.listen();
