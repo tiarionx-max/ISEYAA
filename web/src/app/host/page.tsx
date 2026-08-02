@@ -32,7 +32,7 @@ const BENEFITS = [
   },
 ];
 
-const HOSTABLE = ['Stay', 'Lounge', 'Club', 'Beach', 'Tour', 'Experience', 'Social Club'];
+const HOSTABLE = ['Stay', 'Lounge', 'Beach', 'Tour', 'Experience', 'Social Club'];
 
 const FAQS = [
   {
@@ -116,7 +116,7 @@ export default function HostPage() {
                 Become an <span className="text-gradient-gold">Iṣẹ́yáá</span><br />Host
               </h1>
               <p className="text-white/65 text-base md:text-lg max-w-2xl mx-auto leading-relaxed">
-                Earn from your space, club, beach, or experience. Reach 7M+ citizens across all 20 LGAs.
+                Earn from your space, social club, beach, or experience. Reach 7M+ citizens across all 20 LGAs.
               </p>
             </motion.div>
           </div>

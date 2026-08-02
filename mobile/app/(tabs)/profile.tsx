@@ -900,7 +900,7 @@ export default function ProfileScreen() {
                 <View style={styles.hostCtaTextBlock}>
                   <Text style={styles.hostCtaTitle}>Become a host</Text>
                   <Text style={styles.hostCtaSub}>
-                    List your stay, club, or experience
+                    List your stay, social club, or experience
                   </Text>
                 </View>
                 <ChevronRight size={16} color={INK_FAINT} />

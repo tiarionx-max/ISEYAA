@@ -394,7 +394,7 @@ function MembershipForm({
         <span className="text-sm text-white/45 font-normal"> / month</span>
       </div>
       <p className="text-white/55 text-xs mb-5 leading-relaxed">
-        Join the club and unlock member-only access, perks, and events.
+        Join the social club and unlock member-only access, perks, and events.
       </p>
 
       {benefits.length > 0 && (

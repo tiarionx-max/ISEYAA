@@ -81,7 +81,6 @@ const BENEFITS: Benefit[] = [
 const HOSTABLE: string[] = [
   'Stay',
   'Lounge',
-  'Club',
   'Beach',
   'Tour',
   'Experience',
@@ -200,7 +199,7 @@ export default function HostScreen(): JSX.Element {
                 </Text>
 
                 <Text style={styles.heroSubtitle}>
-                  Earn from your space, club, beach, or experience. Reach 7M+
+                  Earn from your space, social club, beach, or experience. Reach 7M+
                   citizens across 20 LGAs.
                 </Text>
               </View>
