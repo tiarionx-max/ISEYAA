@@ -350,6 +350,10 @@ Use these entry points:
 Do not make direct repo edits outside a GSD workflow unless the user explicitly asks to bypass it.
 <!-- GSD:workflow-end -->
 
+## Deploy Reminder
+
+Railway auto-deploys `@iseyaa/backend`, `@ISEYAA/web`, and the 12 microservices from `origin/main` only — it does not watch any other branch or worktree. Local commits sitting on local `main` (including merged quick-task/worktree commits) do NOT go live until explicitly pushed with `git push origin main`. After completing any quick task or phase whose fixes need to be live in production, push to `origin/main` (with user confirmation, since it triggers a live redeploy) rather than assuming the work is done once committed locally.
+
 
 
 <!-- GSD:profile-start -->

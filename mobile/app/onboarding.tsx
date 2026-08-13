@@ -4,6 +4,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   StatusBar,
+  Linking,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -32,6 +33,14 @@ export default function OnboardingScreen() {
 
   function handleRegisterPress() {
     router.push('/auth/register' as any);
+  }
+
+  function handleTermsPress() {
+    Linking.openURL('https://iseyaaweb-production.up.railway.app/terms');
+  }
+
+  function handlePrivacyPress() {
+    Linking.openURL('https://iseyaaweb-production.up.railway.app/privacy');
   }
 
   return (
@@ -116,9 +125,9 @@ export default function OnboardingScreen() {
         {/* Terms */}
         <Text style={styles.termsText}>
           {'By continuing you agree to our '}
-          <Text style={styles.termsLink}>Terms</Text>
+          <Text style={styles.termsLink} onPress={handleTermsPress}>Terms</Text>
           {' & '}
-          <Text style={styles.termsLink}>Privacy</Text>
+          <Text style={styles.termsLink} onPress={handlePrivacyPress}>Privacy</Text>
           {'.'}</Text>
       </View>
     </View>
