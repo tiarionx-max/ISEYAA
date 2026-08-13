@@ -1,6 +1,7 @@
 import { Injectable, OnModuleDestroy, OnModuleInit, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
+import * as Sentry from '@sentry/nestjs';
 
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
@@ -26,7 +27,17 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         // to stop reconnecting entirely, so the 'connect' event never fires and enabled would
         // never be re-set to true. Instead, disable on 'error' and re-enable on 'connect'.
         if (times >= 3) {
-          this.logger.warn('Redis unreachable after 3 attempts — entering degraded mode');
+          // D-09-style: Redis outages silently fail-open two independent security
+          // controls (OTP brute-force lockout and JWT blacklist) — a buried WARN would
+          // let this go unnoticed. Log at ERROR and capture explicitly since no global
+          // exception filter is registered to surface this otherwise.
+          this.logger.error(
+            'Redis unreachable after 3 attempts — entering degraded mode (OTP lockout and JWT blacklist are now fail-open until Redis recovers)',
+          );
+          Sentry.captureMessage('Redis degraded mode: unreachable after 3 connection attempts', {
+            level: 'error',
+            tags: { 'redis.event': 'degraded_mode' },
+          });
           return null; // stop retrying
         }
         return Math.min(times * 500, 2000);

@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import {
-  NotFoundException, ForbiddenException, BadRequestException, ConflictException,
+  NotFoundException, ForbiddenException, BadRequestException, ConflictException, Logger,
 } from '@nestjs/common';
 import { MarketplaceService } from '../marketplace.service';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -403,15 +403,50 @@ describe('MarketplaceService', () => {
 
       const mockTx = {
         order: { update: jest.fn().mockResolvedValue({}) },
-        product: { update: jest.fn().mockResolvedValue({}) },
+        product: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       };
       await mockSettlement.settle.mock.calls[0][0].onSettled(mockTx);
 
       expect(mockTx.order.update).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: ORDER_ID }, data: { status: 'PROCESSING' } }),
       );
-      expect(mockTx.product.update).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: PRODUCT_ID } }),
+      expect(mockTx.product.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: PRODUCT_ID, stock: { gte: 2 } },
+          data: { stock: { decrement: 2 } },
+        }),
+      );
+    });
+
+    it('skips the decrement and logs an error when the floor guard reports an oversold product (count: 0)', async () => {
+      mockPrisma.order.findUnique
+        .mockResolvedValueOnce({ ...mockOrder, status: 'PENDING' })
+        .mockResolvedValueOnce({ ...mockOrder, status: 'PROCESSING' });
+      mockPrisma.wallet.findUnique
+        .mockResolvedValueOnce({ id: 'WAL-VENDOR' })
+        .mockResolvedValueOnce({ id: 'WAL-BUYER' });
+      mockPrisma.vendor.findUnique.mockResolvedValue(mockVendor);
+      mockPrisma.user.findUnique.mockResolvedValue({ email: 'vendor@example.com', firstName: 'Vendor' });
+      mockSendgrid.sendEmail.mockResolvedValue(undefined);
+
+      await service.handleOrderPayment({ reference: PAYSTACK_REF });
+
+      const errorSpy = jest.spyOn(Logger.prototype, 'error');
+      const mockTx = {
+        order: { update: jest.fn().mockResolvedValue({}) },
+        product: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      };
+
+      await expect(mockSettlement.settle.mock.calls[0][0].onSettled(mockTx)).resolves.not.toThrow();
+
+      expect(mockTx.product.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: PRODUCT_ID, stock: { gte: 2 } },
+          data: { stock: { decrement: 2 } },
+        }),
+      );
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining(PRODUCT_ID),
       );
     });
 

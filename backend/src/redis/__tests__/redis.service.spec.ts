@@ -1,6 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { Logger } from '@nestjs/common';
 import { RedisService } from '../redis.service';
 import { ConfigService } from '@nestjs/config';
+import * as Sentry from '@sentry/nestjs';
+
+jest.mock('@sentry/nestjs', () => ({
+  captureMessage: jest.fn(),
+  captureException: jest.fn(),
+}));
 
 // ioredis mock — factory must be defined inline due to jest.mock hoisting
 // The mock uses { default: constructor, __esModule: true } to satisfy both:
@@ -107,6 +114,23 @@ describe('RedisService', () => {
     mockHelper.__mock.exists.mockResolvedValue(0);
     const result = await service.exists('missing-key');
     expect(result).toBe(false);
+  });
+
+  // Test 7: degraded-mode retryStrategy branch logs at ERROR and captures via Sentry
+  it('retryStrategy(times=3) logs at ERROR level and calls Sentry.captureMessage with an alert-worthy tag', async () => {
+    const service = new RedisService(makeConfigService({ REDIS_URL: 'rediss://host:6379' }));
+    const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    service.onModuleInit();
+
+    const retryStrategy = RedisMock.mock.calls[0][1].retryStrategy as (times: number) => number | null;
+    const result = retryStrategy(3);
+
+    expect(result).toBeNull();
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('degraded'));
+    expect(Sentry.captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining('degraded'),
+      expect.objectContaining({ level: 'error' }),
+    );
   });
 
   // Verify NestJS TestingModule integration also works

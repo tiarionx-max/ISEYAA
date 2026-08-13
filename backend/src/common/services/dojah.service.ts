@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 
@@ -29,6 +29,10 @@ export class DojahService {
 
   async verifyNin(nin: string): Promise<NinVerificationResult> {
     if (!this.apiKey || !this.appId) {
+      if (this.config.get<string>('NODE_ENV') === 'production') {
+        this.logger.error('[DOJAH] NIN verification unavailable in production — DOJAH_API_KEY/DOJAH_APP_ID not configured');
+        throw new ServiceUnavailableException('NIN verification is temporarily unavailable');
+      }
       this.logger.warn('[DOJAH STUB] NIN verification stub mode (no DOJAH_API_KEY) — returning verified:true');
       return { verified: true, name: 'Stub User' };
     }
