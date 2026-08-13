@@ -114,6 +114,24 @@ describe('PaystackService', () => {
 
       expect(mockResilience.execute).toHaveBeenCalledWith('paystack', expect.any(Function));
     });
+
+    it('Test 8: production + no PAYSTACK_SECRET_KEY -> throws ServiceUnavailableException', async () => {
+      mockConfig.get.mockImplementation(
+        (key: string, def?: unknown) =>
+          ({ NODE_ENV: 'production' } as Record<string, unknown>)[key] ?? def,
+      );
+
+      await expect(service.resolveBvn('12345678901')).rejects.toThrow(ServiceUnavailableException);
+      expect(mockedAxios.get).not.toHaveBeenCalled();
+    });
+
+    it('Test 9: non-production (no PAYSTACK_SECRET_KEY, no NODE_ENV) -> returns stub verified:true', async () => {
+      mockConfig.get.mockImplementation((key: string, def?: unknown) => ({} as Record<string, unknown>)[key] ?? def);
+
+      const result = await service.resolveBvn('12345678901');
+
+      expect(result).toEqual({ verified: true, firstName: 'Stub', lastName: 'User' });
+    });
   });
 
   describe('refundCharge()', () => {

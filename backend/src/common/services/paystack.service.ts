@@ -111,6 +111,10 @@ export class PaystackService {
     const secretKey = this.config.get<string>('PAYSTACK_SECRET_KEY');
 
     if (!secretKey) {
+      if (this.config.get<string>('NODE_ENV') === 'production') {
+        this.logger.error('Paystack BVN verification unavailable in production — PAYSTACK_SECRET_KEY not configured');
+        throw new ServiceUnavailableException('BVN verification is temporarily unavailable');
+      }
       this.logger.warn('[PAYSTACK STUB] BVN verification stub mode (no PAYSTACK_SECRET_KEY) — returning verified:true');
       return { verified: true, firstName: 'Stub', lastName: 'User' };
     }
