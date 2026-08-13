@@ -45,6 +45,9 @@ export class AuthController {
     return this.authService.login(dto, req.ip, req.headers['user-agent']);
   }
 
+  // F-05: stricter than the app-wide default (100 req/60s) — OTP/phone-auth endpoints
+  // are the primary brute-force surface.
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('otp/send')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Send 6-digit OTP to phone number' })
@@ -52,6 +55,9 @@ export class AuthController {
     return this.authService.sendOtp(dto);
   }
 
+  // F-05: stricter than the app-wide default (100 req/60s) — OTP/phone-auth endpoints
+  // are the primary brute-force surface.
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('otp/verify')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Verify OTP' })
@@ -59,6 +65,9 @@ export class AuthController {
     return this.authService.verifyOtp(dto);
   }
 
+  // F-05: stricter than the app-wide default (100 req/60s) — OTP/phone-auth endpoints
+  // are the primary brute-force surface.
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('phone-auth')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Verify OTP and sign in or auto-register by phone number' })
@@ -66,6 +75,9 @@ export class AuthController {
     return this.authService.phoneAuth(dto, req.ip, req.headers['user-agent']);
   }
 
+  // F-05: stricter than the app-wide default (100 req/60s) — OTP/phone-auth endpoints
+  // are the primary brute-force surface.
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Verify OTP and set a new password, then sign in' })

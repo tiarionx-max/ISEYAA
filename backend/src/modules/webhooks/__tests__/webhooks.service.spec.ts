@@ -13,6 +13,7 @@ import { KafkaService } from '../../../kafka/kafka.service';
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
 const WEBHOOK_SECRET = 'test-paystack-secret';
+const FLUTTERWAVE_SECRET_KEY = 'test-flutterwave-secret';
 
 function makeSignedPayload(body: any) {
   const rawBody = Buffer.from(JSON.stringify(body));
@@ -27,9 +28,11 @@ function makeSignedPayload(body: any) {
 
 const mockWallet: any = { creditWallet: jest.fn() };
 const mockConfig: any = {
-  get: jest.fn((key: string, _def?: any) =>
-    key === 'PAYSTACK_WEBHOOK_SECRET' ? WEBHOOK_SECRET : '',
-  ),
+  get: jest.fn((key: string, _def?: any) => {
+    if (key === 'PAYSTACK_WEBHOOK_SECRET') return WEBHOOK_SECRET;
+    if (key === 'FLUTTERWAVE_SECRET_KEY') return FLUTTERWAVE_SECRET_KEY;
+    return '';
+  }),
 };
 const mockEvents: any = { emit: jest.fn() };
 // isEnabled=false by default → single-path dispatch uses the in-process EventEmitter.
@@ -233,5 +236,87 @@ describe('WebhooksService', () => {
     expect(mockEvents.emit).not.toHaveBeenCalled();
     expect(mockKafka.emit).not.toHaveBeenCalled();
     expect(mockWallet.creditWallet).not.toHaveBeenCalled();
+  });
+
+  // ── handleFlutterwave ───────────────────────────────────────────────────────
+
+  describe('handleFlutterwave', () => {
+    it('throws 401 when the verif-hash header is missing', async () => {
+      const body = {
+        event: 'charge.completed',
+        data: { status: 'successful', tx_ref: 'ISY-ORD-1', amount: 1000, meta: { type: 'order_payment' } },
+      };
+      await expect(
+        service.handleFlutterwave(undefined as any, body),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it('throws 401 when the verif-hash header does not match the configured secret', async () => {
+      const body = {
+        event: 'charge.completed',
+        data: { status: 'successful', tx_ref: 'ISY-ORD-1', amount: 1000, meta: { type: 'order_payment' } },
+      };
+      await expect(
+        service.handleFlutterwave('wrong-hash', body),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it('throws 401 when the verif-hash header is a different length than the configured secret', async () => {
+      const body = {
+        event: 'charge.completed',
+        data: { status: 'successful', tx_ref: 'ISY-ORD-1', amount: 1000, meta: { type: 'order_payment' } },
+      };
+      await expect(
+        service.handleFlutterwave('short', body),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it('dispatches payment.order_payment via the event bus when the hash matches', async () => {
+      const body = {
+        event: 'charge.completed',
+        data: {
+          status: 'successful',
+          tx_ref: 'ISY-ORD-FLW1',
+          amount: 5000,
+          meta: { type: 'order_payment', orderId: 'ORD-1' },
+        },
+      };
+
+      const result = await service.handleFlutterwave(FLUTTERWAVE_SECRET_KEY, body);
+
+      expect(result).toEqual({ received: true });
+      expect(mockEvents.emit).toHaveBeenCalledWith(
+        'payment.order_payment',
+        expect.objectContaining({
+          reference: 'ISY-ORD-FLW1',
+          amount: 500_000, // naira -> kobo normalisation
+          metadata: expect.objectContaining({ type: 'order_payment', orderId: 'ORD-1' }),
+        }),
+      );
+      expect(mockKafka.emit).not.toHaveBeenCalled();
+    });
+
+    it('credits the wallet on a valid-hash wallet_topup event (naira amount, not kobo)', async () => {
+      const body = {
+        event: 'charge.completed',
+        data: {
+          status: 'successful',
+          tx_ref: 'ISY-FUND-FLW1',
+          amount: 1000,
+          meta: { type: 'wallet_topup', walletId: 'W-FLW-1' },
+        },
+      };
+
+      await service.handleFlutterwave(FLUTTERWAVE_SECRET_KEY, body);
+
+      expect(mockWallet.creditWallet).toHaveBeenCalledWith(
+        'W-FLW-1',
+        1000,
+        'ISY-FUND-FLW1',
+        'Wallet top-up via Flutterwave',
+        'wallet',
+        'FLUTTERWAVE',
+      );
+    });
   });
 });
