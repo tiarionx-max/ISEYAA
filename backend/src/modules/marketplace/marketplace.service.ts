@@ -390,10 +390,23 @@ export class MarketplaceService implements OnModuleInit {
         onSettled: async (tx) => {
           await tx.order.update({ where: { id: order.id }, data: { status: 'PROCESSING' } });
           for (const item of order.orderItems) {
-            await tx.product.update({
-              where: { id: item.productId },
+            // Floor-guarded decrement — under extreme concurrency, multiple PENDING orders
+            // can each individually pass createOrder's pre-payment stock check (stock is
+            // never reserved at order-creation time) and collectively exceed available
+            // stock by the time settlement runs. `updateMany` with a `stock: { gte }` guard
+            // atomically skips the decrement instead of driving stock negative. This does
+            // NOT throw — the buyer already paid and wallets already settled in this same
+            // transaction, so aborting here would roll back real money movements over an
+            // inventory-only concern. Manual reconciliation required when this fires.
+            const { count } = await tx.product.updateMany({
+              where: { id: item.productId, stock: { gte: item.quantity } },
               data: { stock: { decrement: item.quantity } },
             });
+            if (count === 0) {
+              this.logger.error(
+                `Stock oversold for product ${item.productId} on order ${order.id} — requested ${item.quantity}, decrement skipped, stock left unchanged. Manual reconciliation required.`,
+              );
+            }
           }
         },
         onFailure: async (err) => {
