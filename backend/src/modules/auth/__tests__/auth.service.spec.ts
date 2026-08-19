@@ -214,7 +214,7 @@ describe('AuthService', () => {
       expect(mockResilience.execute).toHaveBeenCalledWith('sendchampAuth', expect.any(Function));
     });
 
-    it("forwards the exact AbortSignal instance into fetch()'s init object (reference-identity, mirrors paystack.service.spec.ts Test 7)", async () => {
+    it("forwards the exact AbortSignal instance into fetch()'s init object (reference-identity, mirrors flutterwave.service.spec.ts's AbortSignal forwarding test)", async () => {
       mockRedis.exists.mockResolvedValue(false);
       mockRedis.set.mockResolvedValue(undefined);
 

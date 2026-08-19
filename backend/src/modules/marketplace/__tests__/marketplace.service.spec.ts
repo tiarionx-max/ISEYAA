@@ -4,7 +4,7 @@ import {
 } from '@nestjs/common';
 import { MarketplaceService } from '../marketplace.service';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { PaystackService } from '../../../common/services/paystack.service';
+import { FlutterwaveService } from '../../../common/services/flutterwave.service';
 import { SendgridService } from '../../../common/services/sendgrid.service';
 import { KafkaService } from '../../../kafka/kafka.service';
 import { SettlementService } from '../../../common/services/settlement.service';
@@ -78,7 +78,7 @@ const mockPrisma = {
   $transaction: jest.fn(),
 };
 
-const mockPaystack = { initiatePayment: jest.fn() };
+const mockFlutterwave = { initiatePayment: jest.fn() };
 const mockSendgrid = { sendEmail: jest.fn() };
 const mockImageService = {
   validateImage: jest.fn(),
@@ -95,7 +95,7 @@ describe('MarketplaceService', () => {
       providers: [
         MarketplaceService,
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: PaystackService, useValue: mockPaystack },
+        { provide: FlutterwaveService, useValue: mockFlutterwave },
         { provide: SendgridService, useValue: mockSendgrid },
         { provide: KafkaService, useValue: mockKafka },
         { provide: SettlementService, useValue: mockSettlement },
@@ -299,8 +299,8 @@ describe('MarketplaceService', () => {
       mockPrisma.product.findFirst.mockResolvedValue(mockProduct);
       mockSettlement.resolveSplit.mockResolvedValueOnce({ earnerPct: 0.90, ministryPct: 0, platformPct: 0.10 });
       mockPrisma.order.create.mockResolvedValue(mockOrder);
-      mockPaystack.initiatePayment.mockResolvedValue({
-        authorizationUrl: 'https://paystack.com/pay/abc',
+      mockFlutterwave.initiatePayment.mockResolvedValue({
+        authorizationUrl: 'https://checkout.flutterwave.com/pay/abc',
         accessCode: 'abc',
         reference: PAYSTACK_REF,
       });
@@ -323,21 +323,21 @@ describe('MarketplaceService', () => {
           }),
         }),
       );
-      expect(mockPaystack.initiatePayment).toHaveBeenCalledWith(
+      expect(mockFlutterwave.initiatePayment).toHaveBeenCalledWith(
         expect.objectContaining({
           email: 'buyer@example.com',
           amountKobo: 700000,
           metadata: expect.objectContaining({ type: 'order_payment' }),
         }),
       );
-      expect(result.payment.authorizationUrl).toBe('https://paystack.com/pay/abc');
+      expect(result.payment.authorizationUrl).toBe('https://checkout.flutterwave.com/pay/abc');
     });
 
     it('defaults platform fee to 0 when resolveSplit resolves a null platformPct', async () => {
       mockPrisma.product.findFirst.mockResolvedValue({ ...mockProduct, stock: 10 });
       mockSettlement.resolveSplit.mockResolvedValueOnce({ earnerPct: 1, ministryPct: 0, platformPct: null });
       mockPrisma.order.create.mockResolvedValue(mockOrder);
-      mockPaystack.initiatePayment.mockResolvedValue({ authorizationUrl: 'https://x', accessCode: 'a', reference: 'r' });
+      mockFlutterwave.initiatePayment.mockResolvedValue({ authorizationUrl: 'https://x', accessCode: 'a', reference: 'r' });
 
       await service.createOrder(USER_ID, dto as any);
 

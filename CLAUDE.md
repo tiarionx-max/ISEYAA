@@ -13,7 +13,7 @@ Operated by LJ Entertainment under contract with Ogun State. Confidential govern
 
 - **Tech stack**: Node.js 20 LTS + NestJS + TypeScript strict across all services — no runtime changes
 - **Mobile**: React Native + Expo SDK 51 — must support iOS + Android simultaneously
-- **Payments**: Paystack primary, Flutterwave fallback — CBN-compliant flows only
+- **Payments**: Flutterwave (sole gateway, migrated from Paystack) — CBN-compliant flows only
 - **Data residency**: Nigerian citizen PII (BVN, NIN) must be encrypted AES-256-GCM at rest; bcrypt hash for lookup
 - **Wallet security**: SELECT FOR UPDATE on every debit; idempotency key required on all wallet mutations
 - **Platform fee source**: Always from DB (`platformConfig` table), never hardcoded
@@ -75,7 +75,7 @@ Operated by LJ Entertainment under contract with Ogun State. Confidential govern
 - `sharp` 0.34.x — Image resize/conversion (`backend/src/common/services/image.service.ts`)
 - `qrcode` 1.5.x — QR code PNG generation for tickets (`backend/src/common/services/qr.service.ts`)
 - `uuid` 9.0.x — UUID v4 generation for references and JTI claims
-- `axios` 1.6.x — HTTP client (Paystack, Sendchamp, FCM calls; web/mobile API client)
+- `axios` 1.6.x — HTTP client (Flutterwave, Sendchamp, FCM calls; web/mobile API client)
 - `framer-motion` 11.x — Animation library (web)
 - `lucide-react` 0.359.x — Icon set (web)
 - `recharts` 3.8.x — Charts for admin dashboards (web)
@@ -96,9 +96,8 @@ Operated by LJ Entertainment under contract with Ogun State. Confidential govern
 - `REDIS_URL` / `REDIS_HOST` / `REDIS_PORT` — Redis connection
 - `JWT_SECRET` — Access token signing secret
 - `JWT_REFRESH_SECRET` — Refresh token signing secret
-- `PAYSTACK_SECRET_KEY` — Paystack API key
-- `PAYSTACK_WEBHOOK_SECRET` — Webhook HMAC-SHA512 secret
-- `FLUTTERWAVE_SECRET_KEY` — Flutterwave fallback key
+- `FLUTTERWAVE_SECRET_KEY` — Flutterwave API key (sole live payment gateway)
+- `FLUTTERWAVE_WEBHOOK_SECRET_HASH` — Webhook secret-hash comparison value (set on Flutterwave dashboard, distinct from the API key)
 - `ANTHROPIC_API_KEY` — Claude API key
 - `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_S3_BUCKET` / `AWS_REGION` — S3 uploads
 - `AWS_CLOUDFRONT_URL` — CDN base URL for media
@@ -207,7 +206,7 @@ Operated by LJ Entertainment under contract with Ogun State. Confidential govern
 |-----------|----------------|------|
 | AppModule | Root NestJS module; imports all feature modules | `backend/src/app.module.ts` |
 | PrismaModule | Global `@Global()` ORM client for PostgreSQL | `backend/src/prisma/prisma.module.ts` |
-| CommonModule | Global `@Global()` shared services (Paystack, S3, Sendgrid, QR, Image) | `backend/src/common/common.module.ts` |
+| CommonModule | Global `@Global()` shared services (Flutterwave, S3, Sendgrid, QR, Image) | `backend/src/common/common.module.ts` |
 | RedisModule | ioredis wrapper; OTP store, JWT blacklist, token rotation | `backend/src/redis/redis.service.ts` |
 | AuthModule | JWT login/register/OTP/refresh/logout; Passport + JwtStrategy | `backend/src/modules/auth/auth.module.ts` |
 | UsersModule | User profiles, KYC fields (NIN/BVN), role management | `backend/src/modules/users/users.module.ts` |
@@ -217,18 +216,18 @@ Operated by LJ Entertainment under contract with Ogun State. Confidential govern
 | StaysModule | Property listings + Booking (escrow lifecycle) | `backend/src/modules/stays/stays.module.ts` |
 | MarketplaceModule | Vendor onboarding; product catalogue; order lifecycle | `backend/src/modules/marketplace/marketplace.module.ts` |
 | StudioModule | Studio space listings; booking/payment flow | `backend/src/modules/studio/studio.module.ts` |
-| WalletModule | Balance, KYC tiers, Paystack top-up, credit/debit ledger | `backend/src/modules/wallet/wallet.module.ts` |
+| WalletModule | Balance, KYC tiers, Flutterwave top-up, credit/debit ledger | `backend/src/modules/wallet/wallet.module.ts` |
 | AdminModule | Dashboard KPIs, revenue analytics, approval queues | `backend/src/modules/admin/admin.module.ts` |
 | NotificationsModule | FCM push via Firebase; token registration | `backend/src/modules/notifications/notifications.module.ts` |
 | AiModule | Claude Sonnet streaming chat; itinerary generator; LGA intel | `backend/src/modules/ai/ai.module.ts` |
-| WebhooksModule | Paystack + Flutterwave webhook ingestion → EventEmitter2 dispatch | `backend/src/modules/webhooks/webhooks.module.ts` |
+| WebhooksModule | Flutterwave webhook ingestion → EventEmitter2 dispatch | `backend/src/modules/webhooks/webhooks.module.ts` |
 | Web App | Next.js 14 App Router; NextAuth sessions; TanStack Query | `web/src/` |
 | Mobile App | Expo SDK 51 + expo-router; AsyncStorage offline cache | `mobile/app/` |
 | Shared Package | TypeScript interfaces, enums, constants, DTOs shared across clients | `shared/src/` |
 ## Pattern Overview
 - Each backend feature is a self-contained NestJS module: `controller → service → prisma`
 - `PrismaModule` and `CommonModule` are `@Global()` — injected everywhere without re-importing
-- Payment flows use Paystack; webhook events are dispatched via `EventEmitter2` to `@OnEvent()` handlers within feature services
+- Payment flows use Flutterwave; webhook events are dispatched via `EventEmitter2` to `@OnEvent()` handlers within feature services
 - Authentication uses short-lived JWT access tokens (15 min) + long-lived refresh tokens (30 days); refresh tokens are blacklisted in Redis on rotation/logout
 - OTP-based phone verification uses Redis with 5-minute TTL and brute-force lockout (3 attempts → 15-minute lock)
 - Clients communicate primarily through `GET/POST /api/v1/*` REST endpoints; `backend/src/modules/transport/transport.gateway.ts` and `backend/src/modules/delivery/delivery.gateway.ts` also expose Socket.IO `@WebSocketGateway()` channels for real-time GPS/delivery updates
@@ -241,7 +240,7 @@ Operated by LJ Entertainment under contract with Ogun State. Confidential govern
 - Used by: NestJS HTTP adapter (Express)
 - Purpose: Domain logic, data access, external service calls
 - Location: `backend/src/modules/*/[name].service.ts`
-- Contains: Prisma queries, Paystack/S3/Sendgrid calls, `@OnEvent()` webhook handlers
+- Contains: Prisma queries, Flutterwave/S3/Sendgrid calls, `@OnEvent()` webhook handlers
 - Depends on: PrismaService, CommonModule services (global), RedisService, ConfigService
 - Used by: Controllers, other services via module exports
 - Purpose: Single ORM gateway to PostgreSQL
@@ -251,7 +250,7 @@ Operated by LJ Entertainment under contract with Ogun State. Confidential govern
 - Used by: All feature services
 - Purpose: Shared infrastructure services available everywhere without re-importing
 - Location: `backend/src/common/`
-- Contains: `PaystackService`, `S3Service`, `SendgridService`, `QrService`, `ImageService`; `RolesGuard`, `@Roles`, `@CurrentUser` decorators; `UserRole` enum
+- Contains: `FlutterwaveService`, `S3Service`, `SendgridService`, `QrService`, `ImageService`; `RolesGuard`, `@Roles`, `@CurrentUser` decorators; `UserRole` enum
 - Depends on: ConfigService, external APIs
 - Used by: Any module (global export)
 - Purpose: Ephemeral key/value store for OTP state, JWT blacklist, session tokens
@@ -325,7 +324,7 @@ Operated by LJ Entertainment under contract with Ogun State. Confidential govern
 ### `any` type casts on shared data
 ## Error Handling
 - Services throw `NotFoundException`, `ConflictException`, `BadRequestException`, `ForbiddenException`, `UnauthorizedException` — NestJS converts these to correct HTTP status codes
-- External service failures (Paystack, S3, Sendchamp, FCM) are caught, logged via `Logger`, and either rethrown or degraded gracefully (e.g., Sendchamp stub logs OTP to console when `SENDCHAMP_API_KEY` is absent)
+- External service failures (Flutterwave, S3, Sendchamp, FCM) are caught, logged via `Logger`, and either rethrown or degraded gracefully (e.g., Sendchamp stub logs OTP to console when `SENDCHAMP_API_KEY` is absent)
 - Audit log failures are swallowed silently (`catch (err) { this.logger.error(...) }`) to prevent auth flows from failing on non-critical logging
 - Webhook handlers return `{ received: true }` on success regardless of processing outcome (standard webhook pattern)
 ## Cross-Cutting Concerns
@@ -353,6 +352,8 @@ Do not make direct repo edits outside a GSD workflow unless the user explicitly 
 ## Deploy Reminder
 
 Railway auto-deploys `@iseyaa/backend`, `@ISEYAA/web`, and the 12 microservices from `origin/main` only — it does not watch any other branch or worktree. Local commits sitting on local `main` (including merged quick-task/worktree commits) do NOT go live until explicitly pushed with `git push origin main`. After completing any quick task or phase whose fixes need to be live in production, push to `origin/main` (with user confirmation, since it triggers a live redeploy) rather than assuming the work is done once committed locally.
+
+**Flutterwave migration (260819-ji6) — Railway env vars not yet provisioned.** No live Flutterwave key exists in this environment; the Paystack -> Flutterwave gateway migration was a code-only change. Before this migration is live in production, `FLUTTERWAVE_SECRET_KEY` and `FLUTTERWAVE_WEBHOOK_SECRET_HASH` must be added to `@iseyaa/backend`'s Railway environment variables (get the secret key from Flutterwave Dashboard -> Settings -> API Keys, and set the webhook secret hash at Flutterwave Dashboard -> Settings -> Webhooks, then configure the webhook URL to `https://<railway-backend-domain>/api/v1/webhooks/flutterwave` with that same Secret Hash value). Until both vars are set, `initiatePayment`/`resolveBvn`/`refundCharge`/`chargeToken` throw (production) or run in stub mode (non-production), and the Flutterwave webhook will reject all inbound signatures. Mirrors the `SENDCHAMP_API_KEY` follow-up pattern from 260728-fms.
 
 
 

@@ -126,7 +126,7 @@ describe('NotificationsService.sendPush', () => {
     });
   });
 
-  it("forwards the exact AbortSignal instance into axios.post's config (reference-identity, mirrors paystack.service.spec.ts Test 7)", async () => {
+  it("forwards the exact AbortSignal instance into axios.post's config (reference-identity, mirrors flutterwave.service.spec.ts's AbortSignal forwarding test)", async () => {
     mockPrisma.user.findUnique.mockResolvedValue({ id: 'user-1', metadata: { fcmToken: 'token-1' } });
 
     const controller = new AbortController();

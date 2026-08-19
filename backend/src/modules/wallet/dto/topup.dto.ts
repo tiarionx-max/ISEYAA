@@ -9,7 +9,7 @@ import { ApiProperty } from '@nestjs/swagger';
  * metadata, which ValidationPipe explicitly skips. Previously this endpoint
  * accepted a raw `{ amount: number; email: string }` type with zero runtime
  * validation, so a negative/zero `amount` (or a non-numeric value) would sail
- * straight through into the daily-limit check and the Paystack call.
+ * straight through into the daily-limit check and the Flutterwave call.
  */
 export class TopupDto {
   @ApiProperty({ example: 5000, description: 'Amount in NGN (minimum 100)' })

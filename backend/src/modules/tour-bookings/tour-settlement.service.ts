@@ -243,7 +243,7 @@ export class TourSettlementService implements OnModuleInit {
     await this.settlementService.settle({
       module: 'tour_booking',
       reference: payload.reference,
-      gateway: 'PAYSTACK',
+      gateway: 'FLUTTERWAVE',
       amountKobo: payload.amount,
       recipients,
       buyerWalletId: buyerWallet?.id,
@@ -391,7 +391,7 @@ export class TourSettlementService implements OnModuleInit {
       });
       if (buyerWallet) {
         await this.refundService.refund({
-          paystackReference: payload.reference,
+          gatewayReference: payload.reference,
           amountKobo: payload.amount,
           walletId: buyerWallet.id,
           reason: `tour_booking_settlement_failed: ${err.message}`,

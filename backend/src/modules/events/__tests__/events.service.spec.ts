@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { EventsService } from '../events.service';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { PaystackService } from '../../../common/services/paystack.service';
+import { FlutterwaveService } from '../../../common/services/flutterwave.service';
 import { S3Service } from '../../../common/services/s3.service';
 import { SendgridService } from '../../../common/services/sendgrid.service';
 import { QrService } from '../../../common/services/qr.service';
@@ -99,7 +99,7 @@ const mockPrisma = {
   $transaction: jest.fn(),
 };
 
-const mockPaystack = { initiatePayment: jest.fn() };
+const mockFlutterwave = { initiatePayment: jest.fn() };
 const mockS3 = { upload: jest.fn() };
 const mockSendgrid = { sendTicketConfirmation: jest.fn(), sendEmail: jest.fn() };
 const mockQr = { generatePng: jest.fn() };
@@ -127,7 +127,7 @@ describe('EventsService', () => {
       providers: [
         EventsService,
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: PaystackService, useValue: mockPaystack },
+        { provide: FlutterwaveService, useValue: mockFlutterwave },
         { provide: S3Service, useValue: mockS3 },
         { provide: SendgridService, useValue: mockSendgrid },
         { provide: QrService, useValue: mockQr },
@@ -373,7 +373,7 @@ describe('EventsService', () => {
       await expect(service.purchaseTicket(USER_ID, EVENT_ID, dto as any)).rejects.toThrow(BadRequestException);
     });
 
-    it('creates PENDING ticket and initiates Paystack payment', async () => {
+    it('creates PENDING ticket and initiates Flutterwave payment', async () => {
       mockPrisma.ticketType.findFirst.mockResolvedValue(mockTicketType);
       mockPrisma.$transaction.mockImplementation(async (fn) => {
         const txMock = {
@@ -385,15 +385,15 @@ describe('EventsService', () => {
         };
         return fn(txMock);
       });
-      mockPaystack.initiatePayment.mockResolvedValue({
-        authorizationUrl: 'https://paystack.com/pay/abc',
+      mockFlutterwave.initiatePayment.mockResolvedValue({
+        authorizationUrl: 'https://checkout.flutterwave.com/pay/abc',
         accessCode: 'abc',
         reference: PAYSTACK_REF,
       });
 
       const result = await service.purchaseTicket(USER_ID, EVENT_ID, dto as any);
 
-      expect(mockPaystack.initiatePayment).toHaveBeenCalledWith(
+      expect(mockFlutterwave.initiatePayment).toHaveBeenCalledWith(
         expect.objectContaining({
           email: 'buyer@example.com',
           amountKobo: 200000,
@@ -401,7 +401,7 @@ describe('EventsService', () => {
         }),
       );
       expect(result.ticket).toBeDefined();
-      expect(result.payment.authorizationUrl).toBe('https://paystack.com/pay/abc');
+      expect(result.payment.authorizationUrl).toBe('https://checkout.flutterwave.com/pay/abc');
     });
   });
 

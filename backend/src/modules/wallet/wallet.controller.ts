@@ -44,7 +44,7 @@ export class WalletController {
   }
 
   @Post('topup')
-  @ApiOperation({ summary: 'Initiate wallet topup via Paystack (CBN daily limits enforced)' })
+  @ApiOperation({ summary: 'Initiate wallet topup via Flutterwave (CBN daily limits enforced)' })
   topup(@CurrentUser() user: any, @Body() body: TopupDto) {
     return this.walletService.initiateTopup(user.userId, body);
   }

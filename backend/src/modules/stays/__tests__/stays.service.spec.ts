@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { StaysService } from '../stays.service';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { PaystackService } from '../../../common/services/paystack.service';
+import { FlutterwaveService } from '../../../common/services/flutterwave.service';
 import { S3Service } from '../../../common/services/s3.service';
 import { SendgridService } from '../../../common/services/sendgrid.service';
 import { ImageService } from '../../../common/services/image.service';
@@ -88,7 +88,7 @@ const mockPrisma = {
   $queryRaw: jest.fn(),
 };
 
-const mockPaystack = { initiatePayment: jest.fn(), chargeAuthorization: jest.fn() };
+const mockFlutterwave = { initiatePayment: jest.fn(), chargeToken: jest.fn() };
 const mockS3 = { upload: jest.fn() };
 const mockSendgrid = { sendBookingConfirmation: jest.fn() };
 const mockImage = { validateEventImage: jest.fn(), resizeEventCover: jest.fn() };
@@ -102,7 +102,7 @@ describe('StaysService', () => {
       providers: [
         StaysService,
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: PaystackService, useValue: mockPaystack },
+        { provide: FlutterwaveService, useValue: mockFlutterwave },
         { provide: S3Service, useValue: mockS3 },
         { provide: SendgridService, useValue: mockSendgrid },
         { provide: ImageService, useValue: mockImage },
@@ -365,7 +365,7 @@ describe('StaysService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('creates PENDING booking and initiates Paystack payment when no conflicts', async () => {
+    it('creates PENDING booking and initiates Flutterwave payment when no conflicts', async () => {
       mockPrisma.property.findFirst.mockResolvedValue(mockProperty);
       mockPrisma.$transaction.mockImplementation(async (fn) => {
         // Simulate the interactive transaction
@@ -375,8 +375,8 @@ describe('StaysService', () => {
         };
         return fn(txMock);
       });
-      mockPaystack.initiatePayment.mockResolvedValue({
-        authorizationUrl: 'https://paystack.com/pay/xyz',
+      mockFlutterwave.initiatePayment.mockResolvedValue({
+        authorizationUrl: 'https://checkout.flutterwave.com/pay/xyz',
         accessCode: 'xyz',
         reference: PAYSTACK_REF,
       });
@@ -384,7 +384,7 @@ describe('StaysService', () => {
       const result = await service.createBooking(USER_ID, PROP_ID, dto as any);
 
       expect(result.booking.status).toBe('PENDING');
-      expect(mockPaystack.initiatePayment).toHaveBeenCalledWith(
+      expect(mockFlutterwave.initiatePayment).toHaveBeenCalledWith(
         expect.objectContaining({
           amountKobo: 45000 * 100,
           metadata: expect.objectContaining({ type: 'stay_booking' }),
@@ -421,8 +421,8 @@ describe('StaysService', () => {
         };
         return fn(txMock);
       });
-      mockPaystack.initiatePayment.mockResolvedValue({
-        authorizationUrl: 'https://paystack.com/pay/xyz',
+      mockFlutterwave.initiatePayment.mockResolvedValue({
+        authorizationUrl: 'https://checkout.flutterwave.com/pay/xyz',
         accessCode: 'xyz',
         reference: PAYSTACK_REF,
       });
@@ -452,8 +452,8 @@ describe('StaysService', () => {
         };
         return fn(txMock);
       });
-      mockPaystack.initiatePayment.mockResolvedValue({
-        authorizationUrl: 'https://paystack.com/pay/xyz',
+      mockFlutterwave.initiatePayment.mockResolvedValue({
+        authorizationUrl: 'https://checkout.flutterwave.com/pay/xyz',
         accessCode: 'xyz',
         reference: PAYSTACK_REF,
       });
@@ -678,27 +678,27 @@ describe('StaysService', () => {
       ).rejects.toThrow(ConflictException);
     });
 
-    it('creates a PENDING membership and initiates Paystack payment for the monthly price', async () => {
+    it('creates a PENDING membership and initiates Flutterwave payment for the monthly price', async () => {
       mockPrisma.property.findFirst.mockResolvedValue(membershipProperty);
       mockPrisma.membership.findFirst.mockResolvedValue(null);
       mockPrisma.membership.create.mockResolvedValue(mockMembership);
-      mockPaystack.initiatePayment.mockResolvedValue({ authorizationUrl: 'https://paystack/pay', accessCode: 'ac', reference: mockMembership.paystackRef });
+      mockFlutterwave.initiatePayment.mockResolvedValue({ authorizationUrl: 'https://checkout.flutterwave.com/pay', accessCode: 'ac', reference: mockMembership.paystackRef });
 
       const result = await service.createMembership(USER_ID, PROP_ID, { email: 'member@example.com' });
 
       expect(mockSettlement.resolveSplit).toHaveBeenCalledWith('stays', 5000);
-      expect(mockPaystack.initiatePayment).toHaveBeenCalledWith(
+      expect(mockFlutterwave.initiatePayment).toHaveBeenCalledWith(
         expect.objectContaining({ amountKobo: 500000, metadata: expect.objectContaining({ type: 'membership_signup' }) }),
       );
       expect(result.membership).toEqual(mockMembership);
     });
 
-    it('rolls back the membership row if Paystack init fails', async () => {
+    it('rolls back the membership row if Flutterwave init fails', async () => {
       mockPrisma.property.findFirst.mockResolvedValue(membershipProperty);
       mockPrisma.membership.findFirst.mockResolvedValue(null);
       mockPrisma.membership.create.mockResolvedValue(mockMembership);
       mockPrisma.membership.delete.mockResolvedValue(mockMembership);
-      mockPaystack.initiatePayment.mockRejectedValue(new Error('Paystack down'));
+      mockFlutterwave.initiatePayment.mockRejectedValue(new Error('Flutterwave down'));
 
       await expect(
         service.createMembership(USER_ID, PROP_ID, { email: 'member@example.com' }),
@@ -714,7 +714,7 @@ describe('StaysService', () => {
 
       await service.handleMembershipSignup({
         reference: mockMembership.paystackRef,
-        authorization: { authorization_code: 'AUTH_abc123' },
+        authorization: { token: 'AUTH_abc123' },
       });
 
       expect(mockPrisma.membership.update).toHaveBeenCalledWith({
@@ -772,13 +772,14 @@ describe('StaysService', () => {
 
       await service.renewMemberships();
 
-      expect(mockPaystack.chargeAuthorization).not.toHaveBeenCalled();
+      expect(mockFlutterwave.chargeToken).not.toHaveBeenCalled();
       expect(mockPrisma.membership.update).toHaveBeenCalledWith({ where: { id: MEMBERSHIP_ID }, data: { status: 'EXPIRED' } });
     });
 
     it('renews on a successful charge, extends currentPeriodEnd by 30 days, and settles the host/ministry split', async () => {
       mockPrisma.membership.findMany.mockResolvedValue([activeMembership]);
-      mockPaystack.chargeAuthorization.mockResolvedValue({ status: 'success', reference: 'x' });
+      // Flutterwave's tokenized-charge status is 'successful' (not Paystack's 'success').
+      mockFlutterwave.chargeToken.mockResolvedValue({ status: 'successful', reference: 'x' });
       mockPrisma.wallet.findUnique.mockResolvedValue({ id: 'wallet-host-001' });
 
       await service.renewMemberships();
@@ -792,7 +793,7 @@ describe('StaysService', () => {
 
     it('marks an ACTIVE membership PAST_DUE on its first failed renewal charge', async () => {
       mockPrisma.membership.findMany.mockResolvedValue([activeMembership]);
-      mockPaystack.chargeAuthorization.mockResolvedValue({ status: 'failed', reference: 'x' });
+      mockFlutterwave.chargeToken.mockResolvedValue({ status: 'failed', reference: 'x' });
 
       await service.renewMemberships();
 
@@ -802,7 +803,7 @@ describe('StaysService', () => {
 
     it('expires a PAST_DUE membership on a second consecutive failed renewal charge', async () => {
       mockPrisma.membership.findMany.mockResolvedValue([{ ...activeMembership, status: 'PAST_DUE' }]);
-      mockPaystack.chargeAuthorization.mockResolvedValue({ status: 'failed', reference: 'x' });
+      mockFlutterwave.chargeToken.mockResolvedValue({ status: 'failed', reference: 'x' });
 
       await service.renewMemberships();
 

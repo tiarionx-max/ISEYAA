@@ -9,7 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EncryptionService } from '../../common/services/encryption.service';
-import { PaystackService } from '../../common/services/paystack.service';
+import { FlutterwaveService } from '../../common/services/flutterwave.service';
 import { DojahService } from '../../common/services/dojah.service';
 
 export interface KycTierResult {
@@ -24,7 +24,7 @@ export class KycService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly encryption: EncryptionService,
-    private readonly paystack: PaystackService,
+    private readonly flutterwave: FlutterwaveService,
     private readonly dojah: DojahService,
     private readonly config: ConfigService,
   ) {}
@@ -70,7 +70,7 @@ export class KycService {
   // ── verifyBvn ──────────────────────────────────────────────────────────────
 
   /**
-   * Tier 1 KYC: verify BVN via Paystack, encrypt + bcrypt-hash, persist.
+   * Tier 1 KYC: verify BVN via Flutterwave, encrypt + bcrypt-hash, persist.
    * Plaintext BVN goes out of scope at function end — NEVER logged, NEVER returned.
    */
   async verifyBvn(userId: string, bvn: string): Promise<KycTierResult> {
@@ -84,12 +84,12 @@ export class KycService {
       throw new ConflictException('BVN already verified for this account');
     }
 
-    // C-07: check for duplicate BVN BEFORE the external Paystack call to avoid wasting
+    // C-07: check for duplicate BVN BEFORE the external Flutterwave call to avoid wasting
     // expensive API credits on a BVN that is already registered to another account.
     await this.ensureNoDuplicateHash('bvnHash', bvn, userId);
 
-    // Paystack BVN verification (throws BadRequestException on failure)
-    const verification = await this.paystack.resolveBvn(bvn);
+    // Flutterwave BVN verification (throws BadRequestException on failure)
+    const verification = await this.flutterwave.resolveBvn(bvn);
     if (!verification.verified) {
       throw new BadRequestException('BVN verification failed');
     }

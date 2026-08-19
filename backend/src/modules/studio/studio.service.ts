@@ -12,7 +12,7 @@ import { KafkaService } from '../../kafka/kafka.service';
 import { v4 as uuidv4 } from 'uuid';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { PaystackService } from '../../common/services/paystack.service';
+import { FlutterwaveService } from '../../common/services/flutterwave.service';
 import { S3Service } from '../../common/services/s3.service';
 import { SendgridService } from '../../common/services/sendgrid.service';
 import { SettlementService } from '../../common/services/settlement.service';
@@ -41,7 +41,7 @@ export class StudioService implements OnModuleInit {
 
   constructor(
     private prisma: PrismaService,
-    private paystack: PaystackService,
+    private flutterwave: FlutterwaveService,
     private s3: S3Service,
     private sendgrid: SendgridService,
     private kafka: KafkaService,
@@ -140,7 +140,7 @@ export class StudioService implements OnModuleInit {
 
     let payment;
     try {
-      payment = await this.paystack.initiatePayment({
+      payment = await this.flutterwave.initiatePayment({
         email: dto.email,
         amountKobo: totalPrice * 100,
         reference: paystackRef,
@@ -152,10 +152,10 @@ export class StudioService implements OnModuleInit {
         },
       });
     } catch (err) {
-      // Paystack failed (missing key, network, etc.) — roll back the booking
+      // Flutterwave failed (missing key, network, etc.) — roll back the booking
       // so the slot isn't held hostage by an orphaned PENDING row.
       await this.prisma.studioBooking.delete({ where: { id: booking.id } }).catch(() => {});
-      this.logger.error(`Paystack init failed for studio booking ${booking.id}, rolled back`, err);
+      this.logger.error(`Flutterwave init failed for studio booking ${booking.id}, rolled back`, err);
       throw new ServiceUnavailableException('Payment gateway is currently unavailable. Please try again shortly.');
     }
 
@@ -192,7 +192,7 @@ export class StudioService implements OnModuleInit {
       const settlementResult = await this.settlementService.settle({
         module: 'studio',
         reference: payload.reference,
-        gateway: 'PAYSTACK',
+        gateway: 'FLUTTERWAVE',
         amountKobo: Math.round(total * 100), // WR-03: avoid IEEE-754 float drift crossing into SettlementService
         recipients: [
           {

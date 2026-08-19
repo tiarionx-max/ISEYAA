@@ -11,7 +11,7 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { KafkaService } from '../../kafka/kafka.service';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../prisma/prisma.service';
-import { PaystackService } from '../../common/services/paystack.service';
+import { FlutterwaveService } from '../../common/services/flutterwave.service';
 import { S3Service } from '../../common/services/s3.service';
 import { SendgridService } from '../../common/services/sendgrid.service';
 import { QrService } from '../../common/services/qr.service';
@@ -37,7 +37,7 @@ export class EventsService implements OnModuleInit {
 
   constructor(
     private prisma: PrismaService,
-    private paystack: PaystackService,
+    private flutterwave: FlutterwaveService,
     private s3: S3Service,
     private sendgrid: SendgridService,
     private qr: QrService,
@@ -241,7 +241,7 @@ export class EventsService implements OnModuleInit {
 
     let payment;
     try {
-      payment = await this.paystack.initiatePayment({
+      payment = await this.flutterwave.initiatePayment({
         email: dto.email,
         amountKobo: Number(ticketType.price) * 100,
         reference: paystackRef,
@@ -254,10 +254,10 @@ export class EventsService implements OnModuleInit {
         },
       });
     } catch (err) {
-      // Paystack failed (missing key, network, etc.) — roll back the ticket
+      // Flutterwave failed (missing key, network, etc.) — roll back the ticket
       // so the PENDING row doesn't block future purchases or leave orphan state.
       await this.prisma.ticket.delete({ where: { id: ticket.id } }).catch(() => {});
-      this.logger.error(`Paystack init failed for ticket ${ticket.id}, rolled back`, err);
+      this.logger.error(`Flutterwave init failed for ticket ${ticket.id}, rolled back`, err);
       throw new ServiceUnavailableException('Payment gateway is currently unavailable. Please try again shortly.');
     }
 
@@ -309,7 +309,7 @@ export class EventsService implements OnModuleInit {
       const settlementResult = await this.settlementService.settle({
         module: 'events',
         reference: payload.reference,
-        gateway: 'PAYSTACK',
+        gateway: 'FLUTTERWAVE',
         amountKobo: Math.round(ticketPrice * 100), // WR-03: avoid IEEE-754 float drift crossing into SettlementService
         recipients: [
           {

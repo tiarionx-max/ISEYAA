@@ -8,7 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
-import { PaystackService } from '../../common/services/paystack.service';
+import { FlutterwaveService } from '../../common/services/flutterwave.service';
 import { NotificationsClientService } from '../notifications-client/notifications-client.service';
 import { TransferDto } from './dto/transfer.dto';
 import { TopupDto } from './dto/topup.dto';
@@ -28,7 +28,7 @@ export class WalletService {
 
   constructor(
     private prisma: PrismaService,
-    private paystack: PaystackService,
+    private flutterwave: FlutterwaveService,
     private redis: RedisService,
     private notifications: NotificationsClientService,
   ) {}
@@ -210,7 +210,7 @@ export class WalletService {
     // summed only already-SUCCESS credits, but the actual credit happens later in the
     // webhook — so a user could fire N sequential top-ups (each passing because none had
     // completed yet) and blow past the CBN daily limit. Counting PENDING reservations
-    // (created below, before Paystack is even called) closes that bypass.
+    // (created below, before Flutterwave is even called) closes that bypass.
     const todayCredits = await this.prisma.transaction.aggregate({
       where: {
         walletId: wallet.id,
@@ -251,7 +251,7 @@ export class WalletService {
         amount: new Prisma.Decimal(dto.amount),
         currency: 'NGN',
         reference,
-        gateway: 'PAYSTACK',
+        gateway: 'FLUTTERWAVE',
         description: 'Wallet top-up (pending)',
         balanceBefore: new Prisma.Decimal(wallet.balance),
         balanceAfter: new Prisma.Decimal(wallet.balance),
@@ -260,7 +260,7 @@ export class WalletService {
     });
 
     try {
-      const payment = await this.paystack.initiatePayment({
+      const payment = await this.flutterwave.initiatePayment({
         email: dto.email,
         amountKobo: dto.amount * 100,
         reference,
@@ -269,7 +269,7 @@ export class WalletService {
 
       return { reference, authorizationUrl: payment.authorizationUrl };
     } catch (err) {
-      // Paystack initiation failed → release the reservation so it doesn't permanently
+      // Flutterwave initiation failed → release the reservation so it doesn't permanently
       // consume the user's daily cap for a top-up that never started.
       await this.prisma.transaction
         .delete({ where: { reference } })
@@ -315,7 +315,7 @@ export class WalletService {
     reference: string,
     description: string,
     module = 'wallet',
-    gateway: 'PAYSTACK' | 'FLUTTERWAVE' | 'INTERNAL' = 'PAYSTACK',
+    gateway: 'PAYSTACK' | 'FLUTTERWAVE' | 'INTERNAL' = 'FLUTTERWAVE',
   ): Promise<{ balanceAfter: number }> {
     return this.prisma.$transaction(async (tx) => {
       // Lock the wallet row to prevent concurrent updates
@@ -541,7 +541,7 @@ export class WalletService {
     reference: string,
     description: string,
     module = 'wallet',
-    gateway: 'PAYSTACK' | 'FLUTTERWAVE' | 'INTERNAL' = 'PAYSTACK',
+    gateway: 'PAYSTACK' | 'FLUTTERWAVE' | 'INTERNAL' = 'FLUTTERWAVE',
   ) {
     // C-01: use interactive transaction with SELECT FOR UPDATE row-lock to prevent
     // concurrent race condition where two requests read the same balance and both write
@@ -607,7 +607,7 @@ export class WalletService {
     if (alreadyProcessed) return;
 
     // Push notification (best-effort) — scoped to direct wallet top-ups (the default
-    // `module === 'wallet'` callers, e.g. Paystack top-up webhook). Earnings credits
+    // `module === 'wallet'` callers, e.g. Flutterwave top-up webhook). Earnings credits
     // (transport/delivery/marketplace/etc. pass their own `module` name) get their own
     // domain-specific push at the trigger point instead, so this stays a single,
     // unambiguous "your wallet was funded" notification rather than firing for every

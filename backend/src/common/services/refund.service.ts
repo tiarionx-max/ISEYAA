@@ -1,34 +1,34 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { PaystackService } from './paystack.service';
+import { FlutterwaveService } from './flutterwave.service';
 import { ReferenceService } from './reference.service';
 
 export interface RefundInput {
-  /** The original Paystack charge reference (e.g. `ISY-TOUR-...`). */
-  paystackReference: string;
+  /** The original Flutterwave charge reference (e.g. `ISY-TOUR-...`). */
+  gatewayReference: string;
   /** Amount to refund in kobo. For full refund pass the original charge amount. */
   amountKobo: number;
   /** Buyer's wallet ID — used for the reversal Transaction ledger row. */
   walletId: string;
-  /** Human-readable reason; logged + sent to Paystack as `customer_note`. */
+  /** Human-readable reason; logged only — Flutterwave's refund body has no note field. */
   reason: string;
   /** Optional extra audit info (e.g. `{ bookingId, splitLegThatFailed }`). */
   metadata?: Record<string, any>;
   /**
-   * Gateway the original settlement was charged through. Defaults to `'PAYSTACK'` for
-   * backward compatibility with existing callers. When `'WALLET'`, the buyer's
-   * in-app wallet — already debited before settlement — is credited back directly
-   * instead of calling the Paystack refund API, which was never a real charge for
-   * that payment (WR-03).
+   * Gateway the original settlement was charged through. The caller-supplied `gateway`
+   * is threaded through unchanged (no default assumed here — `SettlementService` always
+   * passes `input.gateway` explicitly). When `'WALLET'`, the buyer's in-app wallet —
+   * already debited before settlement — is credited back directly instead of calling the
+   * Flutterwave refund API, which was never a real charge for that payment (WR-03).
    */
   gateway?: 'PAYSTACK' | 'FLUTTERWAVE' | 'WALLET' | 'INTERNAL';
 }
 
 export interface RefundResult {
-  /** Our internal refund reference (`<paystackReference>-RFND`). */
+  /** Our internal refund reference (`<gatewayReference>-RFND`). */
   refundReference: string;
-  /** ID returned by Paystack (stored in Transaction.gatewayRef). */
-  paystackRefundId: string;
+  /** ID returned by Flutterwave (stored in Transaction.gatewayRef). */
+  gatewayRefundId: string;
   /** NGN (kobo / 100). */
   amountRefunded: number;
   status: 'SUCCESS' | 'PENDING' | 'FAILED';
@@ -37,14 +37,14 @@ export interface RefundResult {
 }
 
 /**
- * Wraps Paystack refund + writes an idempotent `REFUND` row in the buyer wallet ledger.
+ * Wraps Flutterwave refund + writes an idempotent `REFUND` row in the buyer wallet ledger.
  *
- * **Idempotency:** keyed on `${input.paystackReference}-RFND`. Replaying the same call
- * returns the existing record without hitting Paystack a second time. This makes the
+ * **Idempotency:** keyed on `${input.gatewayReference}-RFND`. Replaying the same call
+ * returns the existing record without hitting Flutterwave a second time. This makes the
  * service safe for retry inside the 09-06 settlement engine rollback path.
  *
  * **Balance neutrality:** the REFUND row is written with `balanceAfter === balanceBefore`.
- * Paystack returns money to the original card, NOT to the in-app wallet, so the user's
+ * Flutterwave returns money to the original card, NOT to the in-app wallet, so the user's
  * wallet balance never changes. The row exists purely as a ledger marker for audit and
  * idempotency. (If a future flow needs a wallet credit instead, that's a separate
  * `creditWallet` call — out of scope for this service.)
@@ -55,22 +55,22 @@ export class RefundService {
 
   constructor(
     private prisma: PrismaService,
-    private paystack: PaystackService,
+    private flutterwave: FlutterwaveService,
     // ReferenceService is injected for future helpers; the current refund-reference
     // format is fully deterministic (`<original>-RFND`) and does not need a UUID tail.
     private referenceService: ReferenceService,
   ) {}
 
   async refund(input: RefundInput): Promise<RefundResult> {
-    const refundRef = `${input.paystackReference}-RFND`;
+    const refundRef = `${input.gatewayReference}-RFND`;
 
     // 1. Idempotency check — replay-safe.
     const existing = await this.prisma.transaction.findUnique({ where: { reference: refundRef } });
     if (existing) {
-      this.logger.log(`Refund replay detected for ${input.paystackReference} — returning existing record`);
+      this.logger.log(`Refund replay detected for ${input.gatewayReference} — returning existing record`);
       return {
         refundReference: existing.reference,
-        paystackRefundId: existing.gatewayRef ?? '',
+        gatewayRefundId: existing.gatewayRef ?? '',
         amountRefunded: Number(existing.amount),
         status: this.toResultStatus(existing.status),
         transactionId: existing.id,
@@ -81,16 +81,18 @@ export class RefundService {
     const amountNgn = amountKobo / 100;
     const isWalletGateway = input.gateway === 'WALLET';
 
-    // 2. Call Paystack refund endpoint — skipped entirely for a WALLET-gated original
-    //    settlement, since that payment was never a real Paystack charge (WR-03).
+    // 2. Call Flutterwave refund endpoint — skipped entirely for a WALLET-gated original
+    //    settlement, since that payment was never a real Flutterwave charge (WR-03).
     //    Errors propagate — no ledger row written on failure.
-    const paystackResult = isWalletGateway
+    const gatewayResult = isWalletGateway
       ? null
-      : await this.paystack.refundCharge(input.paystackReference, amountKobo, input.reason);
+      : await this.flutterwave.refundCharge(input.gatewayReference, amountKobo, input.reason);
 
+    // Flutterwave refund status values are 'completed'/'pending'/'failed' (not
+    // Paystack's 'processed') — see FlutterwaveService.refundCharge's return contract.
     const txnStatus: 'SUCCESS' | 'PENDING' = isWalletGateway
       ? 'SUCCESS'
-      : paystackResult!.status === 'processed'
+      : gatewayResult!.status === 'completed'
         ? 'SUCCESS'
         : 'PENDING';
 
@@ -119,15 +121,15 @@ export class RefundService {
           amount: amountNgn,
           currency: 'NGN',
           reference: refundRef,
-          gateway: isWalletGateway ? 'WALLET' : 'PAYSTACK',
-          gatewayRef: isWalletGateway ? null : paystackResult!.id,
+          gateway: isWalletGateway ? 'WALLET' : 'FLUTTERWAVE',
+          gatewayRef: isWalletGateway ? null : gatewayResult!.id,
           description: input.reason ?? 'Refund issued',
           balanceBefore,
           balanceAfter,
           metadata: {
             ...(input.metadata ?? {}),
             module: 'refund',
-            originalReference: input.paystackReference,
+            originalReference: input.gatewayReference,
           },
         },
       });
@@ -135,7 +137,7 @@ export class RefundService {
 
     return {
       refundReference: refundRef,
-      paystackRefundId: isWalletGateway ? '' : paystackResult!.id,
+      gatewayRefundId: isWalletGateway ? '' : gatewayResult!.id,
       amountRefunded: amountNgn,
       status: txnStatus,
       transactionId: txn.id,

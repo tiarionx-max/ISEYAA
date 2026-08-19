@@ -127,7 +127,7 @@ export class EventsController {
   @Post(':id/purchase')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Purchase ticket — initiates Paystack payment, creates PENDING ticket' })
+  @ApiOperation({ summary: 'Purchase ticket — initiates Flutterwave payment, creates PENDING ticket' })
   purchaseTicket(
     @Param('id') eventId: string,
     @CurrentUser() user: any,

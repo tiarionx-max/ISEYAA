@@ -36,26 +36,26 @@ describe('Vendor outage isolation (Phase 11 success criterion 2)', () => {
     service = module.get<ResilienceService>(ResilienceService);
   });
 
-  it('instantiates a REAL ResilienceService (only PrismaService mocked); onModuleInit builds all vendor policies including paystack and s3', async () => {
+  it('instantiates a REAL ResilienceService (only PrismaService mocked); onModuleInit builds all vendor policies including flutterwave and s3', async () => {
     await service.onModuleInit();
 
     // Both vendors used by the isolation scenario below must be immediately usable
     // via execute() — proving onModuleInit actually built their policies.
-    await expect(service.execute('paystack', async () => 'ok')).resolves.toBe('ok');
+    await expect(service.execute('flutterwave', async () => 'ok')).resolves.toBe('ok');
     await expect(service.execute('s3', async () => 'ok')).resolves.toBe('ok');
     expect(prisma.platformConfig.findMany).toHaveBeenCalled();
   });
 
-  it('opens the paystack breaker after exactly failureThreshold consecutive transient failures, then fails fast without invoking fn again on the 6th call', async () => {
+  it('opens the flutterwave breaker after exactly failureThreshold consecutive transient failures, then fails fast without invoking fn again on the 6th call', async () => {
     await service.onModuleInit();
 
     const fn = jest.fn().mockRejectedValue({ response: { status: 500 } });
-    const { failureThreshold } = RESILIENCE_DEFAULTS.paystack;
+    const { failureThreshold } = RESILIENCE_DEFAULTS.flutterwave;
 
     // Drive exactly failureThreshold consecutive failures — this opens the breaker.
     for (let i = 0; i < failureThreshold; i++) {
       try {
-        await service.execute('paystack', fn);
+        await service.execute('flutterwave', fn);
       } catch {
         // expected — every call fails
       }
@@ -67,7 +67,7 @@ describe('Vendor outage isolation (Phase 11 success criterion 2)', () => {
     // — fail-fast, not another full retry+timeout cycle per request.
     for (let i = 0; i < 3; i++) {
       try {
-        await service.execute('paystack', fn);
+        await service.execute('flutterwave', fn);
       } catch {
         // expected
       }
@@ -76,16 +76,16 @@ describe('Vendor outage isolation (Phase 11 success criterion 2)', () => {
     expect(fn.mock.calls.length).toBe(callCountAtThreshold);
   });
 
-  it('completes S3 successfully (returns "uploaded-ok") immediately after the Paystack circuit is open — proving cross-vendor isolation on the same ResilienceService instance', async () => {
+  it('completes S3 successfully (returns "uploaded-ok") immediately after the Flutterwave circuit is open — proving cross-vendor isolation on the same ResilienceService instance', async () => {
     await service.onModuleInit();
 
-    const paystackFn = jest.fn().mockRejectedValue({ response: { status: 500 } });
-    const { failureThreshold } = RESILIENCE_DEFAULTS.paystack;
+    const flutterwaveFn = jest.fn().mockRejectedValue({ response: { status: 500 } });
+    const { failureThreshold } = RESILIENCE_DEFAULTS.flutterwave;
 
-    // Drive the Paystack breaker open.
+    // Drive the Flutterwave breaker open.
     for (let i = 0; i < failureThreshold + 1; i++) {
       try {
-        await service.execute('paystack', paystackFn);
+        await service.execute('flutterwave', flutterwaveFn);
       } catch {
         // expected
       }
@@ -100,28 +100,28 @@ describe('Vendor outage isolation (Phase 11 success criterion 2)', () => {
     expect(fn2).toHaveBeenCalledTimes(1);
   });
 
-  it("rethrows ServiceUnavailableException when a caller mirrors PaystackService.initiatePayment's catch-and-rethrow against the now-open Paystack circuit", async () => {
+  it("rethrows ServiceUnavailableException when a caller mirrors FlutterwaveService.initiatePayment's catch-and-rethrow against the now-open Flutterwave circuit", async () => {
     await service.onModuleInit();
 
     const fn = jest.fn().mockRejectedValue({ response: { status: 500 } });
-    const { failureThreshold } = RESILIENCE_DEFAULTS.paystack;
+    const { failureThreshold } = RESILIENCE_DEFAULTS.flutterwave;
 
     // Open the circuit.
     for (let i = 0; i < failureThreshold; i++) {
       try {
-        await service.execute('paystack', fn);
+        await service.execute('flutterwave', fn);
       } catch {
         // expected
       }
     }
 
-    // Mirrors PaystackService.initiatePayment's actual catch-and-rethrow pattern
+    // Mirrors FlutterwaveService.initiatePayment's actual catch-and-rethrow pattern
     // (D-05: generic ServiceUnavailableException on any policy escape).
     const callSite = async () => {
       try {
-        await service.execute('paystack', fn);
+        await service.execute('flutterwave', fn);
       } catch {
-        throw new ServiceUnavailableException('Paystack is temporarily unavailable, please try again shortly');
+        throw new ServiceUnavailableException('Flutterwave is temporarily unavailable, please try again shortly');
       }
     };
 

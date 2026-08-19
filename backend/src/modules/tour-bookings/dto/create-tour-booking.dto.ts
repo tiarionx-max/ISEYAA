@@ -63,13 +63,13 @@ export class CreateTourBookingDto {
   @Max(50)
   passengerCount!: number;
 
-  @ApiProperty({ example: 'aisha@example.com', description: 'Email used for Paystack init' })
+  @ApiProperty({ example: 'aisha@example.com', description: 'Email used for Flutterwave init' })
   @IsEmail()
   email!: string;
 
   @ApiPropertyOptional({
     description:
-      'If true, parent booking is created with NO Paystack init. Each passenger calls /join to pay their own share.',
+      'If true, parent booking is created with NO Flutterwave init. Each passenger calls /join to pay their own share.',
     default: false,
   })
   @IsOptional()

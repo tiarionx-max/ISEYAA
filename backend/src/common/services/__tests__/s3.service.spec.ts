@@ -135,7 +135,7 @@ describe('S3Service', () => {
       ).rejects.toThrow(ServiceUnavailableException);
     });
 
-    it("Test 8: forwards the exact AbortSignal instance into S3Client.send()'s second argument (abortSignal) — reference-identity, mirrors paystack.service.spec.ts Test 7", async () => {
+    it("Test 8: forwards the exact AbortSignal instance into S3Client.send()'s second argument (abortSignal) — reference-identity, mirrors flutterwave.service.spec.ts's AbortSignal forwarding test", async () => {
       const controller = new AbortController();
       mockResilience.execute.mockImplementationOnce(
         (vendor: string, fn: (context: { signal: AbortSignal | undefined }) => any) =>

@@ -12,7 +12,7 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { KafkaService } from '../../kafka/kafka.service';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../prisma/prisma.service';
-import { PaystackService } from '../../common/services/paystack.service';
+import { FlutterwaveService } from '../../common/services/flutterwave.service';
 import { SendgridService } from '../../common/services/sendgrid.service';
 import { SettlementService } from '../../common/services/settlement.service';
 import { ImageService } from '../../common/services/image.service';
@@ -32,7 +32,7 @@ export class MarketplaceService implements OnModuleInit {
 
   constructor(
     private prisma: PrismaService,
-    private paystack: PaystackService,
+    private flutterwave: FlutterwaveService,
     private sendgrid: SendgridService,
     private kafka: KafkaService,
     private settlementService: SettlementService,
@@ -314,7 +314,7 @@ export class MarketplaceService implements OnModuleInit {
 
     let payment;
     try {
-      payment = await this.paystack.initiatePayment({
+      payment = await this.flutterwave.initiatePayment({
         email: dto.email,
         amountKobo: total * 100,
         reference: paystackRef,
@@ -326,7 +326,7 @@ export class MarketplaceService implements OnModuleInit {
         },
       });
     } catch (err) {
-      // Paystack failed (missing key, network, etc.) — roll back the order
+      // Flutterwave failed (missing key, network, etc.) — roll back the order
       // (and its line items, since OrderItem has no cascade) so the PENDING
       // row doesn't linger and so stock decrement triggers don't fire later.
       await this.prisma
@@ -335,7 +335,7 @@ export class MarketplaceService implements OnModuleInit {
           this.prisma.order.delete({ where: { id: order.id } }),
         ])
         .catch(() => {});
-      this.logger.error(`Paystack init failed for order ${order.id}, rolled back`, err);
+      this.logger.error(`Flutterwave init failed for order ${order.id}, rolled back`, err);
       throw new ServiceUnavailableException('Payment gateway is currently unavailable. Please try again shortly.');
     }
 
@@ -366,7 +366,7 @@ export class MarketplaceService implements OnModuleInit {
       const settlementResult = await this.settlementService.settle({
         module: 'marketplace',
         reference: payload.reference,
-        gateway: 'PAYSTACK',
+        gateway: 'FLUTTERWAVE',
         amountKobo: Math.round(Number(order.totalAmount) * 100), // WR-03: avoid IEEE-754 float drift crossing into SettlementService
         recipients: [
           {

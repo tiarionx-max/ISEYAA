@@ -402,7 +402,7 @@ describe('TourSettlementService', () => {
     expect(mockRefund.refund).toHaveBeenCalledTimes(1);
     expect(mockRefund.refund).toHaveBeenCalledWith(
       expect.objectContaining({
-        paystackReference: PAYSTACK_REF,
+        gatewayReference: PAYSTACK_REF,
         amountKobo: 1_000_000,
         walletId: BUYER_WALLET_ID,
         reason: expect.stringContaining('tour_booking_settlement_failed'),
@@ -610,10 +610,10 @@ describe('TourSettlementService', () => {
         `${PAYSTACK_REF}-PLAT`,
       ]),
     );
-    // gatewayRef on every row equals the original Paystack reference (audit trail).
+    // gatewayRef on every row equals the original Flutterwave reference (audit trail).
     for (const create of txn.transactionCreates) {
       expect(create.gatewayRef).toBe(PAYSTACK_REF);
-      expect(create.gateway).toBe('PAYSTACK');
+      expect(create.gateway).toBe('FLUTTERWAVE');
       expect(create.type).toBe('CREDIT');
       expect(create.status).toBe('SUCCESS');
       expect(create.currency).toBe('NGN');

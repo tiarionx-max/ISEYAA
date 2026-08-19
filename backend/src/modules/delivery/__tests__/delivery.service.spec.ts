@@ -819,7 +819,7 @@ describe('DeliveryService', () => {
       expect(mockResilience.execute).toHaveBeenCalledWith('sendchampDelivery', expect.any(Function));
     });
 
-    it("forwards the exact AbortSignal instance into fetch()'s init object (reference-identity, mirrors paystack.service.spec.ts Test 7)", async () => {
+    it("forwards the exact AbortSignal instance into fetch()'s init object (reference-identity, mirrors flutterwave.service.spec.ts's AbortSignal forwarding test)", async () => {
       mockConfig.get.mockImplementation((key: string, def?: unknown) =>
         key === 'SENDCHAMP_API_KEY' ? 'test-sendchamp-key' : (def ?? undefined),
       );

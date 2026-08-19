@@ -21,7 +21,7 @@ import { JoinWaitlistDto } from '../waitlist/dto/join-waitlist.dto';
 // enabled.
 const CANARY_FLAG_KEY = 'grpc.waitlist_service.canary_enabled';
 
-// D-06: matches PaystackService's / NotificationsClientService's / NewsClientService's exact
+// D-06: matches FlutterwaveService's / NotificationsClientService's / NewsClientService's exact
 // wording convention.
 const UNAVAILABLE_MESSAGE = 'Waitlist service is temporarily unavailable, please try again shortly';
 

@@ -11,7 +11,7 @@ import { NOTIFICATIONS_PACKAGE } from './notifications-client.constants';
 // already-live feature — absence or any value other than `false` means enabled.
 const CANARY_FLAG_KEY = 'grpc.notifications_service.canary_enabled';
 
-// D-06: matches PaystackService's exact wording convention verbatim.
+// D-06: matches FlutterwaveService's exact wording convention verbatim.
 const UNAVAILABLE_MESSAGE = 'Notifications service is temporarily unavailable, please try again shortly';
 
 /**

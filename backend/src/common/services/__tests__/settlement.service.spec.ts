@@ -292,7 +292,7 @@ describe('SettlementService', () => {
     expect(mockRefund.refund).toHaveBeenCalledTimes(1);
     expect(mockRefund.refund).toHaveBeenCalledWith(
       expect.objectContaining({
-        paystackReference: input.reference,
+        gatewayReference: input.reference,
         amountKobo: input.amountKobo,
         walletId: input.buyerWalletId,
         reason: expect.stringContaining(`${input.module}_settlement_failed`),
@@ -340,7 +340,7 @@ describe('SettlementService', () => {
     expect(mockRefund.refund).toHaveBeenCalledTimes(1);
     expect(mockRefund.refund).toHaveBeenCalledWith(
       expect.objectContaining({
-        paystackReference: input.reference,
+        gatewayReference: input.reference,
         amountKobo: input.amountKobo,
         walletId: BUYER_WALLET_ID,
         reason: expect.stringContaining(`${input.module}_settlement_failed`),
@@ -683,7 +683,7 @@ describe('SettlementService', () => {
         expect(mockRefund.refund).toHaveBeenCalledTimes(1);
         expect(mockRefund.refund).toHaveBeenCalledWith(
           expect.objectContaining({
-            paystackReference: input.reference,
+            gatewayReference: input.reference,
             amountKobo: input.amountKobo,
             walletId: input.buyerWalletId,
             reason: expect.stringContaining(`${input.module}_settlement_failed`),

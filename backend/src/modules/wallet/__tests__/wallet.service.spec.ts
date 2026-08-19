@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { WalletService } from '../wallet.service';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { PaystackService } from '../../../common/services/paystack.service';
+import { FlutterwaveService } from '../../../common/services/flutterwave.service';
 import { RedisService } from '../../../redis/redis.service';
 import { NotificationsClientService } from '../../notifications-client/notifications-client.service';
 
@@ -76,7 +76,7 @@ const mockTx = {
   $executeRaw: jest.fn().mockResolvedValue(1),
 };
 
-const mockPaystack = { initiatePayment: jest.fn() };
+const mockFlutterwave = { initiatePayment: jest.fn() };
 const mockRedis = { setNx: jest.fn().mockResolvedValue(true), del: jest.fn().mockResolvedValue(1) };
 const mockNotifications = { sendPush: jest.fn().mockResolvedValue({ sent: true }) };
 
@@ -100,7 +100,7 @@ describe('WalletService', () => {
       providers: [
         WalletService,
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: PaystackService, useValue: mockPaystack },
+        { provide: FlutterwaveService, useValue: mockFlutterwave },
         { provide: RedisService, useValue: mockRedis },
         { provide: NotificationsClientService, useValue: mockNotifications },
       ],
@@ -214,18 +214,18 @@ describe('WalletService', () => {
       );
     });
 
-    it('initiates Paystack payment for Tier 1 within daily limit', async () => {
+    it('initiates Flutterwave payment for Tier 1 within daily limit', async () => {
       mockPrisma.wallet.findUnique.mockResolvedValue(mockWallet);
       mockPrisma.user.findUnique.mockResolvedValue(mockUserTier1);
       mockPrisma.transaction.aggregate.mockResolvedValue({ _sum: { amount: 0 } });
-      mockPaystack.initiatePayment.mockResolvedValue({
-        authorizationUrl: 'https://paystack.com/pay/xyz',
+      mockFlutterwave.initiatePayment.mockResolvedValue({
+        authorizationUrl: 'https://checkout.flutterwave.com/pay/xyz',
         accessCode: 'xyz',
         reference: 'ISY-FUND-ABCDEF123456',
       });
 
       const result = await service.initiateTopup(USER_ID, { amount: 10000, email: 'a@b.com' });
-      expect(mockPaystack.initiatePayment).toHaveBeenCalledWith(
+      expect(mockFlutterwave.initiatePayment).toHaveBeenCalledWith(
         expect.objectContaining({
           amountKobo: 10000 * 100,
           metadata: expect.objectContaining({ type: 'wallet_topup' }),
@@ -238,8 +238,8 @@ describe('WalletService', () => {
       mockPrisma.wallet.findUnique.mockResolvedValue(mockWallet);
       mockPrisma.user.findUnique.mockResolvedValue(mockUserTier2);
       mockPrisma.transaction.aggregate.mockResolvedValue({ _sum: { amount: 0 } });
-      mockPaystack.initiatePayment.mockResolvedValue({
-        authorizationUrl: 'https://paystack.com/pay/xyz',
+      mockFlutterwave.initiatePayment.mockResolvedValue({
+        authorizationUrl: 'https://checkout.flutterwave.com/pay/xyz',
         accessCode: 'xyz',
         reference: 'ISY-FUND-XYZ',
       });
@@ -249,12 +249,12 @@ describe('WalletService', () => {
       ).resolves.toBeDefined();
     });
 
-    it('F-01: reserves the amount as a PENDING credit before calling Paystack', async () => {
+    it('F-01: reserves the amount as a PENDING credit before calling Flutterwave', async () => {
       mockPrisma.wallet.findUnique.mockResolvedValue(mockWallet);
       mockPrisma.user.findUnique.mockResolvedValue(mockUserTier1);
       mockPrisma.transaction.aggregate.mockResolvedValue({ _sum: { amount: 0 } });
-      mockPaystack.initiatePayment.mockResolvedValue({
-        authorizationUrl: 'https://paystack.com/pay/xyz',
+      mockFlutterwave.initiatePayment.mockResolvedValue({
+        authorizationUrl: 'https://checkout.flutterwave.com/pay/xyz',
         reference: 'ISY-FUND-RES',
       });
 
@@ -273,15 +273,15 @@ describe('WalletService', () => {
       );
     });
 
-    it('F-01: releases (deletes) the reservation if Paystack initiation fails', async () => {
+    it('F-01: releases (deletes) the reservation if Flutterwave initiation fails', async () => {
       mockPrisma.wallet.findUnique.mockResolvedValue(mockWallet);
       mockPrisma.user.findUnique.mockResolvedValue(mockUserTier1);
       mockPrisma.transaction.aggregate.mockResolvedValue({ _sum: { amount: 0 } });
-      mockPaystack.initiatePayment.mockRejectedValue(new Error('paystack down'));
+      mockFlutterwave.initiatePayment.mockRejectedValue(new Error('flutterwave down'));
 
       await expect(
         service.initiateTopup(USER_ID, { amount: 10000, email: 'a@b.com' }),
-      ).rejects.toThrow('paystack down');
+      ).rejects.toThrow('flutterwave down');
       expect(mockPrisma.transaction.delete).toHaveBeenCalledWith({ where: { reference: expect.any(String) } });
     });
   });
@@ -302,14 +302,14 @@ describe('WalletService', () => {
       await expect(service.creditWallet('bad-id', 1000, 'REF', 'desc')).rejects.toThrow(NotFoundException);
     });
 
-    it('uses PAYSTACK gateway by default when no gateway passed', async () => {
+    it('uses FLUTTERWAVE gateway by default when no gateway passed', async () => {
       mockPrisma.wallet.findUnique.mockResolvedValue(mockWallet);
 
       await service.creditWallet(WALLET_ID, 5000, 'ISY-FUND-REF', 'Wallet topup', 'wallet');
 
       expect(mockTx.transaction.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ gateway: 'PAYSTACK' }),
+          data: expect.objectContaining({ gateway: 'FLUTTERWAVE' }),
         }),
       );
     });
