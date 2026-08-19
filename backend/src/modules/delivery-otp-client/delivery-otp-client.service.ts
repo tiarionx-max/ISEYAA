@@ -20,7 +20,7 @@ import { DELIVERY_OTP_PACKAGE } from './delivery-otp-client.constants';
 // `false` means enabled — only an explicit stored `false` disables.
 const CANARY_FLAG_KEY = 'grpc.delivery_otp_service.canary_enabled';
 
-// Matches PaystackService's / NotificationsClientService's exact wording convention.
+// Matches FlutterwaveService's / NotificationsClientService's exact wording convention.
 const UNAVAILABLE_MESSAGE = 'Delivery OTP service is temporarily unavailable, please try again shortly';
 
 /**

@@ -29,7 +29,7 @@ export class StudioController {
   @Post('bookings')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Book a studio slot — SELECT FOR UPDATE, Paystack payment, prep checklist email' })
+  @ApiOperation({ summary: 'Book a studio slot — SELECT FOR UPDATE, Flutterwave payment, prep checklist email' })
   createBooking(@CurrentUser() user: any, @Body() dto: CreateStudioBookingDto) {
     return this.studioService.createBooking(user.userId, dto);
   }

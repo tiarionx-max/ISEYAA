@@ -7,7 +7,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { PaystackService } from '../../common/services/paystack.service';
+import { FlutterwaveService } from '../../common/services/flutterwave.service';
 import { ReferenceService } from '../../common/services/reference.service';
 import { TourPackageService } from '../tour-packages/tour-packages.service';
 import { CreateTourBookingDto } from './dto/create-tour-booking.dto';
@@ -69,7 +69,7 @@ export class TourBookingService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly paystack: PaystackService,
+    private readonly flutterwave: FlutterwaveService,
     private readonly referenceService: ReferenceService,
     private readonly tourPackages: TourPackageService,
   ) {}
@@ -123,8 +123,8 @@ export class TourBookingService {
 
   /**
    * Initiates a TourBooking in PENDING.
-   * For solo / group (non-split) bookings, Paystack is initialised here and the
-   * authorizationUrl is returned. For split-bill bookings, NO Paystack init —
+   * For solo / group (non-split) bookings, Flutterwave is initialised here and the
+   * authorizationUrl is returned. For split-bill bookings, NO Flutterwave init —
    * a deep-link `iseyaa://tour-booking/{id}/join` is returned and each passenger
    * pays their share via POST /tour-bookings/:id/join.
    *
@@ -248,15 +248,15 @@ export class TourBookingService {
 
     // 12. Branch on splitBillEnabled
     if (dto.splitBillEnabled) {
-      // Split-bill — return deep link instead of Paystack URL
+      // Split-bill — return deep link instead of Flutterwave URL
       const splitBillJoinLink = `iseyaa://tour-booking/${booking.id}/join`;
       return { booking, splitBillJoinLink };
     }
 
-    // Standard path — Paystack init for the full totalAmount
+    // Standard path — Flutterwave init for the full totalAmount
     let payment;
     try {
-      payment = await this.paystack.initiatePayment({
+      payment = await this.flutterwave.initiatePayment({
         email: dto.email,
         amountKobo: Math.round(totalAmount * 100),
         reference,
@@ -275,7 +275,7 @@ export class TourBookingService {
         ])
         .catch(() => {});
       this.logger.error(
-        `Paystack init failed for tour booking ${booking.id}, rolled back`,
+        `Flutterwave init failed for tour booking ${booking.id}, rolled back`,
         (err as Error).message,
       );
       throw new ServiceUnavailableException(
@@ -297,7 +297,7 @@ export class TourBookingService {
 
   /**
    * Split-bill participant pays their share.
-   * Mints a child reference, initiates Paystack for `unitPrice`, and records
+   * Mints a child reference, initiates Flutterwave for `unitPrice`, and records
    * the share in parent booking's metadata.shares. The actual transition of
    * `splitBillPaidUserIds` happens in 09-06's webhook handler.
    */
@@ -330,7 +330,7 @@ export class TourBookingService {
 
     let payment;
     try {
-      payment = await this.paystack.initiatePayment({
+      payment = await this.flutterwave.initiatePayment({
         email: dto.email,
         amountKobo: Math.round(shareAmount * 100),
         reference: childRef,
@@ -344,7 +344,7 @@ export class TourBookingService {
       });
     } catch (err) {
       this.logger.error(
-        `Paystack init failed for split-bill share ${childRef} (booking ${booking.id})`,
+        `Flutterwave init failed for split-bill share ${childRef} (booking ${booking.id})`,
         (err as Error).message,
       );
       throw new ServiceUnavailableException(
@@ -378,12 +378,12 @@ export class TourBookingService {
   // ── closeSplitBill ───────────────────────────────────────────────────────
 
   /**
-   * Group leader absorbs the unpaid remainder (single Paystack init for
+   * Group leader absorbs the unpaid remainder (single Flutterwave init for
    * `remaining * unitPrice`). The actual CONFIRMED transition stays in 09-06.
    *
    * Per plan: this is a SOLID implementation (not a 501 stub) — the deviation
    * from the prompt's "stub" line is justified because the full mechanics
-   * fit in <30 lines and reuse joinSplitBill's Paystack pattern exactly.
+   * fit in <30 lines and reuse joinSplitBill's Flutterwave pattern exactly.
    * No wallet writes happen here.
    */
   async closeSplitBill(bookingId: string, actorUserId: string) {
@@ -411,7 +411,7 @@ export class TourBookingService {
 
     let payment;
     try {
-      payment = await this.paystack.initiatePayment({
+      payment = await this.flutterwave.initiatePayment({
         email: (booking as any).buyer?.email ?? 'leader@example.com',
         amountKobo: Math.round(absorbAmount * 100),
         reference: childRef,
@@ -426,7 +426,7 @@ export class TourBookingService {
       });
     } catch (err) {
       this.logger.error(
-        `Paystack init failed for close-split-bill ${childRef} (booking ${booking.id})`,
+        `Flutterwave init failed for close-split-bill ${childRef} (booking ${booking.id})`,
         (err as Error).message,
       );
       throw new ServiceUnavailableException(

@@ -14,7 +14,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { v4 as uuidv4 } from 'uuid';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { PaystackService } from '../../common/services/paystack.service';
+import { FlutterwaveService } from '../../common/services/flutterwave.service';
 import { S3Service } from '../../common/services/s3.service';
 import { SendgridService } from '../../common/services/sendgrid.service';
 import { ImageService } from '../../common/services/image.service';
@@ -40,7 +40,7 @@ export class StaysService implements OnModuleInit {
 
   constructor(
     private prisma: PrismaService,
-    private paystack: PaystackService,
+    private flutterwave: FlutterwaveService,
     private s3: S3Service,
     private sendgrid: SendgridService,
     private imageService: ImageService,
@@ -288,7 +288,7 @@ export class StaysService implements OnModuleInit {
 
     let payment;
     try {
-      payment = await this.paystack.initiatePayment({
+      payment = await this.flutterwave.initiatePayment({
         email: dto.email,
         amountKobo: totalPrice * 100,
         reference: paystackRef,
@@ -301,10 +301,10 @@ export class StaysService implements OnModuleInit {
         },
       });
     } catch (err) {
-      // Paystack failed (missing key, network, etc.) — roll back the booking
+      // Flutterwave failed (missing key, network, etc.) — roll back the booking
       // so the property isn't held hostage by an orphaned PENDING row.
       await this.prisma.booking.delete({ where: { id: booking.id } }).catch(() => {});
-      this.logger.error(`Paystack init failed for stay booking ${booking.id}, rolled back`, err);
+      this.logger.error(`Flutterwave init failed for stay booking ${booking.id}, rolled back`, err);
       throw new ServiceUnavailableException('Payment gateway is currently unavailable. Please try again shortly.');
     }
 
@@ -416,7 +416,7 @@ export class StaysService implements OnModuleInit {
 
     let payment;
     try {
-      payment = await this.paystack.initiatePayment({
+      payment = await this.flutterwave.initiatePayment({
         email: dto.email,
         amountKobo: monthlyPriceNgn * 100,
         reference: paystackRef,
@@ -424,7 +424,7 @@ export class StaysService implements OnModuleInit {
       });
     } catch (err) {
       await this.prisma.membership.delete({ where: { id: membership.id } }).catch(() => {});
-      this.logger.error(`Paystack init failed for membership ${membership.id}, rolled back`, err);
+      this.logger.error(`Flutterwave init failed for membership ${membership.id}, rolled back`, err);
       throw new ServiceUnavailableException('Payment gateway is currently unavailable. Please try again shortly.');
     }
 
@@ -432,7 +432,7 @@ export class StaysService implements OnModuleInit {
   }
 
   @OnEvent('payment.membership_signup')
-  async handleMembershipSignup(payload: { reference: string; authorization?: { authorization_code?: string } }) {
+  async handleMembershipSignup(payload: { reference: string; authorization?: { token?: string } }) {
     try {
       const membership = await this.prisma.membership.findUnique({
         where: { paystackRef: payload.reference },
@@ -445,7 +445,10 @@ export class StaysService implements OnModuleInit {
         data: {
           status: 'ACTIVE',
           currentPeriodEnd: new Date(Date.now() + MEMBERSHIP_PERIOD_MS),
-          paystackAuthCode: payload.authorization?.authorization_code ?? null,
+          // Flutterwave's webhook passes data.card as `authorization` (see
+          // webhooks.service.ts::handleFlutterwave) — the reusable charge token is
+          // exposed as `.token`, not Paystack's `.authorization_code`.
+          paystackAuthCode: payload.authorization?.token ?? null,
         },
       });
 
@@ -461,7 +464,7 @@ export class StaysService implements OnModuleInit {
           await this.settlementService.settle({
             module: 'stays',
             reference: `ISY-MEM-${membership.id.replace(/-/g, '').slice(0, 16).toUpperCase()}-P0`,
-            gateway: 'PAYSTACK',
+            gateway: 'FLUTTERWAVE',
             amountKobo: total * 100,
             recipients: [
               { tag: 'HOST', refSuffix: 'HOST', walletId: hostWallet.id, amountNgn: hostAmountNgn, metadata: { membershipId: membership.id } },
@@ -532,8 +535,8 @@ export class StaysService implements OnModuleInit {
 
         let charge;
         try {
-          charge = await this.paystack.chargeAuthorization({
-            authorizationCode: membership.paystackAuthCode,
+          charge = await this.flutterwave.chargeToken({
+            token: membership.paystackAuthCode,
             email: membership.paystackEmail,
             amountKobo: total * 100,
             reference: renewalRef,
@@ -544,7 +547,8 @@ export class StaysService implements OnModuleInit {
           charge = { status: 'failed', reference: renewalRef };
         }
 
-        if (charge.status !== 'success') {
+        // Flutterwave's tokenized-charge status is 'successful' (not Paystack's 'success').
+        if (charge.status !== 'successful') {
           const nextStatus = membership.status === 'PAST_DUE' ? 'EXPIRED' : 'PAST_DUE';
           await this.prisma.membership.update({ where: { id: membership.id }, data: { status: nextStatus } });
           this.logger.warn(`Membership ${membership.id} renewal failed — now ${nextStatus}`);
@@ -569,7 +573,7 @@ export class StaysService implements OnModuleInit {
             await this.settlementService.settle({
               module: 'stays',
               reference: renewalRef,
-              gateway: 'PAYSTACK',
+              gateway: 'FLUTTERWAVE',
               amountKobo: total * 100,
               recipients: [
                 { tag: 'HOST', refSuffix: 'HOST', walletId: hostWallet.id, amountNgn: hostAmountNgn, metadata: { membershipId: membership.id } },

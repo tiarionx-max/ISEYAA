@@ -7,7 +7,7 @@ import { S3Service } from '../../common/services/s3.service';
 import { UpdateSplitTierDto } from './dto/update-split-tier.dto';
 import { CreateSplitTierDto } from './dto/create-split-tier.dto';
 
-// Orders sit in PENDING from creation until the Paystack webhook fires
+// Orders sit in PENDING from creation until the Flutterwave webhook fires
 // (marketplace.service.ts handleOrderPayment) and settle() fans the charge
 // out to vendor/ministry/platform wallets. Only PROCESSING/SHIPPED/DELIVERED
 // represent money that was actually collected — PENDING is an abandoned or

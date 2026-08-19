@@ -4,7 +4,7 @@ import {
 } from '@nestjs/common';
 import { StudioService } from '../studio.service';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { PaystackService } from '../../../common/services/paystack.service';
+import { FlutterwaveService } from '../../../common/services/flutterwave.service';
 import { S3Service } from '../../../common/services/s3.service';
 import { SendgridService } from '../../../common/services/sendgrid.service';
 import { SettlementService } from '../../../common/services/settlement.service';
@@ -84,7 +84,7 @@ const mockPrisma = {
   $queryRaw: jest.fn(),
 };
 
-const mockPaystack = { initiatePayment: jest.fn() };
+const mockFlutterwave = { initiatePayment: jest.fn() };
 const mockS3 = { upload: jest.fn() };
 const mockSendgrid = { sendStudioBookingConfirmation: jest.fn() };
 
@@ -97,7 +97,7 @@ describe('StudioService', () => {
       providers: [
         StudioService,
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: PaystackService, useValue: mockPaystack },
+        { provide: FlutterwaveService, useValue: mockFlutterwave },
         { provide: S3Service, useValue: mockS3 },
         { provide: SendgridService, useValue: mockSendgrid },
         { provide: KafkaService, useValue: mockKafka },
@@ -173,8 +173,8 @@ describe('StudioService', () => {
         };
         return fn(txMock);
       });
-      mockPaystack.initiatePayment.mockResolvedValue({
-        authorizationUrl: 'https://paystack.com/pay/abc',
+      mockFlutterwave.initiatePayment.mockResolvedValue({
+        authorizationUrl: 'https://checkout.flutterwave.com/pay/abc',
         accessCode: 'abc',
         reference: PAYSTACK_REF,
       });
@@ -182,7 +182,7 @@ describe('StudioService', () => {
       const result = await service.createBooking(USER_ID, dto as any);
 
       expect(result.booking.status).toBe('PENDING');
-      expect(mockPaystack.initiatePayment).toHaveBeenCalledWith(
+      expect(mockFlutterwave.initiatePayment).toHaveBeenCalledWith(
         expect.objectContaining({
           amountKobo: 20000 * 100,
           metadata: expect.objectContaining({ type: 'studio_booking' }),

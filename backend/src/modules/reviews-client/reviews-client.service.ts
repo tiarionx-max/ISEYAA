@@ -23,7 +23,7 @@ import { CreateReviewDto, ReviewTargetTypeLiteral } from '../reviews/dto/create-
 // value other than `false` means enabled.
 const CANARY_FLAG_KEY = 'grpc.reviews_service.canary_enabled';
 
-// D-06: matches PaystackService's / NotificationsClientService's / WaitlistClientService's
+// D-06: matches FlutterwaveService's / NotificationsClientService's / WaitlistClientService's
 // exact wording convention.
 const UNAVAILABLE_MESSAGE = 'Reviews service is temporarily unavailable, please try again shortly';
 

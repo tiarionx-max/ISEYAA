@@ -18,7 +18,7 @@ export interface InitiatePaymentResult {
 }
 
 /**
- * Flutterwave v3 API client — replaces PaystackService (260819-ji6 migration).
+ * Flutterwave v3 API client — replaces the deleted Paystack gateway integration (260819-ji6 migration).
  *
  * Note on API version: Flutterwave's current public docs (developer.flutterwave.com)
  * document only the v4 API (customers -> payment-methods -> charges resource model,
@@ -137,7 +137,7 @@ export class FlutterwaveService {
   /**
    * Silently re-charge a previously-saved card via its reusable token — used for
    * recurring billing (e.g. monthly memberships) with no customer interaction.
-   * Replaces `PaystackService.chargeAuthorization`. Wraps `POST /v3/tokenized-charges`.
+   * Replaces the deleted Paystack integration's `chargeAuthorization`. Wraps `POST /v3/tokenized-charges`.
    */
   async chargeToken(params: {
     token: string;

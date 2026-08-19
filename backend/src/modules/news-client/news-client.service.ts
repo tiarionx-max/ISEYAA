@@ -10,7 +10,7 @@ import { NEWS_PACKAGE } from './news-client.constants';
 // opt-OUT polarity — absence or any value other than `false` means enabled.
 const CANARY_FLAG_KEY = 'grpc.news_service.canary_enabled';
 
-// D-06: matches PaystackService's / NotificationsClientService's exact wording convention.
+// D-06: matches FlutterwaveService's / NotificationsClientService's exact wording convention.
 const UNAVAILABLE_MESSAGE = 'News service is temporarily unavailable, please try again shortly';
 
 /**

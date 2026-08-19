@@ -12,7 +12,7 @@ import {
   materializeItinerary,
 } from '../tour-bookings.service';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { PaystackService } from '../../../common/services/paystack.service';
+import { FlutterwaveService } from '../../../common/services/flutterwave.service';
 import { ReferenceService } from '../../../common/services/reference.service';
 import { TourPackageService } from '../../tour-packages/tour-packages.service';
 
@@ -82,7 +82,7 @@ const mockPrisma: any = {
   $transaction: jest.fn(),
 };
 
-const mockPaystack: any = { initiatePayment: jest.fn() };
+const mockFlutterwave: any = { initiatePayment: jest.fn() };
 const mockReference: any = { generate: jest.fn() };
 const mockTourPackages: any = { findByIdInternal: jest.fn() };
 
@@ -118,7 +118,7 @@ describe('TourBookingService', () => {
       providers: [
         TourBookingService,
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: PaystackService, useValue: mockPaystack },
+        { provide: FlutterwaveService, useValue: mockFlutterwave },
         { provide: ReferenceService, useValue: mockReference },
         { provide: TourPackageService, useValue: mockTourPackages },
       ],
@@ -127,8 +127,8 @@ describe('TourBookingService', () => {
 
     // Default safe stubs
     mockReference.generate.mockReturnValue('ISY-TOUR-ABCDEF012345');
-    mockPaystack.initiatePayment.mockResolvedValue({
-      authorizationUrl: 'https://paystack.com/pay/test',
+    mockFlutterwave.initiatePayment.mockResolvedValue({
+      authorizationUrl: 'https://checkout.flutterwave.com/pay/test',
       accessCode: 'access-1',
       reference: 'ISY-TOUR-ABCDEF012345',
     });
@@ -219,11 +219,11 @@ describe('TourBookingService', () => {
   // ── createTourBooking ───────────────────────────────────────────────────
 
   describe('createTourBooking', () => {
-    it('1. happy path: passenger=2, price=10000 → unitPrice=10000, totalAmount=20000, Paystack init with metadata.type=tour_booking', async () => {
+    it('1. happy path: passenger=2, price=10000 → unitPrice=10000, totalAmount=20000, Flutterwave init with metadata.type=tour_booking', async () => {
       const result = await service.createTourBooking(ACTOR_USER_ID, baseDto());
 
       expect(mockReference.generate).toHaveBeenCalledWith('TOUR');
-      expect(mockPaystack.initiatePayment).toHaveBeenCalledWith(
+      expect(mockFlutterwave.initiatePayment).toHaveBeenCalledWith(
         expect.objectContaining({
           email: 'aisha@example.com',
           amountKobo: 20000 * 100,
@@ -247,7 +247,7 @@ describe('TourBookingService', () => {
       await expect(
         service.createTourBooking(ACTOR_USER_ID, { ...baseDto(), passengerCount: 51 }),
       ).rejects.toThrow(/Contact corporate sales for groups over 50/);
-      expect(mockPaystack.initiatePayment).not.toHaveBeenCalled();
+      expect(mockFlutterwave.initiatePayment).not.toHaveBeenCalled();
     });
 
     it('3. 400 when passengerCount > pkg.maxGroupSize', async () => {
@@ -264,7 +264,7 @@ describe('TourBookingService', () => {
       });
       expect(result.booking.unitPrice).toBe(9000);
       expect(result.booking.totalAmount).toBe(108000);
-      expect(mockPaystack.initiatePayment).toHaveBeenCalledWith(
+      expect(mockFlutterwave.initiatePayment).toHaveBeenCalledWith(
         expect.objectContaining({ amountKobo: 108000 * 100 }),
       );
     });
@@ -323,19 +323,19 @@ describe('TourBookingService', () => {
       ).rejects.toThrow(/Adire Festival/);
     });
 
-    it('10. split-bill branch: splitBillEnabled=true → NO Paystack init, response has splitBillJoinLink', async () => {
+    it('10. split-bill branch: splitBillEnabled=true → NO Flutterwave init, response has splitBillJoinLink', async () => {
       const result: any = await service.createTourBooking(ACTOR_USER_ID, {
         ...baseDto(),
         splitBillEnabled: true,
         passengerCount: 4,
       });
-      expect(mockPaystack.initiatePayment).not.toHaveBeenCalled();
+      expect(mockFlutterwave.initiatePayment).not.toHaveBeenCalled();
       expect(result.splitBillJoinLink).toBe(`iseyaa://tour-booking/${BOOKING_ID}/join`);
       expect(result.booking.splitBillEnabled).toBe(true);
       expect(result.booking.groupLeaderUserId).toBe(ACTOR_USER_ID);
     });
 
-    it('11. Paystack throw → booking + itinerary rollback via $transaction([delete, delete])', async () => {
+    it('11. Flutterwave throw → booking + itinerary rollback via $transaction([delete, delete])', async () => {
       // Capture the rollback $transaction args
       const txnCalls: any[] = [];
       mockPrisma.$transaction.mockImplementation(async (arg: any) => {
@@ -351,7 +351,7 @@ describe('TourBookingService', () => {
         txnCalls.push(arg);
         return Promise.all(arg);
       });
-      mockPaystack.initiatePayment.mockRejectedValue(new Error('Paystack down'));
+      mockFlutterwave.initiatePayment.mockRejectedValue(new Error('Flutterwave down'));
       mockPrisma.tourBooking.delete.mockResolvedValue({});
       mockPrisma.itinerary.delete.mockResolvedValue({});
 
@@ -368,10 +368,10 @@ describe('TourBookingService', () => {
       );
     });
 
-    it('12. reference format: passes a string matching /^ISY-TOUR-[A-F0-9]{12}$/ to Paystack', async () => {
+    it('12. reference format: passes a string matching /^ISY-TOUR-[A-F0-9]{12}$/ to Flutterwave', async () => {
       mockReference.generate.mockReturnValue('ISY-TOUR-A1B2C3D4E5F6');
       await service.createTourBooking(ACTOR_USER_ID, baseDto());
-      const arg = mockPaystack.initiatePayment.mock.calls[0][0];
+      const arg = mockFlutterwave.initiatePayment.mock.calls[0][0];
       expect(arg.reference).toMatch(/^ISY-TOUR-[A-F0-9]{12}$/);
     });
 
@@ -413,11 +413,11 @@ describe('TourBookingService', () => {
       metadata: { shares: { [ACTOR_USER_ID]: { reference: 'ISY-TOUR-FIRSTPAY1234', status: 'PAID' } } },
     };
 
-    it('14. happy path: mint child ref, init Paystack with metadata.shareKey + parentReference, update parent.metadata.shares', async () => {
+    it('14. happy path: mint child ref, init Flutterwave with metadata.shareKey + parentReference, update parent.metadata.shares', async () => {
       mockPrisma.tourBooking.findFirst.mockResolvedValue(parentBooking);
       mockReference.generate.mockReturnValue('ISY-TOUR-CHILD0000001');
-      mockPaystack.initiatePayment.mockResolvedValue({
-        authorizationUrl: 'https://paystack.com/pay/child',
+      mockFlutterwave.initiatePayment.mockResolvedValue({
+        authorizationUrl: 'https://checkout.flutterwave.com/pay/child',
         accessCode: 'ac-2',
         reference: 'ISY-TOUR-CHILD0000001',
       });
@@ -426,7 +426,7 @@ describe('TourBookingService', () => {
         email: 'tunde@example.com',
       });
 
-      expect(mockPaystack.initiatePayment).toHaveBeenCalledWith(
+      expect(mockFlutterwave.initiatePayment).toHaveBeenCalledWith(
         expect.objectContaining({
           email: 'tunde@example.com',
           amountKobo: 9000 * 100,
@@ -503,11 +503,11 @@ describe('TourBookingService', () => {
       buyer: { email: 'leader@example.com' },
     };
 
-    it('18. happy path: leader absorbs remainder, Paystack init for remaining * unitPrice', async () => {
+    it('18. happy path: leader absorbs remainder, Flutterwave init for remaining * unitPrice', async () => {
       mockPrisma.tourBooking.findFirst.mockResolvedValue(leaderBooking);
       mockReference.generate.mockReturnValue('ISY-TOUR-CLOSE00000AB');
-      mockPaystack.initiatePayment.mockResolvedValue({
-        authorizationUrl: 'https://paystack.com/pay/close',
+      mockFlutterwave.initiatePayment.mockResolvedValue({
+        authorizationUrl: 'https://checkout.flutterwave.com/pay/close',
         accessCode: 'ac-3',
         reference: 'ISY-TOUR-CLOSE00000AB',
       });
@@ -515,7 +515,7 @@ describe('TourBookingService', () => {
       await service.closeSplitBill(BOOKING_ID, ACTOR_USER_ID);
 
       // remaining=2, absorbAmount=18000
-      expect(mockPaystack.initiatePayment).toHaveBeenCalledWith(
+      expect(mockFlutterwave.initiatePayment).toHaveBeenCalledWith(
         expect.objectContaining({
           amountKobo: 18000 * 100,
           metadata: expect.objectContaining({

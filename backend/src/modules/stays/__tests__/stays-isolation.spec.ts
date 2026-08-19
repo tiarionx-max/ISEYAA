@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ForbiddenException } from '@nestjs/common';
 import { StaysService } from '../stays.service';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { PaystackService } from '../../../common/services/paystack.service';
+import { FlutterwaveService } from '../../../common/services/flutterwave.service';
 import { S3Service } from '../../../common/services/s3.service';
 import { SendgridService } from '../../../common/services/sendgrid.service';
 import { ImageService } from '../../../common/services/image.service';
@@ -52,7 +52,7 @@ const mockPrisma = {
 };
 
 const mockKafka = { emit: jest.fn().mockResolvedValue(undefined), consume: jest.fn().mockResolvedValue(undefined) };
-const mockPaystack = { initiatePayment: jest.fn() };
+const mockFlutterwave = { initiatePayment: jest.fn() };
 const mockS3 = { upload: jest.fn() };
 const mockSendgrid = { sendBookingConfirmation: jest.fn() };
 const mockImage = { validateEventImage: jest.fn(), resizeEventCover: jest.fn() };
@@ -75,7 +75,7 @@ describe('Stays isolation — createReview', () => {
       providers: [
         StaysService,
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: PaystackService, useValue: mockPaystack },
+        { provide: FlutterwaveService, useValue: mockFlutterwave },
         { provide: S3Service, useValue: mockS3 },
         { provide: SendgridService, useValue: mockSendgrid },
         { provide: ImageService, useValue: mockImage },

@@ -151,7 +151,7 @@ export class OrdersController {
   @Post()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Place an order — fee split from platform_config, initiates Paystack' })
+  @ApiOperation({ summary: 'Place an order — fee split from platform_config, initiates Flutterwave' })
   create(@CurrentUser() user: any, @Body() dto: CreateOrderDto) {
     return this.marketplaceService.createOrder(user.userId, dto);
   }

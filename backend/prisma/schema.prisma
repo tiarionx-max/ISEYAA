@@ -407,6 +407,7 @@ model Ticket {
   userId       String
   user         User         @relation(fields: [userId], references: [id])
   qrCode       String       @unique
+  // Legacy name — holds the Flutterwave tx_ref since the 260819-ji6 payment gateway migration.
   paystackRef  String?      @unique
   qrImageUrl   String?
   status       TicketStatus @default(PENDING)
@@ -476,6 +477,7 @@ model Booking {
   totalPrice       Decimal
   govtLevyPct      Decimal       @default(0.05)
   status           BookingStatus @default(PENDING)
+  // Legacy name — holds the Flutterwave tx_ref since the 260819-ji6 payment gateway migration.
   paystackRef      String?       @unique
   escrowReleasedAt DateTime?
   reviewRating     Int?
@@ -508,8 +510,14 @@ model Membership {
   monthlyPriceNgn  Decimal
   govtLevyPct      Decimal          @default(0.05)
   status           MembershipStatus @default(PENDING)
+  // Legacy name — holds the Flutterwave tx_ref since the 260819-ji6 payment gateway migration.
   paystackRef      String           @unique
-  paystackAuthCode String? // saved-card authorization_code from the first successful charge, used to silently re-charge on renewal
+  // Legacy name — holds Flutterwave's reusable card token (data.card.token) since the
+  // 260819-ji6 payment gateway migration; saved-card token from the first successful
+  // charge, used to silently re-charge on renewal.
+  paystackAuthCode String?
+  // Legacy name — holds the email used for the Flutterwave charge since the 260819-ji6
+  // payment gateway migration.
   paystackEmail    String
   currentPeriodEnd DateTime?
   cancelledAt      DateTime?
@@ -583,6 +591,7 @@ model Order {
   platformFee  Decimal?
   govtLevy     Decimal?
   vendorPayout Decimal?
+  // Legacy name — holds the Flutterwave tx_ref since the 260819-ji6 payment gateway migration.
   paystackRef  String?     @unique
   status       OrderStatus @default(PENDING)
   metadata     Json?
@@ -646,6 +655,7 @@ model StudioBooking {
   startTime    DateTime
   endTime      DateTime
   totalPrice   Decimal
+  // Legacy name — holds the Flutterwave tx_ref since the 260819-ji6 payment gateway migration.
   paystackRef  String?             @unique
   status       StudioBookingStatus @default(PENDING)
   metadata     Json?
@@ -1139,7 +1149,7 @@ model TourBooking {
   passengers           Json? // [{ name: string, phone: string }] for groups
   unitPrice            Decimal // per passenger after any bulk discount applied
   totalAmount          Decimal // unitPrice × passengerCount (or sum of paid shares for split-bill)
-  paymentReference     String? // Paystack reference (may differ from `reference` for split-bill child charges)
+  paymentReference     String? // Flutterwave tx_ref (may differ from `reference` for split-bill child charges) — this field's name already avoided "paystack", no rename needed
   status               BookingStatus @default(PENDING) // REUSE existing BookingStatus enum — see 09-01-PLAN must_haves
   itineraryId          String?       @unique // materialized at booking time
   itinerary            Itinerary?    @relation(fields: [itineraryId], references: [id])

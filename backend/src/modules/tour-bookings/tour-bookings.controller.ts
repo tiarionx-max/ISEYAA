@@ -38,8 +38,8 @@ export class TourBookingsController {
   @ApiOperation({
     summary: 'Initiate a tour booking',
     description:
-      'Validates date / availability / group size. Solo + group: Paystack init returned. ' +
-      'Split-bill: NO Paystack init — deep link returned for each passenger to /join.',
+      'Validates date / availability / group size. Solo + group: Flutterwave init returned. ' +
+      'Split-bill: NO Flutterwave init — deep link returned for each passenger to /join.',
   })
   @ApiResponse({ status: 201, description: 'Booking created in PENDING' })
   @ApiResponse({ status: 400, description: 'Date / availability / group-size guard tripped' })
@@ -56,7 +56,7 @@ export class TourBookingsController {
     summary: 'Pay one share of a split-bill booking',
     description: 'Mints a child ISY-TOUR-<12char> and returns an authorizationUrl for the share.',
   })
-  @ApiResponse({ status: 201, description: 'Share Paystack init returned' })
+  @ApiResponse({ status: 201, description: 'Share Flutterwave init returned' })
   @ApiResponse({ status: 400, description: 'Not split-bill mode, already paid, or fully paid' })
   joinSplitBill(
     @Param('id') id: string,
@@ -70,10 +70,10 @@ export class TourBookingsController {
   @ApiOperation({
     summary: 'Group leader absorbs unpaid remainder',
     description:
-      'Initiates a single Paystack charge for `remaining * unitPrice`. ' +
+      'Initiates a single Flutterwave charge for `remaining * unitPrice`. ' +
       'CONFIRMED transition still routes through 09-06 webhook.',
   })
-  @ApiResponse({ status: 201, description: 'Absorb Paystack init returned' })
+  @ApiResponse({ status: 201, description: 'Absorb Flutterwave init returned' })
   @ApiResponse({ status: 403, description: 'Caller is not the group leader' })
   closeSplitBill(
     @Param('id') id: string,

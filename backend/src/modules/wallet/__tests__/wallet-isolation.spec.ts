@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { WalletService } from '../wallet.service';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { PaystackService } from '../../../common/services/paystack.service';
+import { FlutterwaveService } from '../../../common/services/flutterwave.service';
 import { RedisService } from '../../../redis/redis.service';
 import { NotificationsClientService } from '../../notifications-client/notifications-client.service';
 
@@ -42,7 +42,7 @@ const mockTx = {
   $executeRaw: jest.fn().mockResolvedValue(1),
 };
 
-const mockPaystack = { initiatePayment: jest.fn() };
+const mockFlutterwave = { initiatePayment: jest.fn() };
 const mockRedis = { setNx: jest.fn().mockResolvedValue(true), del: jest.fn().mockResolvedValue(1) };
 const mockNotifications = { sendPush: jest.fn().mockResolvedValue({ sent: true }) };
 
@@ -63,7 +63,7 @@ describe('Wallet isolation', () => {
       providers: [
         WalletService,
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: PaystackService, useValue: mockPaystack },
+        { provide: FlutterwaveService, useValue: mockFlutterwave },
         { provide: RedisService, useValue: mockRedis },
         { provide: NotificationsClientService, useValue: mockNotifications },
       ],

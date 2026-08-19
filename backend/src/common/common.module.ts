@@ -5,10 +5,10 @@ import { CsvExportService } from './services/csv-export.service';
 import { DbMetricsService } from './services/db-metrics.service';
 import { DojahService } from './services/dojah.service';
 import { EncryptionService } from './services/encryption.service';
+import { FlutterwaveService } from './services/flutterwave.service';
 import { ImageService } from './services/image.service';
 import { ItineraryPdfService } from './services/itinerary-pdf.service';
 import { MinistryPdfService } from './services/ministry-pdf.service';
-import { PaystackService } from './services/paystack.service';
 import { QrService } from './services/qr.service';
 import { ReferenceService } from './services/reference.service';
 import { RefundService } from './services/refund.service';
@@ -27,10 +27,10 @@ import { VisitorLogService } from './services/visitor-log.service';
     DbMetricsService,
     DojahService,
     EncryptionService,
+    FlutterwaveService,
     ImageService,
     ItineraryPdfService,
     MinistryPdfService,
-    PaystackService,
     QrService,
     ReferenceService,
     RefundService,
@@ -46,10 +46,10 @@ import { VisitorLogService } from './services/visitor-log.service';
     DbMetricsService,
     DojahService,
     EncryptionService,
+    FlutterwaveService,
     ImageService,
     ItineraryPdfService,
     MinistryPdfService,
-    PaystackService,
     QrService,
     ReferenceService,
     RefundService,

@@ -447,19 +447,19 @@ export class SettlementService implements OnModuleInit {
     }
   }
 
-  // ── Failure path: Paystack refund + caller-supplied onFailure hook ─────────
+  // ── Failure path: gateway refund + caller-supplied onFailure hook ─────────
 
   private async handleSettlementFailure(input: SettlementInput, err: Error): Promise<void> {
     if (input.buyerWalletId) {
       try {
         await this.refundService.refund({
-          paystackReference: input.reference,
+          gatewayReference: input.reference,
           amountKobo: input.amountKobo,
           walletId: input.buyerWalletId,
           reason: `${input.module}_settlement_failed: ${err.message}`,
           metadata: { module: input.module, failedAt: 'settlement_transaction' },
           // Thread the original gateway through so RefundService can branch away from
-          // the Paystack API for a WALLET-gated settlement (WR-03).
+          // the Flutterwave API for a WALLET-gated settlement (WR-03).
           gateway: input.gateway,
         });
       } catch (refundErr) {

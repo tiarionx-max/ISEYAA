@@ -9,7 +9,7 @@ import * as bcrypt from 'bcrypt';
 import { KycService } from '../kyc.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { EncryptionService } from '../../../common/services/encryption.service';
-import { PaystackService } from '../../../common/services/paystack.service';
+import { FlutterwaveService } from '../../../common/services/flutterwave.service';
 import { DojahService } from '../../../common/services/dojah.service';
 
 const USER_ID = 'user-kyc-001';
@@ -47,7 +47,7 @@ const mockEncryption = {
   decrypt: jest.fn(),
 };
 
-const mockPaystack = {
+const mockFlutterwave = {
   resolveBvn: jest.fn(),
 };
 
@@ -76,7 +76,7 @@ describe('KycService', () => {
         KycService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: EncryptionService, useValue: mockEncryption },
-        { provide: PaystackService, useValue: mockPaystack },
+        { provide: FlutterwaveService, useValue: mockFlutterwave },
         { provide: DojahService, useValue: mockDojah },
         { provide: ConfigService, useValue: mockConfig },
       ],
@@ -112,35 +112,35 @@ describe('KycService', () => {
       mockPrisma.user.findMany.mockResolvedValue([
         { id: OTHER_USER_ID, bvnHash: otherUserHash },
       ]);
-      mockPaystack.resolveBvn.mockResolvedValue({ verified: true, firstName: 'John', lastName: 'Doe' });
+      mockFlutterwave.resolveBvn.mockResolvedValue({ verified: true, firstName: 'John', lastName: 'Doe' });
       mockEncryption.encrypt.mockReturnValue(ENCRYPTED_BVN);
 
       await expect(service.verifyBvn(USER_ID, BVN)).rejects.toThrow(ConflictException);
     });
 
-    it('throws BadRequestException when Paystack BVN verification fails', async () => {
+    it('throws BadRequestException when Flutterwave BVN verification fails', async () => {
       mockPrisma.user.findUnique.mockResolvedValue({
         id: USER_ID,
         bvnHash: null,
         kycBvnVerifiedAt: null,
       });
-      mockPaystack.resolveBvn.mockResolvedValue({ verified: false });
+      mockFlutterwave.resolveBvn.mockResolvedValue({ verified: false });
 
       await expect(service.verifyBvn(USER_ID, BVN)).rejects.toThrow(BadRequestException);
     });
 
-    it('calls paystackService.resolveBvn with the bvn once', async () => {
+    it('calls flutterwaveService.resolveBvn with the bvn once', async () => {
       mockPrisma.user.findUnique.mockResolvedValue({
         id: USER_ID,
         bvnHash: null,
         kycBvnVerifiedAt: null,
       });
-      mockPaystack.resolveBvn.mockResolvedValue({ verified: true, firstName: 'John', lastName: 'Doe' });
+      mockFlutterwave.resolveBvn.mockResolvedValue({ verified: true, firstName: 'John', lastName: 'Doe' });
       mockPrisma.user.update.mockResolvedValue({});
 
       await service.verifyBvn(USER_ID, BVN);
-      expect(mockPaystack.resolveBvn).toHaveBeenCalledTimes(1);
-      expect(mockPaystack.resolveBvn).toHaveBeenCalledWith(BVN);
+      expect(mockFlutterwave.resolveBvn).toHaveBeenCalledTimes(1);
+      expect(mockFlutterwave.resolveBvn).toHaveBeenCalledWith(BVN);
     });
 
     it('calls encryptionService.encrypt with the bvn once', async () => {
@@ -149,7 +149,7 @@ describe('KycService', () => {
         bvnHash: null,
         kycBvnVerifiedAt: null,
       });
-      mockPaystack.resolveBvn.mockResolvedValue({ verified: true, firstName: 'John', lastName: 'Doe' });
+      mockFlutterwave.resolveBvn.mockResolvedValue({ verified: true, firstName: 'John', lastName: 'Doe' });
       mockPrisma.user.update.mockResolvedValue({});
 
       await service.verifyBvn(USER_ID, BVN);
@@ -163,7 +163,7 @@ describe('KycService', () => {
         bvnHash: null,
         kycBvnVerifiedAt: null,
       });
-      mockPaystack.resolveBvn.mockResolvedValue({ verified: true, firstName: 'John', lastName: 'Doe' });
+      mockFlutterwave.resolveBvn.mockResolvedValue({ verified: true, firstName: 'John', lastName: 'Doe' });
       mockPrisma.user.update.mockResolvedValue({});
 
       await service.verifyBvn(USER_ID, BVN);
@@ -185,7 +185,7 @@ describe('KycService', () => {
         bvnHash: null,
         kycBvnVerifiedAt: null,
       });
-      mockPaystack.resolveBvn.mockResolvedValue({ verified: true, firstName: 'John', lastName: 'Doe' });
+      mockFlutterwave.resolveBvn.mockResolvedValue({ verified: true, firstName: 'John', lastName: 'Doe' });
       mockPrisma.user.update.mockResolvedValue({});
 
       await service.verifyBvn(USER_ID, BVN);
@@ -200,7 +200,7 @@ describe('KycService', () => {
         bvnHash: null,
         kycBvnVerifiedAt: null,
       });
-      mockPaystack.resolveBvn.mockResolvedValue({ verified: true, firstName: 'John', lastName: 'Doe' });
+      mockFlutterwave.resolveBvn.mockResolvedValue({ verified: true, firstName: 'John', lastName: 'Doe' });
       mockPrisma.user.update.mockResolvedValue({});
 
       await service.verifyBvn(USER_ID, BVN);
@@ -223,7 +223,7 @@ describe('KycService', () => {
         bvnHash: null,
         kycBvnVerifiedAt: null,
       });
-      mockPaystack.resolveBvn.mockResolvedValue({ verified: true, firstName: 'John', lastName: 'Doe' });
+      mockFlutterwave.resolveBvn.mockResolvedValue({ verified: true, firstName: 'John', lastName: 'Doe' });
       mockPrisma.user.update.mockResolvedValue({});
 
       const result = await service.verifyBvn(USER_ID, BVN);
@@ -237,7 +237,7 @@ describe('KycService', () => {
         bvnHash: null,
         kycBvnVerifiedAt: null,
       });
-      mockPaystack.resolveBvn.mockResolvedValue({ verified: true, firstName: 'John', lastName: 'Doe' });
+      mockFlutterwave.resolveBvn.mockResolvedValue({ verified: true, firstName: 'John', lastName: 'Doe' });
       mockPrisma.user.update.mockResolvedValue({});
 
       // Spy on logger methods
