@@ -58,7 +58,7 @@ export class ResilienceService implements OnModuleInit {
           // timeout in wrap(...) so timeout is the innermost policy, applied fresh to
           // EACH individual attempt — not once around the whole retry+backoff sequence.
           // cockatiel maxAttempts = retries AFTER the first call; total calls = 1 + retryCount.
-          // paystackRefund's retryCount: 0 naturally makes this a zero-attempt no-op —
+          // flutterwaveRefund's retryCount: 0 naturally makes this a zero-attempt no-op —
           // no special-case code needed (RESEARCH.md Pitfall 6).
           maxAttempts: cfg.retryCount,
           backoff: new ExponentialBackoff({ initialDelay: 200, maxDelay: 3_000 }),
@@ -73,7 +73,7 @@ export class ResilienceService implements OnModuleInit {
     }
   }
 
-  /** Callers: `await this.resilience.execute('paystack', () => axios.post(...))` */
+  /** Callers: `await this.resilience.execute('flutterwave', () => axios.post(...))` */
   execute<T>(vendor: Vendor, fn: (context: { signal: AbortSignal }) => PromiseLike<T>): Promise<T> {
     const policy = this.policies.get(vendor);
     if (!policy) {
@@ -174,7 +174,7 @@ function positiveInt(raw: unknown, fallback: number): number {
 
 /**
  * Returns `fallback` unless `Number(raw)` is a finite integer AND >= 0. MUST allow
- * exactly `0` — `paystackRefund`'s legitimate default `retryCount` is `0` (never
+ * exactly `0` — `flutterwaveRefund`'s legitimate default `retryCount` is `0` (never
  * auto-retry a refund; RESEARCH.md Pitfall 6).
  */
 function nonNegativeInt(raw: unknown, fallback: number): number {

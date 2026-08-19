@@ -52,25 +52,25 @@ describe('ResilienceService', () => {
   describe('execute() — unknown vendor rejection', () => {
     it('rejects with an Error mentioning "No resilience policy registered for vendor" for an unregistered vendor', async () => {
       // Note: onModuleInit not called — no policies registered yet.
-      await expect(service.execute('paystack', async () => 'ok')).rejects.toThrow(
+      await expect(service.execute('flutterwave', async () => 'ok')).rejects.toThrow(
         /No resilience policy registered for vendor/,
       );
     });
   });
 
   describe('breaker opens on consecutive transient failures', () => {
-    it('opens the paystack breaker after failureThreshold consecutive transient failures, then fails fast without invoking fn again', async () => {
+    it('opens the flutterwave breaker after failureThreshold consecutive transient failures, then fails fast without invoking fn again', async () => {
       await service.onModuleInit();
 
       const fn = jest.fn().mockRejectedValue({ response: { status: 500 } });
-      const { failureThreshold } = RESILIENCE_DEFAULTS.paystack;
+      const { failureThreshold } = RESILIENCE_DEFAULTS.flutterwave;
 
       // Drive enough failures to open the breaker. Each execute() call may itself
-      // retry internally (paystack retryCount=2), but the breaker should still open
+      // retry internally (flutterwave retryCount=2), but the breaker should still open
       // once failureThreshold *consecutive* failures have been recorded.
       for (let i = 0; i < failureThreshold + 2; i++) {
         try {
-          await service.execute('paystack', fn);
+          await service.execute('flutterwave', fn);
         } catch {
           // expected — every call fails
         }
@@ -80,12 +80,12 @@ describe('ResilienceService', () => {
 
       // Further calls should fail fast (BrokenCircuitError) without invoking fn again.
       try {
-        await service.execute('paystack', fn);
+        await service.execute('flutterwave', fn);
       } catch {
         // expected
       }
       try {
-        await service.execute('paystack', fn);
+        await service.execute('flutterwave', fn);
       } catch {
         // expected
       }
@@ -99,32 +99,32 @@ describe('ResilienceService', () => {
       await service.onModuleInit();
 
       const fn = jest.fn().mockRejectedValue({ response: { status: 400 } });
-      const { failureThreshold } = RESILIENCE_DEFAULTS.paystack;
+      const { failureThreshold } = RESILIENCE_DEFAULTS.flutterwave;
 
       const attempts = failureThreshold + 5;
       for (let i = 0; i < attempts; i++) {
         try {
-          await service.execute('paystack', fn);
+          await service.execute('flutterwave', fn);
         } catch {
           // expected — every call fails with the 4xx error itself, not a broken-circuit error
         }
       }
 
-      // fn invoked once per execute() call (paystack retryCount would only kick in for
+      // fn invoked once per execute() call (flutterwave retryCount would only kick in for
       // transient errors — 4xx is excluded from the retry filter too), so call count
       // must equal the number of execute() invocations, proving no fail-fast short-circuit.
       expect(fn.mock.calls.length).toBe(attempts);
     });
   });
 
-  describe('paystackRefund — zero-retry behavior', () => {
-    it('invokes fn exactly once per execute() call for paystackRefund (no cockatiel-level retry)', async () => {
+  describe('flutterwaveRefund — zero-retry behavior', () => {
+    it('invokes fn exactly once per execute() call for flutterwaveRefund (no cockatiel-level retry)', async () => {
       await service.onModuleInit();
 
       const fn = jest.fn().mockRejectedValue({ response: { status: 500 } });
 
       try {
-        await service.execute('paystackRefund', fn);
+        await service.execute('flutterwaveRefund', fn);
       } catch {
         // expected
       }
@@ -132,18 +132,18 @@ describe('ResilienceService', () => {
       expect(fn).toHaveBeenCalledTimes(1);
     });
 
-    it('invokes fn on every retry attempt for paystack (retryCount: 2 — distinct from paystackRefund)', async () => {
+    it('invokes fn on every retry attempt for flutterwave (retryCount: 2 — distinct from flutterwaveRefund)', async () => {
       await service.onModuleInit();
 
       const fn = jest.fn().mockRejectedValue({ response: { status: 500 } });
 
       try {
-        await service.execute('paystack', fn);
+        await service.execute('flutterwave', fn);
       } catch {
         // expected
       }
 
-      // paystack retryCount is 2 -> 1 initial + 2 retries = 3 calls for this single execute()
+      // flutterwave retryCount is 2 -> 1 initial + 2 retries = 3 calls for this single execute()
       expect(fn.mock.calls.length).toBeGreaterThan(1);
     });
   });
@@ -151,7 +151,7 @@ describe('ResilienceService', () => {
   describe('readConfig() — malformed DB config falls back to defaults (WR-01)', () => {
     it('falls back to the default timeoutMs (10_000ms) when the DB-sourced timeout_ms value is non-numeric', async () => {
       prisma.platformConfig.findMany.mockResolvedValue([
-        { key: 'resilience.paystack.timeout_ms', value: 'not-a-number' },
+        { key: 'resilience.flutterwave.timeout_ms', value: 'not-a-number' },
       ]);
       await service.onModuleInit();
 
@@ -164,19 +164,19 @@ describe('ResilienceService', () => {
 
       // A malformed timeout_ms must fall back to the ample 10_000ms default rather
       // than collapsing to a near-zero/NaN timeout that would reject before fn settles.
-      await expect(service.execute('paystack', fn as any)).resolves.toBe('ok');
+      await expect(service.execute('flutterwave', fn as any)).resolves.toBe('ok');
     });
 
     it('falls back to the default retryCount (2) when the DB-sourced retry_count value is non-numeric', async () => {
       prisma.platformConfig.findMany.mockResolvedValue([
-        { key: 'resilience.paystack.retry_count', value: 'abc' },
+        { key: 'resilience.flutterwave.retry_count', value: 'abc' },
       ]);
       await service.onModuleInit();
 
       const fn = jest.fn().mockRejectedValue({ response: { status: 500 } });
 
       try {
-        await service.execute('paystack', fn);
+        await service.execute('flutterwave', fn);
       } catch {
         // expected — every attempt fails
       }
@@ -192,12 +192,12 @@ describe('ResilienceService', () => {
       await service.onModuleInit();
 
       const fn = jest.fn().mockRejectedValue(new TypeError('boom'));
-      const { failureThreshold } = RESILIENCE_DEFAULTS.paystack;
+      const { failureThreshold } = RESILIENCE_DEFAULTS.flutterwave;
 
       const attempts = failureThreshold + 5;
       for (let i = 0; i < attempts; i++) {
         try {
-          await service.execute('paystack', fn);
+          await service.execute('flutterwave', fn);
         } catch {
           // expected — every call fails with the bare application error itself
         }
@@ -215,12 +215,12 @@ describe('ResilienceService', () => {
       const fn = jest.fn().mockRejectedValue({ code: 'ECONNREFUSED' });
 
       try {
-        await service.execute('paystack', fn);
+        await service.execute('flutterwave', fn);
       } catch {
         // expected
       }
 
-      // paystack retryCount: 2 means cockatiel retries this — proving genuine
+      // flutterwave retryCount: 2 means cockatiel retries this — proving genuine
       // network-level errors remain classified as transient.
       expect(fn.mock.calls.length).toBeGreaterThan(1);
     });
@@ -231,7 +231,7 @@ describe('ResilienceService', () => {
       const fn = jest.fn().mockRejectedValue({ isTaskCancelledError: true });
 
       try {
-        await service.execute('paystack', fn);
+        await service.execute('flutterwave', fn);
       } catch {
         // expected
       }
@@ -266,12 +266,12 @@ describe('ResilienceService', () => {
       const fn = jest.fn().mockRejectedValue({ code: 'ERR_CANCELED', name: 'CanceledError' });
 
       try {
-        await service.execute('paystack', fn);
+        await service.execute('flutterwave', fn);
       } catch {
         // expected
       }
 
-      // paystack retryCount: 2 means cockatiel retries this — proving axios's own
+      // flutterwave retryCount: 2 means cockatiel retries this — proving axios's own
       // cancellation code is now classified as transient, consistent with the
       // already-handled native fetch/undici ABORT_ERR code.
       expect(fn.mock.calls.length).toBeGreaterThan(1);
@@ -283,11 +283,11 @@ describe('ResilienceService', () => {
       await service.onModuleInit();
 
       const fn = jest.fn().mockRejectedValue({ response: { status: 500 } });
-      const { failureThreshold } = RESILIENCE_DEFAULTS.paystack;
+      const { failureThreshold } = RESILIENCE_DEFAULTS.flutterwave;
 
       for (let i = 0; i < failureThreshold + 1; i++) {
         try {
-          await service.execute('paystack', fn);
+          await service.execute('flutterwave', fn);
         } catch {
           // expected
         }
@@ -295,10 +295,10 @@ describe('ResilienceService', () => {
 
       expect(Sentry.captureMessage).toHaveBeenCalled();
       const [message, options] = (Sentry.captureMessage as jest.Mock).mock.calls[0];
-      expect(message).toContain('paystack');
+      expect(message).toContain('flutterwave');
       expect(options).toMatchObject({
         level: 'error',
-        tags: expect.objectContaining({ vendor: 'paystack', 'resilience.event': 'circuit_open' }),
+        tags: expect.objectContaining({ vendor: 'flutterwave', 'resilience.event': 'circuit_open' }),
       });
 
       expect(trace.getTracer).toHaveBeenCalled();
@@ -307,7 +307,7 @@ describe('ResilienceService', () => {
       const [, spanOptions] = tracerInstance.startSpan.mock.calls.find(
         (call: any[]) => call[1]?.attributes?.['resilience.breaker.state'] === 'open',
       );
-      expect(spanOptions.attributes['resilience.vendor']).toBe('paystack');
+      expect(spanOptions.attributes['resilience.vendor']).toBe('flutterwave');
       expect(spanOptions.attributes['resilience.breaker.state']).toBe('open');
     });
 
@@ -321,7 +321,7 @@ describe('ResilienceService', () => {
         name: 'AxiosError',
         code: 'ERR_BAD_RESPONSE',
         config: {
-          url: 'https://api.paystack.co/transaction/initialize',
+          url: 'https://api.flutterwave.com/v3/payments',
           method: 'post',
           headers: { Authorization: 'Bearer sk_live_SECRET_TOKEN', 'Content-Type': 'application/json' },
           data: JSON.stringify({ email: 'user@test.com', amount: 5000 }),
@@ -332,11 +332,11 @@ describe('ResilienceService', () => {
       };
 
       const fn = jest.fn().mockRejectedValue(realisticAxiosError);
-      const { failureThreshold } = RESILIENCE_DEFAULTS.paystack;
+      const { failureThreshold } = RESILIENCE_DEFAULTS.flutterwave;
 
       for (let i = 0; i < failureThreshold + 1; i++) {
         try {
-          await service.execute('paystack', fn);
+          await service.execute('flutterwave', fn);
         } catch {
           // expected
         }
@@ -346,7 +346,7 @@ describe('ResilienceService', () => {
       expect(breakCall).toBeDefined();
 
       // The message itself must name the vendor and stay generic — no secrets, ever.
-      expect(breakCall![0]).toContain('paystack');
+      expect(breakCall![0]).toContain('flutterwave');
 
       // Every argument passed to logger.error, stringified, must never contain the
       // bearer token, the raw Authorization header, or the request body.

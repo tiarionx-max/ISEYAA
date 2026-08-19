@@ -32,16 +32,16 @@ describe('Retry/timeout composition order (CR-01)', () => {
     jest.clearAllMocks();
     jest.useFakeTimers();
 
-    // paystack config: timeoutMs=1000 — deliberately smaller than the cumulative
+    // flutterwave config: timeoutMs=1000 — deliberately smaller than the cumulative
     // duration of 3 attempts (~800ms each) + 2 backoff windows, but larger than any
     // single 800ms attempt. Only passes if timeout applies per-attempt, not per-sequence.
     prisma = {
       platformConfig: {
         findMany: jest.fn().mockResolvedValue([
-          { key: 'resilience.paystack.timeout_ms', value: '1000' },
-          { key: 'resilience.paystack.retry_count', value: '2' },
-          { key: 'resilience.paystack.breaker_failure_threshold', value: '5' },
-          { key: 'resilience.paystack.half_open_after_ms', value: '30000' },
+          { key: 'resilience.flutterwave.timeout_ms', value: '1000' },
+          { key: 'resilience.flutterwave.retry_count', value: '2' },
+          { key: 'resilience.flutterwave.breaker_failure_threshold', value: '5' },
+          { key: 'resilience.flutterwave.half_open_after_ms', value: '30000' },
         ]),
       },
     };
@@ -77,7 +77,7 @@ describe('Retry/timeout composition order (CR-01)', () => {
       });
     });
 
-    const resultPromise = service.execute('paystack', fn);
+    const resultPromise = service.execute('flutterwave', fn);
 
     // Attempt 1 (800ms) settles with a transient 500 rejection.
     await jest.advanceTimersByTimeAsync(800);
